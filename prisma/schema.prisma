@@ -1,0 +1,487 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum MembershipRole {
+  MEMBER
+  LOCAL_ADMIN
+  LOCAL_OWNER
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  WITHDRAWN
+}
+
+enum PrivacyVisibility {
+  MEMBERS
+  ADMINS
+  PRIVATE
+}
+
+enum BirthCalendarType {
+  SOLAR
+  LUNAR
+}
+
+enum FileObjectStatus {
+  PENDING
+  READY
+  FAILED
+  DELETED
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+model District {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  locals    Local[]
+}
+
+model Local {
+  id             String   @id @default(cuid())
+  districtId     String
+  name           String
+  englishName    String?
+  code           String   @unique
+  slug           String   @unique
+  approvalNumber String?
+  foundedAt      DateTime?
+  officeAddress  String?
+  officePhone    String?
+  email          String?
+  website        String?
+  logoFileId     String?
+  primaryColor   String   @default("#1B3A6B")
+  slogan         String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  district             District              @relation(fields: [districtId], references: [id])
+  memberships          LocalMembership[]
+  memberProfiles       MemberProfile[]
+  memberCompanies      MemberCompany[]
+  memberFamilies       MemberFamily[]
+  memberBusinessCards  MemberBusinessCard[]
+  membershipCategories MembershipCategory[]
+  positionMasters      PositionMaster[]
+  positionHistories    MemberPositionHistory[]
+  privacySettings      PrivacySetting[]
+  fileObjects          FileObject[]
+  events               Event[]
+  notices              Notice[]
+  documents            Document[]
+  documentVersions     DocumentVersion[]
+  documentArticles     DocumentArticle[]
+  documentJobs         DocumentProcessingJob[]
+  printJobs            PrintExportJob[]
+  auditLogs            AuditLog[]
+}
+
+model User {
+  id           String     @id @default(cuid())
+  phone        String?    @unique
+  email        String?    @unique
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  memberships      LocalMembership[]
+  refreshSessions  RefreshSession[]
+  memberProfiles   MemberProfile[]   @relation("UserMemberProfiles")
+  approvedMemberships LocalMembership[] @relation("MembershipApprover")
+  auditLogs        AuditLog[]
+  createdFiles     FileObject[]      @relation("FileCreator")
+}
+
+model LocalMembership {
+  id               String           @id @default(cuid())
+  userId           String
+  localId          String
+  memberProfileId  String?          @unique
+  role             MembershipRole   @default(MEMBER)
+  status           MembershipStatus @default(PENDING)
+  joinedAt         DateTime?
+  approvedAt       DateTime?
+  approvedByUserId String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user            User           @relation(fields: [userId], references: [id])
+  local           Local          @relation(fields: [localId], references: [id])
+  memberProfile   MemberProfile? @relation(fields: [memberProfileId], references: [id])
+  approvedByUser  User?          @relation("MembershipApprover", fields: [approvedByUserId], references: [id])
+  refreshSessions RefreshSession[]
+
+  @@unique([userId, localId])
+  @@index([localId, status])
+}
+
+model RefreshSession {
+  id               String    @id @default(cuid())
+  userId           String
+  membershipId     String
+  tokenHash        String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  replacedById     String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+
+  user       User            @relation(fields: [userId], references: [id])
+  membership LocalMembership @relation(fields: [membershipId], references: [id])
+
+  @@index([userId])
+  @@index([membershipId])
+}
+
+model MembershipCategory {
+  id          String   @id @default(cuid())
+  localId     String
+  name        String
+  shortName   String?
+  description String?
+  color       String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  local   Local           @relation(fields: [localId], references: [id])
+  members MemberProfile[]
+
+  @@index([localId])
+}
+
+model MemberProfile {
+  id                   String            @id @default(cuid())
+  localId              String
+  userId               String?
+  memberNumber         String?
+  name                 String
+  hanjaName            String?
+  englishName          String?
+  phone                String?
+  email                String?
+  birthDate            DateTime?
+  birthCalendarType    BirthCalendarType @default(SOLAR)
+  profileImageFileId   String?
+  membershipCategoryId String?
+  currentPositionText  String?
+  joinedAt             DateTime?
+  status               MembershipStatus  @default(ACTIVE)
+  spouseName           String?
+  weddingAnniversary   DateTime?
+  homeAddress          String?
+  homePhone            String?
+  hobby                String?
+  specialty            String?
+  introduction         String?
+  adminMemo            String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  deletedAt            DateTime?
+
+  local              Local                   @relation(fields: [localId], references: [id])
+  user               User?                   @relation("UserMemberProfiles", fields: [userId], references: [id])
+  membershipCategory MembershipCategory?     @relation(fields: [membershipCategoryId], references: [id])
+  membership         LocalMembership?
+  companies          MemberCompany[]
+  families           MemberFamily[]
+  businessCard       MemberBusinessCard?
+  positionHistories  MemberPositionHistory[]
+  privacySettings    PrivacySetting[]
+
+  @@index([localId, deletedAt])
+  @@index([localId, name])
+  @@index([userId])
+}
+
+model MemberCompany {
+  id              String   @id @default(cuid())
+  localId         String
+  memberProfileId String
+  companyName     String
+  position        String?
+  industry        String?
+  address         String?
+  phone           String?
+  fax             String?
+  website         String?
+  isPrimary       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  local   Local         @relation(fields: [localId], references: [id])
+  member  MemberProfile @relation(fields: [memberProfileId], references: [id])
+
+  @@index([localId, memberProfileId])
+}
+
+model MemberFamily {
+  id              String   @id @default(cuid())
+  localId         String
+  memberProfileId String
+  relationship    String
+  name            String
+  birthDate       DateTime?
+  phone           String?
+  memo            String?
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  local  Local         @relation(fields: [localId], references: [id])
+  member MemberProfile @relation(fields: [memberProfileId], references: [id])
+
+  @@index([localId, memberProfileId])
+}
+
+model MemberBusinessCard {
+  id              String   @id @default(cuid())
+  localId         String
+  memberProfileId String   @unique
+  frontFileId     String?
+  backFileId      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  local  Local         @relation(fields: [localId], references: [id])
+  member MemberProfile @relation(fields: [memberProfileId], references: [id])
+}
+
+model PositionMaster {
+  id          String   @id @default(cuid())
+  localId     String
+  name        String
+  groupName   String?
+  englishName String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  local     Local                    @relation(fields: [localId], references: [id])
+  histories MemberPositionHistory[]
+
+  @@index([localId])
+}
+
+model MemberPositionHistory {
+  id               String    @id @default(cuid())
+  localId          String
+  memberProfileId  String
+  positionMasterId String?
+  year             Int?
+  termStart        DateTime?
+  termEnd          DateTime?
+  note             String?
+  sortOrder        Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  local    Local           @relation(fields: [localId], references: [id])
+  member   MemberProfile   @relation(fields: [memberProfileId], references: [id])
+  position PositionMaster? @relation(fields: [positionMasterId], references: [id])
+
+  @@index([localId, memberProfileId])
+}
+
+model PrivacySetting {
+  id              String            @id @default(cuid())
+  localId         String
+  memberProfileId String
+  fieldKey        String
+  visibility      PrivacyVisibility @default(MEMBERS)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  local  Local         @relation(fields: [localId], references: [id])
+  member MemberProfile @relation(fields: [memberProfileId], references: [id])
+
+  @@unique([memberProfileId, fieldKey])
+  @@index([localId])
+}
+
+model FileObject {
+  id              String           @id @default(cuid())
+  localId         String?
+  storageKey      String
+  originalName    String
+  mimeType        String
+  size            Int
+  checksum        String?
+  status          FileObjectStatus @default(PENDING)
+  createdByUserId String?
+  createdAt       DateTime         @default(now())
+  deletedAt       DateTime?
+
+  local   Local? @relation(fields: [localId], references: [id])
+  creator User?  @relation("FileCreator", fields: [createdByUserId], references: [id])
+
+  @@index([localId])
+  @@index([storageKey])
+}
+
+/// 향후 일정 — localId 격리 구조만 확보
+model Event {
+  id        String    @id @default(cuid())
+  localId   String
+  title     String
+  startsAt  DateTime?
+  endsAt    DateTime?
+  place     String?
+  status    String    @default("SCHEDULED")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  local Local @relation(fields: [localId], references: [id])
+
+  @@index([localId, deletedAt])
+}
+
+model Notice {
+  id        String    @id @default(cuid())
+  localId   String
+  title     String
+  body      String?
+  status    String    @default("DRAFT")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  local Local @relation(fields: [localId], references: [id])
+
+  @@index([localId, deletedAt])
+}
+
+model Document {
+  id        String    @id @default(cuid())
+  localId   String
+  title     String
+  status    String    @default("DRAFT")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  local    Local             @relation(fields: [localId], references: [id])
+  versions DocumentVersion[]
+  articles DocumentArticle[]
+  jobs     DocumentProcessingJob[]
+
+  @@index([localId, deletedAt])
+}
+
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  localId    String
+  documentId String
+  version    String
+  fileId     String?
+  isCurrent  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  local    Local    @relation(fields: [localId], references: [id])
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@index([localId, documentId])
+}
+
+model DocumentArticle {
+  id         String   @id @default(cuid())
+  localId    String
+  documentId String
+  chapter    String?
+  articleNo  String?
+  title      String?
+  body       String?
+  pageNo     Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  local    Local    @relation(fields: [localId], references: [id])
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@index([localId, documentId])
+}
+
+model DocumentProcessingJob {
+  id         String    @id @default(cuid())
+  localId    String
+  documentId String?
+  status     JobStatus @default(QUEUED)
+  progress   Int       @default(0)
+  errorMessage String?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  finishedAt DateTime?
+
+  local    Local     @relation(fields: [localId], references: [id])
+  document Document? @relation(fields: [documentId], references: [id])
+
+  @@index([localId, status])
+}
+
+model PrintExportJob {
+  id           String    @id @default(cuid())
+  localId      String
+  status       JobStatus @default(QUEUED)
+  progress     Int       @default(0)
+  resultFileId String?
+  errorMessage String?
+  attempts     Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  finishedAt   DateTime?
+
+  local Local @relation(fields: [localId], references: [id])
+
+  @@index([localId, status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  localId    String?
+  actorUserId String?
+  action     String
+  targetType String?
+  targetId   String?
+  metaJson   String?
+  createdAt  DateTime @default(now())
+
+  local Local? @relation(fields: [localId], references: [id])
+  actor User?  @relation(fields: [actorUserId], references: [id])
+
+  @@index([localId, createdAt])
+}

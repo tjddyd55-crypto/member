@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "JC Member Book",
+    "slug": "member-book",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "memberbook",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:3001"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.memberbook.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1B3A6B"
+      },
+      "package": "com.memberbook.app"
+    }
+  }
+}

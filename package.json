@@ -1,0 +1,39 @@
+{
+  "name": "member",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "npm run lint -w @member/api && npm run lint -w @member/mobile",
+    "typecheck": "npm run typecheck -w @member/shared && npm run typecheck -w @member/contracts && npm run typecheck -w @member/api && npm run typecheck -w @member/mobile",
+    "test": "npm run test -w @member/api",
+    "build": "npm run build -w @member/shared && npm run build -w @member/contracts && npm run build -w @member/api",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --schema prisma/schema.prisma --force",
+    "api:dev": "npm run dev -w @member/api",
+    "mobile:start": "npm run start -w @member/mobile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "prettier": "^3.5.3",
+    "prisma": "^6.5.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.5.0"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

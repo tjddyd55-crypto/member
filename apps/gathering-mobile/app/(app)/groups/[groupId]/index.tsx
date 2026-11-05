@@ -258,6 +258,11 @@ function MembersPane({ groupId }: { groupId: string }) {
           <Text style={styles.meta}>
             {member.roles.map((role) => role.title || role.role).join(', ')}
           </Text>
+          <Button
+            label="차단"
+            variant="text"
+            onPress={() => void api.blockMember(groupId, member.userId).then(() => load(query))}
+          />
           {member.phone ? (
             <View style={styles.row}>
               <Button

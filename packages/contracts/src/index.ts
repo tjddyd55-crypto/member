@@ -103,6 +103,8 @@ export type {
 } from './gathering.js';
 export {
   gatheringAcceptInviteSchema,
+  gatheringAccountDeleteSchema,
+  gatheringBlockSchema,
   gatheringAlbumQuerySchema,
   gatheringMediaCompleteSchema,
   gatheringMediaListQuerySchema,

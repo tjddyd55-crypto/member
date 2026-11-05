@@ -139,6 +139,8 @@ model User {
   gatheringAttendances           GatheringEventAttendance[]
   gatheringMediaUploaded         GatheringMediaAsset[]           @relation("GatheringMediaUploader")
   gatheringMediaReports          GatheringMediaReport[]          @relation("GatheringMediaReporter")
+  gatheringBlocksMade            GatheringMemberBlock[]          @relation("GatheringBlocker")
+  gatheringBlocksReceived        GatheringMemberBlock[]          @relation("GatheringBlocked")
   gatheringTransactionsCreated   GatheringFinanceTransaction[]   @relation("GatheringTransactionCreator")
   gatheringDues                  GatheringMemberDue[]
   gatheringReceiptsUploaded      GatheringReceiptAsset[]         @relation("GatheringReceiptUploader")
@@ -668,6 +670,7 @@ model GatheringGroup {
   events             GatheringEvent[]
   mediaAssets        GatheringMediaAsset[]
   mediaReports       GatheringMediaReport[]
+  memberBlocks       GatheringMemberBlock[]
   financeYears       GatheringFinanceYear[]
   transactions       GatheringFinanceTransaction[]
   dues               GatheringMemberDue[]
@@ -857,6 +860,23 @@ model GatheringMediaReport {
   @@index([groupId, status])
   @@index([mediaAssetId])
   @@map("gathering_media_reports")
+}
+
+/// 모임 안에서 한 회원이 다른 회원의 연락처와 사진을 보지 않게 한다.
+model GatheringMemberBlock {
+  id             String   @id @default(cuid())
+  groupId        String
+  blockerUserId  String
+  blockedUserId  String
+  createdAt      DateTime @default(now())
+
+  group   GatheringGroup @relation(fields: [groupId], references: [id])
+  blocker User           @relation("GatheringBlocker", fields: [blockerUserId], references: [id])
+  blocked User           @relation("GatheringBlocked", fields: [blockedUserId], references: [id])
+
+  @@unique([groupId, blockerUserId, blockedUserId])
+  @@index([groupId, blockerUserId])
+  @@map("gathering_member_blocks")
 }
 
 model GatheringFinanceYear {

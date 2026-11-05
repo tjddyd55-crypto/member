@@ -116,6 +116,18 @@ export const api = {
       false,
     );
   },
+  deleteAccount(password: string) {
+    return request<{ ok: boolean; memberBookKept: boolean }>('/api/gathering/auth/account/delete', {
+      method: 'POST',
+      body: JSON.stringify({ password, confirm: true }),
+    });
+  },
+  blockMember(groupId: string, userId: string) {
+    return request<{ ok: boolean }>(`/api/gathering/groups/${groupId}/blocks`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+  },
   logout(refreshToken: string | null) {
     return request<{ ok: boolean }>(
       '/api/gathering/auth/logout',

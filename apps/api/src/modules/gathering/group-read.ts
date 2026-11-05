@@ -1,6 +1,7 @@
 import type { GatheringGroupDetail } from '@member/contracts';
 import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
+import { blockedUserIds } from './moderation/blocks.js';
 import { toFinanceYearView, toGroupSummary, toMemberView } from './presenters/group.js';
 
 const memberInclude = {
@@ -155,8 +156,13 @@ export async function listGroupMembers(
     },
     include: memberInclude,
   });
+  const hidden = status === 'ACTIVE' ? await blockedUserIds(groupId, userId) : new Set<string>();
   return members
-    .map(toMemberView)
+    .map((member) => {
+      const view = toMemberView(member);
+      if (!hidden.has(member.userId)) return view;
+      return { ...view, phone: null };
+    })
     .sort((left, right) => left.displayName.localeCompare(right.displayName, 'ko'));
 }
 

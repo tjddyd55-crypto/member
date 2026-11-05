@@ -13,8 +13,11 @@ export class R2ObjectStorage implements ObjectStorage {
     this.prefixEnv = config.prefixEnv;
   }
 
-  async presignPut(input: { key: string; contentType: string; expiresInSeconds: number }) {
-    return this.presign('PUT', input.key, input.expiresInSeconds, { 'content-type': input.contentType });
+  async presignPut(input: { key: string; contentType: string; sizeBytes: number; expiresInSeconds: number }) {
+    return this.presign('PUT', input.key, input.expiresInSeconds, {
+      'content-type': input.contentType,
+      'content-length': String(input.sizeBytes),
+    });
   }
 
   async presignGet(input: { key: string; expiresInSeconds: number }) {
@@ -43,6 +46,16 @@ export class R2ObjectStorage implements ObjectStorage {
     const response = await this.signedFetch('DELETE', key);
     if (response.status === 404 || response.ok) return;
     throw storageFailure();
+  }
+
+  async relocate(fromKey: string, toKey: string) {
+    const copySource = `/${encodePath(this.config.bucket)}/${encodePath(fromKey)}`;
+    const saved = await this.signedFetch('PUT', toKey, { 'x-amz-copy-source': copySource });
+    if (saved.status === 404) {
+      throw new AppError(409, 'OBJECT_MISSING', '업로드된 파일을 찾지 못했습니다.');
+    }
+    if (!saved.ok) throw storageFailure();
+    await this.remove(fromKey);
   }
 
   private presign(
@@ -76,6 +89,7 @@ export class R2ObjectStorage implements ObjectStorage {
     const expiresAt = new Date(now.getTime() + expiresInSeconds * 1000).toISOString();
     const clientHeaders: Record<string, string> = {};
     if (extraHeaders['content-type']) clientHeaders['Content-Type'] = extraHeaders['content-type'];
+    if (extraHeaders['content-length']) clientHeaders['Content-Length'] = extraHeaders['content-length'];
     return {
       url: `${this.config.endpoint}${canonicalUri}?${query}&X-Amz-Signature=${signature}`,
       expiresAt,
@@ -83,7 +97,12 @@ export class R2ObjectStorage implements ObjectStorage {
     };
   }
 
-  private async signedFetch(method: 'HEAD' | 'GET' | 'DELETE', key: string, extraHeaders: Record<string, string> = {}) {
+  private async signedFetch(
+    method: 'HEAD' | 'GET' | 'DELETE' | 'PUT',
+    key: string,
+    extraHeaders: Record<string, string> = {},
+    body?: Buffer,
+  ) {
     const now = new Date();
     const { host, canonicalUri } = this.location(key);
     const amzDate = stamp(now);
@@ -109,6 +128,7 @@ export class R2ObjectStorage implements ObjectStorage {
     return fetch(`${this.config.endpoint}${canonicalUri}`, {
       method,
       headers: { ...signed, authorization },
+      body: body ? new Uint8Array(body) : undefined,
     });
   }
 

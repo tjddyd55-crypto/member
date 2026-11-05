@@ -6,6 +6,7 @@ import { gatheringFinanceRoutes } from './finance.js';
 import { gatheringGroupRoutes } from './groups.js';
 import { gatheringMediaRoutes } from './media.js';
 import { gatheringScheduleRoutes } from './schedule.js';
+import { gatheringSubscriptionRoutes } from './subscription.js';
 
 export const gatheringRoutes: FastifyPluginAsync = async (app) => {
   app.decorate('authenticateGathering', async (request: FastifyRequest, _reply: FastifyReply) => {
@@ -22,6 +23,7 @@ export const gatheringRoutes: FastifyPluginAsync = async (app) => {
   await app.register(gatheringScheduleRoutes);
   await app.register(gatheringMediaRoutes);
   await app.register(gatheringFinanceRoutes);
+  await app.register(gatheringSubscriptionRoutes);
 };
 
 declare module 'fastify' {

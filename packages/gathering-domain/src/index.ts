@@ -1,6 +1,6 @@
 export { DIRECTORY_CONSENT_KO, IDENTITY_LIMITATION_KO } from './identity.js';
 export { normalizeKoreanMobile } from './phone.js';
-export { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange } from './fiscal-year.js';
+export { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange, kstDateKey } from './fiscal-year.js';
 export type { FiscalYearRange, PaymentAttribution } from './fiscal-year.js';
 export {
   GATHERING_PERMISSIONS,
@@ -50,3 +50,5 @@ export {
 export type { MediaFolder, MediaKind, MediaRejectionCode, MediaValidation } from './media-policy.js';
 export { canRetryTransfer, signedUrlStillFresh, summarizeTransfer } from './transfer.js';
 export type { TransferItem, TransferState } from './transfer.js';
+export { subscriptionExpiry, subscriptionNoticeDedupeKey, subscriptionNoticeWindow } from './subscription.js';
+export type { SubscriptionNoticeWindow } from './subscription.js';

@@ -265,6 +265,13 @@ describe('계정 삭제와 콘텐츠 처리', () => {
       headers: auth(member.tokens.accessToken),
     });
     expect(album.json().items).toHaveLength(0);
+    const albums = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/albums`,
+      headers: auth(member.tokens.accessToken),
+    });
+    expect(albums.statusCode).toBe(200);
+    expect(albums.json().events.every((card: { photoCount: number }) => card.photoCount === 0)).toBe(true);
     const download = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${group.id}/media/${assetId}/download`,

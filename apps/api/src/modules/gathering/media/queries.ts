@@ -59,9 +59,15 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
 
 export async function listAlbums(userId: string, groupId: string, year?: number) {
   await requireGroupMember(userId, groupId);
+  const hidden = await blockedUserIds(groupId, userId);
   const counts = await prisma.gatheringMediaAsset.groupBy({
     by: ['eventId', 'kind'],
-    where: { groupId, status: 'READY', deletedAt: null },
+    where: {
+      groupId,
+      status: 'READY',
+      deletedAt: null,
+      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
+    },
     _count: { _all: true },
   });
   const events = await prisma.gatheringEvent.findMany({

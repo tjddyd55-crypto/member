@@ -213,6 +213,8 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
 function MembersPane({ groupId }: { groupId: string }) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<GatheringMemberView[]>([]);
+  const [selfId, setSelfId] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
@@ -233,7 +235,18 @@ function MembersPane({ groupId }: { groupId: string }) {
 
   useEffect(() => {
     void load();
+    void api.me().then((me) => setSelfId(me.user.id)).catch(() => setSelfId(null));
   }, [load]);
+
+  const block = async (userId: string) => {
+    setBlockError(null);
+    try {
+      await api.blockMember(groupId, userId);
+      await load(query);
+    } catch (error) {
+      setBlockError(error instanceof Error ? error.message : '차단하지 못했습니다.');
+    }
+  };
 
   return (
     <View style={styles.stack}>
@@ -251,6 +264,7 @@ function MembersPane({ groupId }: { groupId: string }) {
       {status === 'ready' && items.length === 0 ? (
         <EmptyState title="회원이 없습니다" description="초대 링크로 회원을 받으세요." />
       ) : null}
+      {blockError ? <Body>{blockError}</Body> : null}
       {items.map((member) => (
         <View key={member.membershipId} style={styles.card}>
           <Text style={styles.name}>{member.displayName}</Text>
@@ -258,11 +272,9 @@ function MembersPane({ groupId }: { groupId: string }) {
           <Text style={styles.meta}>
             {member.roles.map((role) => role.title || role.role).join(', ')}
           </Text>
-          <Button
-            label="차단"
-            variant="text"
-            onPress={() => void api.blockMember(groupId, member.userId).then(() => load(query))}
-          />
+          {member.userId === selfId ? null : (
+            <Button label="차단" variant="text" onPress={() => void block(member.userId)} />
+          )}
           {member.phone ? (
             <View style={styles.row}>
               <Button

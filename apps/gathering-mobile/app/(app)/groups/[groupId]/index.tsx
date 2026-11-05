@@ -17,7 +17,7 @@ import {
   TextField,
   Title,
 } from '../../../../src/design/ui';
-import { roleLabel } from '../../../../src/copy';
+import { visibleRoleLabels } from '../../../../src/copy';
 import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
@@ -129,17 +129,13 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
   useEffect(() => {
     const now = Date.now();
     const span = 400 * 24 * 60 * 60 * 1000;
-    const from = new Date(now - span).toISOString();
-    const to = new Date(now + span).toISOString();
-    void api.events(group.id, from, to).then((result) => {
-      const upcoming = result.items
-        .filter((item) => item.status !== 'CANCELLED' && new Date(item.startsAt).getTime() >= now)
-        .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
-      const past = result.items
-        .filter((item) => new Date(item.startsAt).getTime() < now)
-        .sort((left, right) => right.startsAt.localeCompare(left.startsAt));
-      setNextEvent(upcoming[0] ? upcoming[0].title : '다음 행사 없음');
-      setRecentEvent(past[0] ? past[0].title : '최근 행사 없음');
+    const nowIso = new Date(now).toISOString();
+    void Promise.all([
+      api.events(group.id, nowIso, new Date(now + span).toISOString(), { order: 'asc', status: 'SCHEDULED' }),
+      api.events(group.id, new Date(now - span).toISOString(), nowIso, { order: 'desc', status: 'SCHEDULED' }),
+    ]).then(([upcoming, past]) => {
+      setNextEvent(upcoming.items[0]?.title ?? '다음 행사 없음');
+      setRecentEvent(past.items[0]?.title ?? '최근 행사 없음');
     }).catch(() => undefined);
     void api.albums(group.id).then((result) => {
       const album = result.events[0];
@@ -155,7 +151,7 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
       {group.description ? <Body>{group.description}</Body> : null}
       <View style={styles.card}>
         <Text style={styles.name}>내 역할</Text>
-        <Body>{group.roles.map((role) => roleLabel(role)).join(', ') || '일반 회원'}</Body>
+        <Body>{visibleRoleLabels(group.roles)}</Body>
         <Body>활동 회원 {group.memberCount}명</Body>
       </View>
       <View style={styles.card}>
@@ -251,7 +247,7 @@ function MembersPane({ groupId }: { groupId: string }) {
           <Text style={styles.name}>{member.displayName}</Text>
           <Text style={styles.meta}>{member.localJcName || '소속 없음'}</Text>
           <Text style={styles.meta}>
-            {member.roles.map((role) => roleLabel(role.role, role.title)).join(', ')}
+            {visibleRoleLabels(member.roles)}
           </Text>
           {member.userId === selfId ? null : (
             <Button label="차단" variant="text" onPress={() => void block(member.userId)} />

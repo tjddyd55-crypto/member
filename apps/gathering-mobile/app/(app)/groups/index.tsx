@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import type { GatheringGroupSummary } from '@member/contracts';
 import { api } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthProvider';
-import { APP_NAME, roleLabel } from '../../../src/copy';
+import { APP_NAME, visibleRoleLabels } from '../../../src/copy';
 import {
   Body,
   Button,
@@ -75,7 +75,7 @@ export default function GroupsScreen() {
         >
           <Text style={styles.cardTitle}>{item.name}</Text>
           <Text style={styles.cardMeta}>
-            {item.membershipStatus === 'PENDING' ? '승인 대기' : item.roles.map((role) => roleLabel(role)).join(', ') || '일반 회원'} ·
+            {item.membershipStatus === 'PENDING' ? '승인 대기' : visibleRoleLabels(item.roles)} ·
             회원 {item.memberCount}명
           </Text>
           <Text style={styles.cardMeta}>협의회장 {item.presidentName ?? '미정'}</Text>

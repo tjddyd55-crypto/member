@@ -21,3 +21,11 @@ export function roleLabel(role: string, title?: string | null) {
   if (title && title.trim()) return title.trim();
   return ROLE_LABEL[role] ?? '일반 회원';
 }
+
+export function visibleRoleLabels(roles: ReadonlyArray<string | { role: string; title?: string | null }>) {
+  const normalized = roles.map((role) => (typeof role === 'string' ? { role, title: null } : role));
+  const offices = normalized.filter((role) => role.role !== 'MEMBER');
+  const shown = offices.length > 0 ? offices : normalized;
+  if (shown.length === 0) return '일반 회원';
+  return shown.map((role) => roleLabel(role.role, role.title)).join(', ');
+}

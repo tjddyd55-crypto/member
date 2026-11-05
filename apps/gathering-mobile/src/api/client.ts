@@ -229,8 +229,15 @@ export const api = {
       false,
     );
   },
-  events(groupId: string, from: string, to: string) {
+  events(
+    groupId: string,
+    from: string,
+    to: string,
+    options?: { order?: 'asc' | 'desc'; status?: 'SCHEDULED' | 'CANCELLED' },
+  ) {
     const params = new URLSearchParams({ from, to });
+    if (options?.order) params.set('order', options.order);
+    if (options?.status) params.set('status', options.status);
     return request<{ items: GatheringEventView[] }>(
       `/api/gathering/groups/${groupId}/events?${params}`,
     );

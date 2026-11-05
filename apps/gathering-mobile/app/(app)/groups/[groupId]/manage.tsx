@@ -22,6 +22,7 @@ export default function ManageScreen() {
   const [approval, setApproval] = useState(false);
   const [invites, setInvites] = useState<GatheringInviteView[]>([]);
   const [pending, setPending] = useState<GatheringMemberView[]>([]);
+  const [issuedId, setIssuedId] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export default function ManageScreen() {
     setCopied(false);
     try {
       const created = await api.createInvite(groupId);
+      setIssuedId(created.invite.id);
       setLink(created.link);
       const listed = await api.invites(groupId);
       setInvites(listed.items);
@@ -74,6 +76,16 @@ export default function ManageScreen() {
   const shareLink = async () => {
     if (!link) return;
     await Share.share({ message: `모임 초대 링크입니다.\n${link}`, title: '모임 초대' });
+  };
+
+  const revokeInvite = async (inviteId: string) => {
+    await api.revokeInvite(groupId, inviteId);
+    if (inviteId === issuedId) {
+      setIssuedId(null);
+      setLink(null);
+      setCopied(false);
+    }
+    if (canInvite) setInvites((await api.invites(groupId)).items);
   };
 
   return (
@@ -117,7 +129,7 @@ export default function ManageScreen() {
                     <Button
                       label="폐기"
                       variant="secondary"
-                      onPress={() => void api.revokeInvite(groupId, invite.id).then(load)}
+                      onPress={() => void revokeInvite(invite.id)}
                     />
                   )}
                 </View>

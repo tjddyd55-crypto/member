@@ -298,6 +298,70 @@ describe('행사, 캘린더, 참석, 알림', () => {
   });
 });
 
+it('홈 요약은 취소 행사를 빼고 가장 가까운 예정과 최근 행사를 고른다', async () => {
+    const owner = await register('요약회장');
+    const group = await createGroup(owner.tokens.accessToken, '요약 모임');
+    const now = Date.now();
+    const oldEvents = Array.from({ length: 201 }, (_, index) => ({
+      groupId: group.id,
+      title: `오래된 행사 ${index}`,
+      startsAt: new Date(now - (300 - index) * 60 * 60 * 1000),
+      status: 'SCHEDULED' as const,
+      createdByUserId: owner.user.id,
+    }));
+    await prisma.gatheringEvent.createMany({
+      data: [
+        ...oldEvents,
+        {
+          groupId: group.id,
+          title: '취소된 최근 행사',
+          startsAt: new Date(now - 60 * 60 * 1000),
+          status: 'CANCELLED',
+          createdByUserId: owner.user.id,
+        },
+        {
+          groupId: group.id,
+          title: '실제 최근 행사',
+          startsAt: new Date(now - 30 * 60 * 1000),
+          status: 'SCHEDULED',
+          createdByUserId: owner.user.id,
+        },
+        {
+          groupId: group.id,
+          title: '취소된 다음 행사',
+          startsAt: new Date(now + 30 * 60 * 1000),
+          status: 'CANCELLED',
+          createdByUserId: owner.user.id,
+        },
+        {
+          groupId: group.id,
+          title: '실제 다음 행사',
+          startsAt: new Date(now + 2 * 60 * 60 * 1000),
+          status: 'SCHEDULED',
+          createdByUserId: owner.user.id,
+        },
+      ],
+    });
+
+    const from = new Date(now - 400 * 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(now + 400 * 24 * 60 * 60 * 1000).toISOString();
+    const recent = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(new Date(now).toISOString())}&order=desc&status=SCHEDULED`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(recent.statusCode).toBe(200);
+    expect(recent.json().items[0].title).toBe('실제 최근 행사');
+
+    const upcoming = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/events?from=${encodeURIComponent(new Date(now).toISOString())}&to=${encodeURIComponent(to)}&order=asc&status=SCHEDULED`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(upcoming.statusCode).toBe(200);
+    expect(upcoming.json().items[0].title).toBe('실제 다음 행사');
+  });
+
 describe('저장소 준비', () => {
   it('환경변수가 없으면 저장소를 쓰지 않고 키는 환경 접두사로 나눈다', () => {
     expect(

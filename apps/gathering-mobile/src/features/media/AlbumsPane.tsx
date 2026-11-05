@@ -7,12 +7,25 @@ import { api } from '../../api/client';
 import { Body, Button, EmptyState, ErrorState, Notice, TextField } from '../../design/ui';
 import { theme } from '../../theme';
 import { signedUrlStillFresh } from '@member/gathering-domain';
-import { prepareAsset, putPreparedFile } from './prepare';
-import { chunkForReserve, uploadBlockReason } from './upload-block';
+import { SUBSCRIPTION_RETRY_HINT, subscriptionUploadState, uploadAlbumFiles } from './album-upload';
+import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
+import { uploadBlockReason } from './upload-block';
 
 type Destination =
   | { kind: 'event'; id: string; title: string }
   | { kind: 'folder'; id: string; title: string };
+
+type FailedUpload = {
+  key: string;
+  name: string;
+  file: PreparedUpload;
+  destination: Destination;
+  assetId?: string;
+  uploadUrl?: string;
+  headers?: Record<string, string>;
+  expiresAt?: string;
+  message?: string;
+};
 
 export function AlbumsPane({ groupId }: { groupId: string }) {
   const [years, setYears] = useState<GatheringAlbumYear[]>([]);
@@ -26,6 +39,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [uploadsAllowed, setUploadsAllowed] = useState<boolean | null>(null);
   const [destination, setDestination] = useState<Destination | null>(null);
   const [busy, setBusy] = useState(false);
+  const [failedUploads, setFailedUploads] = useState<FailedUpload[]>([]);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -53,12 +67,12 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   }, [load]);
 
   const destinationCount = events.length + folders.length;
+  const subscriptionState = subscriptionUploadState(uploadsAllowed);
   const blockReason = uploadBlockReason({
-    uploadsAllowed: uploadsAllowed !== false,
+    uploadsAllowed: subscriptionState !== 'inactive',
     destinationCount,
     destinationChosen: destination != null,
   });
-  const subscriptionUnknown = uploadsAllowed === null;
 
   const upload = async (kind: 'PHOTO' | 'VIDEO') => {
     if (!destination || blockReason) return;
@@ -75,64 +89,51 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     if (picked.canceled) return;
     setBusy(true);
     setMessage('');
-    let failed = 0;
+    const files: FailedUpload[] = [];
+    for (const asset of picked.assets) {
+      try {
+        const file = await prepareAsset(asset);
+        if (file.kind !== kind) continue;
+        files.push({
+          key: `${destination.kind}:${destination.id}:${files.length}:${file.originalName ?? kind}`,
+          name: file.originalName ?? (kind === 'PHOTO' ? '사진' : '영상'),
+          file,
+          destination,
+        });
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : '파일을 준비하지 못했습니다.');
+      }
+    }
+    if (files.length === 0) {
+      setBusy(false);
+      setMessage(kind === 'PHOTO' ? '사진 파일을 고르지 않았습니다.' : '영상 파일을 고르지 않았습니다.');
+      return;
+    }
     try {
-      const files = [];
-      for (const asset of picked.assets) {
-        try {
-          const file = await prepareAsset(asset);
-          if (file.kind === kind) files.push(file);
-        } catch (error) {
-          failed += 1;
-          setMessage(error instanceof Error ? error.message : '파일을 준비하지 못했습니다.');
-        }
-      }
-      if (files.length === 0) {
-        setMessage(kind === 'PHOTO' ? '사진 파일을 고르지 않았습니다.' : '영상 파일을 고르지 않았습니다.');
-        return;
-      }
-      for (const batch of chunkForReserve(files)) {
-        let reserved: Awaited<ReturnType<typeof api.createMediaUploads>> | null = null;
-        try {
-          reserved =
-            destination.kind === 'event'
-              ? await api.createMediaUploads(groupId, destination.id, batch)
-              : await api.createFolderUploads(groupId, destination.id, batch);
-        } catch (error) {
-          failed += batch.length;
-          setMessage(error instanceof Error ? error.message : '예약을 만들지 못했습니다.');
-          continue;
-        }
-        for (let index = 0; index < batch.length; index += 1) {
-          const file = batch[index];
-          const target = reserved.items[index];
-          if (!file || !target) {
-            failed += 1;
-            continue;
-          }
-          try {
-            const fresh = signedUrlStillFresh(target.expiresAt)
-              ? { status: 'PENDING' as const, uploadUrl: target.uploadUrl, headers: target.headers }
-              : await refreshUploadUrl(destination, target.id);
-            if (fresh.status === 'READY') continue;
-            await putPreparedFile(file.uri, fresh.uploadUrl, fresh.headers, () => undefined);
-            if (destination.kind === 'event') {
-              await api.completeMedia(groupId, destination.id, target.id, file.sizeBytes);
-            } else {
-              await api.completeFolderMedia(groupId, destination.id, target.id, file.sizeBytes);
-            }
-          } catch (error) {
-            failed += 1;
-            setMessage(error instanceof Error ? error.message : '올리지 못했습니다.');
-          }
-        }
+      const failed = await sendAlbumFiles(files);
+      setFailedUploads((current) => {
+        const keys = new Set(files.map((file) => file.key));
+        return [...current.filter((entry) => !keys.has(entry.key)), ...failed];
+      });
+      if (failed.length > 0) {
+        setMessage(`${failed.length}개를 올리지 못했습니다. 다시 시도는 같은 업로드를 이어 받습니다.`);
       }
     } finally {
       setBusy(false);
       await load();
-      if (failed > 0) {
-        setMessage(`${failed}개를 올리지 못했습니다. 이미 오른 파일은 앨범에 있습니다.`);
-      }
+    }
+  };
+
+  const retryUpload = async (item: FailedUpload) => {
+    setBusy(true);
+    setMessage('');
+    try {
+      const failed = await sendAlbumFiles([item]);
+      setFailedUploads((current) => [...current.filter((entry) => entry.key !== item.key), ...failed]);
+      if (failed.length > 0) setMessage('다시 올리지 못했습니다. 같은 업로드로 한 번 더 시도할 수 있습니다.');
+    } finally {
+      setBusy(false);
+      await load();
     }
   };
 
@@ -142,7 +143,19 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
       <Button label="사진 올리기" disabled={Boolean(blockReason) || busy} onPress={() => void upload('PHOTO')} />
       <Button label="영상 올리기" disabled={Boolean(blockReason) || busy} onPress={() => void upload('VIDEO')} />
       {blockReason ? <Notice>{blockReason}</Notice> : null}
-      {subscriptionUnknown ? <Notice>이용 상태를 확인하지 못했습니다. 올리기가 거절될 수 있습니다.</Notice> : null}
+      {status === 'ready' && subscriptionState === 'unknown' ? (
+        <>
+          <Notice>{SUBSCRIPTION_RETRY_HINT}</Notice>
+          <Button label="이용 상태 다시 확인" variant="text" onPress={() => void load()} />
+        </>
+      ) : null}
+      {failedUploads.map((item) => (
+        <View key={item.key} style={styles.card}>
+          <Text style={styles.title}>{item.name}</Text>
+          <Body>{item.message ?? '올리지 못했습니다.'}</Body>
+          <Button label="다시 시도" variant="secondary" disabled={busy} onPress={() => void retryUpload(item)} />
+        </View>
+      ))}
       {destination ? <Body>{`올리는 곳: ${destination.title}`}</Body> : <Body>아래에서 행사나 폴더를 고르세요.</Body>}
       <Button label="행사 만들기" variant="secondary" onPress={() => router.push(`/(app)/groups/${groupId}/events/new`)} />
       {folderError ? <Body>{folderError}</Body> : null}
@@ -201,6 +214,57 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     </View>
   );
 
+  async function sendAlbumFiles(files: FailedUpload[]) {
+    const failed: FailedUpload[] = [];
+    const groups = new Map<string, FailedUpload[]>();
+    for (const file of files) {
+      const groupKey = `${file.destination.kind}:${file.destination.id}`;
+      groups.set(groupKey, [...(groups.get(groupKey) ?? []), file]);
+    }
+    for (const group of groups.values()) {
+      const target = group[0]?.destination;
+      if (!target) continue;
+      const outcomes = await uploadAlbumFiles({
+        files: group,
+        reserve: async (batch) => {
+          const reserved =
+            target.kind === 'event'
+              ? await api.createMediaUploads(groupId, target.id, batch.map((item) => toIntent(item.file)))
+              : await api.createFolderUploads(groupId, target.id, batch.map((item) => toIntent(item.file)));
+          return batch.map((item, index) => {
+            const created = reserved.items[index];
+            return created
+              ? {
+                  key: item.key,
+                  assetId: created.id,
+                  uploadUrl: created.uploadUrl,
+                  headers: created.headers,
+                  expiresAt: created.expiresAt,
+                }
+              : { key: item.key, assetId: '' };
+          });
+        },
+        send: async (item) => {
+          const fresh =
+            item.uploadUrl && item.headers && signedUrlStillFresh(item.expiresAt)
+              ? { status: 'PENDING' as const, uploadUrl: item.uploadUrl, headers: item.headers }
+              : await refreshUploadUrl(target, item.assetId);
+          if (fresh.status === 'READY') return;
+          await putPreparedFile(item.file.uri, fresh.uploadUrl, fresh.headers, () => undefined);
+          if (target.kind === 'event') await api.completeMedia(groupId, target.id, item.assetId, item.file.sizeBytes);
+          else await api.completeFolderMedia(groupId, target.id, item.assetId, item.file.sizeBytes);
+        },
+      });
+      for (const outcome of outcomes) {
+        if (outcome.ok) continue;
+        const source = group.find((item) => item.key === outcome.key);
+        if (!source) continue;
+        failed.push({ ...source, assetId: outcome.assetId ?? source.assetId, message: outcome.message });
+      }
+    }
+    return failed;
+  }
+
   async function refreshUploadUrl(target: Destination, assetId: string) {
     if (target.kind === 'event') return api.resumeMedia(groupId, target.id, assetId);
     return api.resumeFolderMedia(groupId, target.id, assetId);
@@ -216,6 +280,18 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
       setFolderError(error instanceof Error ? error.message : '폴더를 만들지 못했습니다.');
     }
   }
+}
+
+function toIntent(file: PreparedUpload) {
+  return {
+    kind: file.kind,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    durationMs: file.durationMs,
+    width: file.width,
+    height: file.height,
+    originalName: file.originalName,
+  };
 }
 
 function YearChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {

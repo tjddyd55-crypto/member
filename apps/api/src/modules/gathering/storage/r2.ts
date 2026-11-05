@@ -2,6 +2,7 @@ import { buildGatheringObjectKey as buildKey, buildMemberBookProfileKey as build
 import type { GatheringObjectFolder } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { readStorageConfig } from './config.js';
+import { devObjectStorage, devStorageEnabled } from './file-sink.js';
 import { MemoryObjectStorage } from './memory.js';
 import type { ObjectStorage } from './port.js';
 import { R2ObjectStorage } from './s3-sigv4.js';
@@ -49,9 +50,11 @@ export function buildProfileObjectKey(input: { prefixEnv: string; userId: string
 }
 
 export function assertGatheringStorageConfigured() {
-  if (forceUnconfigured || !readStorageConfig()) {
+  if (forceUnconfigured) {
     throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
   }
+  if (devStorageEnabled() || readStorageConfig()) return;
+  throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
 }
 
 export function currentObjectStorage(): ObjectStorage {
@@ -59,6 +62,7 @@ export function currentObjectStorage(): ObjectStorage {
   if (forceUnconfigured) {
     throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
   }
+  if (devStorageEnabled()) return devObjectStorage();
   const config = readStorageConfig();
   if (!config) {
     throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');

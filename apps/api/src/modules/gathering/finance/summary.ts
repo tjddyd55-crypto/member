@@ -1,4 +1,4 @@
-import { summarizeLedger } from '@member/gathering-domain';
+import { summarizeFinance } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
@@ -18,10 +18,16 @@ export async function financeSummary(userId: string, groupId: string, year?: num
       orderBy: { userId: 'asc' },
     }),
   ]);
-  const totals = summarizeLedger(
-    financeYear.openingBalanceWon,
-    transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
-  );
+  const totals = summarizeFinance({
+    openingBalanceWon: financeYear.openingBalanceWon,
+    entries: transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
+    duesPaidWon: dues.reduce((sum, row) => sum + row.paidAmountWon, 0),
+  });
+  const years = await prisma.gatheringFinanceYear.findMany({
+    where: { groupId },
+    orderBy: { year: 'desc' },
+    select: { year: true, status: true },
+  });
   return {
     year: financeYear.year,
     status: financeYear.status,
@@ -29,6 +35,7 @@ export async function financeSummary(userId: string, groupId: string, year?: num
     endsAt: financeYear.endsAt.toISOString(),
     openingBalanceWon: financeYear.openingBalanceWon,
     ...totals,
+    years,
     dues: dues.map((row) => ({
       id: row.id,
       userId: row.userId,
@@ -66,16 +73,18 @@ function eventTotals(
     event: { id: string; title: string };
   }>,
 ) {
-  const grouped = new Map<string, { eventId: string; title: string; incomeWon: number; expenseWon: number }>();
+  const grouped = new Map<string, { eventId: string; title: string; incomeWon: number; expenseWon: number; netWon: number }>();
   for (const row of transactions) {
     const current = grouped.get(row.eventId) ?? {
       eventId: row.eventId,
       title: row.event.title,
       incomeWon: 0,
       expenseWon: 0,
+      netWon: 0,
     };
     if (row.direction === 'INCOME') current.incomeWon += row.amountWon;
     else current.expenseWon += row.amountWon;
+    current.netWon = current.incomeWon - current.expenseWon;
     grouped.set(row.eventId, current);
   }
   return [...grouped.values()];

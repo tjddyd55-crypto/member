@@ -352,6 +352,60 @@ describe('행사 장부와 영수증', () => {
     expect(saved.financeYearId).toBe(reservedYear);
     expect(saved.status).toBe('READY');
   });
+
+  it('빈 해의 시작일만 바꾸고, 회비 납부는 행사 수입과 따로 한 번만 합친다', async () => {
+    const owner = await register('기간회장');
+    const group = await createGroup(owner.tokens.accessToken, '기간 모임');
+    const shifted = await app.inject({
+      method: 'PATCH',
+      url: `/api/gathering/groups/${group.id}`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { fiscalStartMonth: 6, fiscalStartDay: 1 },
+    });
+    expect(shifted.statusCode).toBe(200);
+    expect(shifted.json().financeYear.startsAt).toBe('2025-05-31T15:00:00.000Z');
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/api/gathering/groups/${group.id}`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { fiscalStartMonth: 4, fiscalStartDay: 31 },
+    });
+    expect(invalid.statusCode).toBe(400);
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-03-01T03:00:00.000Z');
+    const income = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { direction: 'INCOME', label: '참가비', amountWon: 4000, paidAt: '2026-03-01T03:00:00.000Z' },
+    });
+    expect(income.statusCode).toBe(200);
+    const locked = await app.inject({
+      method: 'PATCH',
+      url: `/api/gathering/groups/${group.id}`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { fiscalStartMonth: 1, fiscalStartDay: 1 },
+    });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.json().error.code).toBe('PERIOD_LOCKED');
+    const due = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/finance/dues`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { displayName: '기간회장', year: group.financeYear.year, amountWon: 10000, paidAmountWon: 10000, paidAt: '2026-03-02T03:00:00.000Z' },
+    });
+    expect(due.statusCode).toBe(200);
+    const summary = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/finance`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(summary.json().eventIncomeWon).toBe(4000);
+    expect(summary.json().duesWon).toBe(10000);
+    expect(summary.json().incomeWon).toBe(14000);
+    expect(summary.json().events[0].netWon).toBe(4000);
+    const rows = await prisma.gatheringFinanceTransaction.count({ where: { groupId: group.id } });
+    expect(rows).toBe(1);
+  });
 });
 
 async function cleanup() {

@@ -6,7 +6,7 @@ import { assertPermission, requireGroupMember } from '../access.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { lockGroup } from '../locks.js';
-import { lockGroupOpenYear } from './years.js';
+import { lockGroupOpenYear, readFiscalPeriod } from './years.js';
 
 export type TransactionInput = {
   direction: GatheringEntryDirection;
@@ -23,7 +23,9 @@ export async function createTransaction(userId: string, groupId: string, eventId
   const parsed = parseTransaction(input);
   await requireEvent(groupId, eventId);
   const created = await prisma.$transaction(async (tx) => {
-    const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt));
+    await lockGroup(tx, groupId);
+    const period = await readFiscalPeriod(tx, groupId);
+    const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt, period));
     return tx.gatheringFinanceTransaction.create({
       data: {
         groupId,
@@ -60,9 +62,10 @@ export async function updateTransaction(
   const parsed = parseTransaction(input);
   const updated = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
+    const period = await readFiscalPeriod(tx, groupId);
     const current = await requireMutable(tx, groupId, transactionId);
     assertYearOpen(current.financeYear.status);
-    const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt));
+    const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt, period));
     return tx.gatheringFinanceTransaction.update({
       where: { id: current.id },
       data: {

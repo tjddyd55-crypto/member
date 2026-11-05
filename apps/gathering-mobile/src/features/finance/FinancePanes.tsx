@@ -14,14 +14,14 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   const [summary, setSummary] = useState<GatheringFinanceSummary | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
-  const [memberId, setMemberId] = useState('');
+  const [memberName, setMemberName] = useState('');
   const [amount, setAmount] = useState('');
   const [paid, setPaid] = useState('0');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (year?: number) => {
     setStatus('loading');
     try {
-      setSummary(await api.finance(groupId));
+      setSummary(await api.finance(groupId, year));
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '장부를 불러오지 못했습니다.');
@@ -41,14 +41,20 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
         {summary.year} 회계연도 {summary.status === 'CLOSED' ? '· 마감됨' : ''}
       </Body>
       <Notice>
-        {`기초 ${WON.format(summary.openingBalanceWon)}원 · 수입 ${WON.format(summary.incomeWon)}원 · 지출 ${WON.format(summary.expenseWon)}원 · 잔액 ${WON.format(summary.balanceWon)}원`}
+        {`기초 ${WON.format(summary.openingBalanceWon)}원 · 전체 수입 ${WON.format(summary.incomeWon)}원 · 전체 지출 ${WON.format(summary.expenseWon)}원 · 현재 잔액 ${WON.format(summary.balanceWon)}원`}
       </Notice>
+      <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 납부 ${WON.format(summary.duesWon)}원. 회비는 행사 수입에 다시 적지 않습니다.`}</Body>
+      <View style={styles.row}>
+        {summary.years.map((item) => (
+          <Button key={item.year} label={`${item.year}`} variant={item.year === summary.year ? 'primary' : 'secondary'} onPress={() => void load(item.year)} />
+        ))}
+      </View>
       {summary.events.length === 0 ? (
         <EmptyState title="기록된 거래가 없습니다" description="행사 재무 탭에서 수입과 지출을 남깁니다." />
       ) : null}
       {summary.events.map((event) => (
         <Text key={event.eventId} style={styles.line}>
-          {event.title} · 수입 {WON.format(event.incomeWon)} · 지출 {WON.format(event.expenseWon)}
+          {event.title} · 수입 {WON.format(event.incomeWon)} · 지출 {WON.format(event.expenseWon)} · 순액 {WON.format(event.netWon)}
         </Text>
       ))}
       {summary.dues.map((due) => (
@@ -58,7 +64,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
       ))}
       {canWrite && summary.status === 'OPEN' ? (
         <>
-          <TextField label="회원 아이디" value={memberId} onChangeText={setMemberId} autoCapitalize="none" />
+          <TextField label="회원 이름" value={memberName} onChangeText={setMemberName} />
           <TextField label="청구액(원)" value={amount} onChangeText={setAmount} keyboardType="number-pad" />
           <TextField label="납부액(원)" value={paid} onChangeText={setPaid} keyboardType="number-pad" />
           <Button
@@ -66,7 +72,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
             onPress={() =>
               void api
                 .saveDue(groupId, {
-                  userId: memberId.trim(),
+                  displayName: memberName.trim(),
                   year: summary.year,
                   amountWon: Number(amount),
                   paidAmountWon: Number(paid),

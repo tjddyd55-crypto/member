@@ -658,6 +658,8 @@ model GatheringGroup {
   name                   String
   description            String?
   inviteRequiresApproval Boolean  @default(false)
+  fiscalStartMonth       Int      @default(12)
+  fiscalStartDay         Int      @default(24)
   createdByUserId        String
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt

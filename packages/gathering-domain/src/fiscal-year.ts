@@ -15,6 +15,20 @@ export type FiscalYearRange = {
   endsAt: Date;
 };
 
+/** 회계연도가 시작되는 달과 날. 기본은 12월 24일. 끝은 다음 시작 직전이다. */
+export type FiscalPeriod = {
+  startMonth: number;
+  startDay: number;
+};
+
+export const DEFAULT_FISCAL_PERIOD: FiscalPeriod = { startMonth: 12, startDay: 24 };
+
+export function isValidFiscalPeriod(period: FiscalPeriod) {
+  if (!Number.isInteger(period.startMonth) || period.startMonth < 1 || period.startMonth > 12) return false;
+  if (!Number.isInteger(period.startDay) || period.startDay < 1) return false;
+  return period.startDay <= daysInMonth(2024, period.startMonth);
+}
+
 type KstParts = {
   year: number;
   month: number;
@@ -42,10 +56,11 @@ function atKst(
   return new Date(Date.UTC(year, month - 1, day, hour, minute, second, ms) - KST_OFFSET_MS);
 }
 
-export function fiscalYearOf(instant: Date): number {
+export function fiscalYearOf(instant: Date, period: FiscalPeriod = DEFAULT_FISCAL_PERIOD): number {
   const parts = kstParts(instant);
-  if (parts.month === 12 && parts.day >= 24) return parts.year + 1;
-  return parts.year;
+  const openedThisYear = startInstant(parts.year, period);
+  const startCalendarYear = instant.getTime() >= openedThisYear.getTime() ? parts.year : parts.year - 1;
+  return windowStarting(startCalendarYear, period).fiscalYear;
 }
 
 /** 앨범 연도는 회계연도가 아니라 행사 시작의 한국 달력 연도다. */
@@ -65,12 +80,32 @@ export function calendarYearRange(year: number): { startsAt: Date; endsAt: Date 
   };
 }
 
-export function fiscalYearRange(fiscalYear: number): FiscalYearRange {
-  return {
-    fiscalYear,
-    startsAt: atKst(fiscalYear - 1, 12, 24, 0, 0, 0, 0),
-    endsAt: atKst(fiscalYear, 12, 23, 23, 59, 59, 999),
-  };
+export function fiscalYearRange(
+  fiscalYear: number,
+  period: FiscalPeriod = DEFAULT_FISCAL_PERIOD,
+): FiscalYearRange {
+  for (const startYear of [fiscalYear - 1, fiscalYear]) {
+    const window = windowStarting(startYear, period);
+    if (window.fiscalYear === fiscalYear) {
+      return { fiscalYear, startsAt: window.startsAt, endsAt: window.endsAt };
+    }
+  }
+  throw new Error('회계연도 범위를 계산하지 못했습니다.');
+}
+
+function daysInMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function startInstant(calendarYear: number, period: FiscalPeriod) {
+  const day = Math.min(period.startDay, daysInMonth(calendarYear, period.startMonth));
+  return atKst(calendarYear, period.startMonth, day, 0, 0, 0, 0);
+}
+
+function windowStarting(calendarYear: number, period: FiscalPeriod) {
+  const startsAt = startInstant(calendarYear, period);
+  const endsAt = new Date(startInstant(calendarYear + 1, period).getTime() - 1);
+  return { startsAt, endsAt, fiscalYear: kstParts(endsAt).year };
 }
 
 export type PaymentAttribution = {
@@ -80,9 +115,14 @@ export type PaymentAttribution = {
 };
 
 /** 행사와 결제일을 함께 보여 주되, 장부 귀속은 paymentFiscalYear 를 따른다. */
-export function attributePayment(input: { eventStartsAt: Date; paidAt: Date }): PaymentAttribution {
-  const eventFiscalYear = fiscalYearOf(input.eventStartsAt);
-  const paymentFiscalYear = fiscalYearOf(input.paidAt);
+export function attributePayment(input: {
+  eventStartsAt: Date;
+  paidAt: Date;
+  period?: FiscalPeriod;
+}): PaymentAttribution {
+  const period = input.period ?? DEFAULT_FISCAL_PERIOD;
+  const eventFiscalYear = fiscalYearOf(input.eventStartsAt, period);
+  const paymentFiscalYear = fiscalYearOf(input.paidAt, period);
   return {
     eventFiscalYear,
     paymentFiscalYear,

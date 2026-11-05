@@ -1,7 +1,7 @@
 export { DIRECTORY_CONSENT_KO, IDENTITY_LIMITATION_KO } from './identity.js';
 export { normalizeKoreanMobile } from './phone.js';
-export { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange, kstDateKey } from './fiscal-year.js';
-export type { FiscalYearRange, PaymentAttribution } from './fiscal-year.js';
+export { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange, isValidFiscalPeriod, kstDateKey, DEFAULT_FISCAL_PERIOD } from './fiscal-year.js';
+export type { FiscalPeriod, FiscalYearRange, PaymentAttribution } from './fiscal-year.js';
 export {
   GATHERING_PERMISSIONS,
   GATHERING_ROLES,
@@ -25,7 +25,7 @@ export { SharedRefreshGate } from './session-gate.js';
 export type { NoticeKind } from './notices.js';
 export { parseWon, parseWonAllowZero } from './money.js';
 export type { WonParse } from './money.js';
-export { dueStanding, summarizeLedger } from './ledger.js';
+export { dueStanding, summarizeFinance, summarizeLedger } from './ledger.js';
 export type { LedgerDirection, LedgerEntry, LedgerTotals } from './ledger.js';
 export { RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES, validateReceiptUpload } from './receipt-policy.js';
 export type { ReceiptValidation } from './receipt-policy.js';

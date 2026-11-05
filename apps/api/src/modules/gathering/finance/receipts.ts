@@ -16,7 +16,7 @@ import { assertStoredObject } from '../storage/confirm.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
 import { isSubscriptionActive, loadBillableUsage } from '../storage/usage.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
-import { lockGroupOpenYear, lockOpenYearById } from './years.js';
+import { lockGroupOpenYear, lockOpenYearById, readFiscalPeriod } from './years.js';
 
 type ReceiptItem = { mimeType: string; sizeBytes: number; originalName?: string };
 
@@ -150,7 +150,8 @@ async function reserveReceipts(
   items: ReceiptItem[],
   prefixEnv: string,
 ) {
-  const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(event.startsAt));
+  const period = await readFiscalPeriod(tx, groupId);
+  const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(event.startsAt, period));
   const usage = await loadBillableUsage(tx, groupId, new Date());
   const decision = evaluateUpload({
     usage,

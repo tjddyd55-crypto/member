@@ -111,6 +111,8 @@ export async function getGroupDetail(
     name: group.name,
     description: group.description,
     inviteRequiresApproval: group.inviteRequiresApproval,
+    fiscalStartMonth: group.fiscalStartMonth,
+    fiscalStartDay: group.fiscalStartDay,
     roles: access.roles,
     permissions: access.permissions,
     president,

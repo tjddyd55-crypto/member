@@ -11,6 +11,22 @@ export type LedgerTotals = {
   balanceWon: number;
 };
 
+/** 회비 납부액은 행사 수입과 따로 한 번만 합계에 넣는다. */
+export function summarizeFinance(input: {
+  openingBalanceWon: number;
+  entries: readonly LedgerEntry[];
+  duesPaidWon: number;
+}): LedgerTotals & { eventIncomeWon: number; duesWon: number } {
+  const ledger = summarizeLedger(input.openingBalanceWon, input.entries);
+  return {
+    eventIncomeWon: ledger.incomeWon,
+    duesWon: input.duesPaidWon,
+    incomeWon: ledger.incomeWon + input.duesPaidWon,
+    expenseWon: ledger.expenseWon,
+    balanceWon: ledger.balanceWon + input.duesPaidWon,
+  };
+}
+
 export function summarizeLedger(openingBalanceWon: number, entries: readonly LedgerEntry[]): LedgerTotals {
   const incomeWon = sum(entries, 'INCOME');
   const expenseWon = sum(entries, 'EXPENSE');

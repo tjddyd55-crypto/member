@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { canonicalJson, handoverAck, summarizeLedger } from '@member/gathering-domain';
+import { canonicalJson, handoverAck, summarizeFinance } from '@member/gathering-domain';
 
 type FactDb = Prisma.TransactionClient | PrismaClient;
 
@@ -19,10 +19,11 @@ export async function loadHandoverFacts(
       orderBy: { id: 'asc' },
     }),
   ]);
-  const totals = summarizeLedger(
-    financeYear.openingBalanceWon,
-    transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
-  );
+  const totals = summarizeFinance({
+    openingBalanceWon: financeYear.openingBalanceWon,
+    entries: transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
+    duesPaidWon: dues.reduce((sum, row) => sum + row.paidAmountWon, 0),
+  });
   return {
     transactions,
     dues,

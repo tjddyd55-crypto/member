@@ -1,5 +1,6 @@
 import type { GatheringFinanceYear, GatheringHandover, Prisma } from '@prisma/client';
 import { fiscalYearRange } from '@member/gathering-domain';
+import { readFiscalPeriod } from '../finance/years.js';
 import { AppError } from '../../../lib/errors.js';
 import { writeGatheringAudit } from '../audit.js';
 import { loadHandoverFacts } from './facts.js';
@@ -23,7 +24,7 @@ export async function closeFinanceYear(
   });
   if (existing) throw new AppError(409, 'NEXT_YEAR_EXISTS', '다음 회계연도가 이미 있습니다.');
   const facts = await loadHandoverFacts(tx, financeYear);
-  const range = fiscalYearRange(nextYear);
+  const range = fiscalYearRange(nextYear, await readFiscalPeriod(tx, handover.groupId));
   await tx.gatheringFinanceYear.create({
     data: {
       groupId: handover.groupId,

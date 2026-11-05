@@ -1,39 +1,71 @@
+import { buildGatheringObjectKey as buildKey, buildMemberBookProfileKey as buildProfileKey } from '@member/gathering-domain';
+import type { GatheringObjectFolder } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
+import { readStorageConfig } from './config.js';
+import { MemoryObjectStorage } from './memory.js';
+import type { ObjectStorage } from './port.js';
+import { R2ObjectStorage } from './s3-sigv4.js';
 
-export type GatheringObjectKind = 'media' | 'receipt';
+export { buildMemberBookProfileKey } from '@member/gathering-domain';
 
-const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+let override: ObjectStorage | undefined;
+let forceUnconfigured = false;
 
-/** 버킷 안의 모임 파일 경로. 실제 업로드 URL은 버킷이 연결된 뒤에만 발급한다. */
+export function useObjectStorage(storage: ObjectStorage | 'unconfigured' | 'default') {
+  if (storage === 'default') {
+    override = undefined;
+    forceUnconfigured = false;
+    return;
+  }
+  if (storage === 'unconfigured') {
+    override = undefined;
+    forceUnconfigured = true;
+    return;
+  }
+  override = storage;
+  forceUnconfigured = false;
+}
+
 export function buildGatheringObjectKey(input: {
+  prefixEnv: string;
   groupId: string;
-  kind: GatheringObjectKind;
+  eventId: string;
+  folder: GatheringObjectFolder;
   objectId: string;
 }) {
-  if (!ID_PATTERN.test(input.groupId) || !ID_PATTERN.test(input.objectId)) {
+  try {
+    return buildKey(input);
+  } catch {
     throw new AppError(400, 'INVALID_STORAGE_KEY', '저장 경로를 만들 수 없습니다.');
   }
-  return `gathering/${input.groupId}/${input.kind}/${input.objectId}`;
+}
+
+export function buildProfileObjectKey(input: { prefixEnv: string; userId: string; objectId: string }) {
+  try {
+    return buildProfileKey(input);
+  } catch {
+    throw new AppError(400, 'INVALID_STORAGE_KEY', '저장 경로를 만들 수 없습니다.');
+  }
 }
 
 export function assertGatheringStorageConfigured() {
-  const values = [
-    process.env.STORAGE_ENDPOINT,
-    process.env.STORAGE_BUCKET,
-    process.env.STORAGE_ACCESS_KEY,
-    process.env.STORAGE_SECRET_KEY,
-  ];
-  if (values.some((value) => !value)) {
+  if (forceUnconfigured || !readStorageConfig()) {
     throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
   }
 }
 
-export async function createGatheringUploadTarget(input: {
-  groupId: string;
-  kind: GatheringObjectKind;
-  objectId: string;
-}) {
-  assertGatheringStorageConfigured();
-  buildGatheringObjectKey(input);
-  throw new AppError(501, 'STORAGE_NOT_IMPLEMENTED', '서명 URL은 버킷을 연결한 뒤 발급합니다.');
+export function currentObjectStorage(): ObjectStorage {
+  if (override) return override;
+  if (forceUnconfigured) {
+    throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
+  }
+  const config = readStorageConfig();
+  if (!config) {
+    throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
+  }
+  return new R2ObjectStorage(config);
+}
+
+export function storageForTests() {
+  return new MemoryObjectStorage();
 }

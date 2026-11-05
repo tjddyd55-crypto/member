@@ -3,7 +3,8 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringGroupDetail, GatheringMemberView } from '@member/contracts';
 import { api } from '../../../../src/api/client';
-import { UNBUILT_FINANCE, UNBUILT_MEDIA } from '../../../../src/copy';
+import { UNBUILT_FINANCE } from '../../../../src/copy';
+import { AlbumsPane } from '../../../../src/features/media/AlbumsPane';
 import { EventsPane } from '../../../../src/features/schedule/EventsPane';
 import {
   Body,
@@ -86,7 +87,7 @@ export default function GroupDetailScreen() {
           {tab === 'schedule' ? (
             <EventsPane groupId={group.id} canManage={group.permissions.includes('EVENT_MANAGE')} />
           ) : null}
-          {tab === 'photos' ? <EmptyState title="사진·영상은 아직 없습니다" description={UNBUILT_MEDIA} /> : null}
+          {tab === 'photos' ? <AlbumsPane groupId={group.id} /> : null}
           {tab === 'finance' ? (
             <View style={styles.stack}>
               <EmptyState title="재무 입력은 아직 없습니다" description={UNBUILT_FINANCE} />

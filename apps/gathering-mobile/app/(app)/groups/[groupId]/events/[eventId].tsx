@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringEventView } from '@member/contracts';
+import { Pressable, Text, View } from 'react-native';
 import { api } from '../../../../../src/api/client';
-import { Body, Button, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../../src/design/ui';
+import { UNBUILT_FINANCE } from '../../../../../src/copy';
+import { MediaPane } from '../../../../../src/features/media/MediaPane';
+import { Body, Button, EmptyState, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../../src/design/ui';
+import { theme } from '../../../../../src/theme';
 
 const ATTENDANCE = [
   { status: 'ATTENDING', label: '참석' },
@@ -10,10 +14,13 @@ const ATTENDANCE = [
   { status: 'UNDECIDED', label: '미정' },
 ] as const;
 
+type EventTab = 'info' | 'media' | 'finance';
+
 export default function EventDetailScreen() {
-  const params = useLocalSearchParams<{ groupId: string; eventId: string }>();
+  const params = useLocalSearchParams<{ groupId: string; eventId: string; tab?: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
   const eventId = typeof params.eventId === 'string' ? params.eventId : '';
+  const [tab, setTab] = useState<EventTab>(params.tab === 'media' ? 'media' : 'info');
   const [event, setEvent] = useState<GatheringEventView | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
@@ -61,6 +68,23 @@ export default function EventDetailScreen() {
         <>
           <Title>{event.title}</Title>
           <Body>{new Date(event.startsAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</Body>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            {(
+              [
+                ['info', '안내·참석'],
+                ['media', '사진·영상'],
+                ['finance', '재무·영수증'],
+              ] as const
+            ).map(([id, label]) => (
+              <Pressable key={id} accessibilityRole="tab" onPress={() => setTab(id)}>
+                <Text style={{ color: tab === id ? theme.colors.accent : theme.colors.text.secondary }}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {tab === 'media' ? <MediaPane eventId={eventId} groupId={groupId} /> : null}
+          {tab === 'finance' ? <EmptyState title="재무 입력은 아직 없습니다" description={UNBUILT_FINANCE} /> : null}
+          {tab === 'info' ? (
+            <>
           <Body>{event.status === 'CANCELLED' ? '취소된 행사' : event.groupName}</Body>
           <Body>
             참석 {event.counts.attending} · 불참 {event.counts.declined} · 미정 {event.counts.undecided}
@@ -85,6 +109,8 @@ export default function EventDetailScreen() {
                 variant="secondary"
                 onPress={() => void api.updateEvent(groupId, eventId, { status: 'CANCELLED' }).then(setEvent)}
               />
+            </>
+          ) : null}
             </>
           ) : null}
         </>

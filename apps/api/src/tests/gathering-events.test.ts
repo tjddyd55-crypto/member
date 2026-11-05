@@ -6,7 +6,7 @@ import { currentJobSecret } from '../modules/gathering/routes/schedule.js';
 import { gatheringAuthLimiter } from '../modules/gathering/rate-limit.js';
 import { usePushSender } from '../modules/gathering/push/service.js';
 import { ExpoPushSender, RecordingPushSender } from '../modules/gathering/push/sender.js';
-import { buildGatheringObjectKey, createGatheringUploadTarget } from '../modules/gathering/storage/r2.js';
+import { assertGatheringStorageConfigured, buildGatheringObjectKey } from '../modules/gathering/storage/r2.js';
 import { AppError } from '../lib/errors.js';
 
 let app: FastifyInstance;
@@ -299,13 +299,17 @@ describe('행사, 캘린더, 참석, 알림', () => {
 });
 
 describe('저장소 준비', () => {
-  it('설정이 없으면 업로드 URL을 만들지 않고 키 규칙만 지킨다', async () => {
-    expect(buildGatheringObjectKey({ groupId: 'group1', kind: 'receipt', objectId: 'file1' })).toBe(
-      'gathering/group1/receipt/file1',
-    );
-    await expect(
-      createGatheringUploadTarget({ groupId: 'group1', kind: 'media', objectId: 'file1' }),
-    ).rejects.toBeInstanceOf(AppError);
+  it('환경변수가 없으면 저장소를 쓰지 않고 키는 환경 접두사로 나눈다', () => {
+    expect(
+      buildGatheringObjectKey({
+        prefixEnv: 'dev',
+        groupId: 'group1',
+        eventId: 'event1',
+        folder: 'photos',
+        objectId: 'file1',
+      }),
+    ).toBe('dev/gatherings/group1/events/event1/photos/file1');
+    expect(() => assertGatheringStorageConfigured()).toThrow(AppError);
   });
 });
 

@@ -52,8 +52,27 @@
 
 행사 등록·변경은 다른 활성 회원에게 한 번 알린다. 리마인드는 시작 1시간 전, 같은 시작 시각에 대해 한 번이다. Expo가 `DeviceNotRegistered`를 주면 그 토큰을 끈다.
 
+## 사진·영상
+
+활성 회원만 호출한다. 다른 모임은 404다. 환경변수 `R2_BUCKET`, `R2_PREFIX_ENV`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`(또는 기존 `STORAGE_*`)가 없으면 업로드·다운로드·삭제는 503이다. 서명에 실패하면 501이다.
+
+| 메서드 | 경로 | 권한 |
+|---|---|---|
+| POST | `/groups/:groupId/events/:eventId/media/uploads` | 활성 회원. 이용권이 있고 50GB 안일 때 서명 URL |
+| POST | `/groups/:groupId/events/:eventId/media/:assetId/complete` | 올린 사람. 저장소에 파일이 있어야 `READY` |
+| GET | `/groups/:groupId/events/:eventId/media` | 활성 회원. 확인된 파일만 |
+| GET | `/groups/:groupId/albums?year` | 활성 회원. 행사 앨범과 한국 달력 연도 |
+| GET | `/groups/:groupId/media/:assetId/download` | 활성 회원. 짧은 서명 URL |
+| DELETE | `/groups/:groupId/media/:assetId` | 올린 사람 또는 회장·총무 |
+| POST | `/groups/:groupId/media/:assetId/reports` | 활성 회원 |
+| GET | `/groups/:groupId/media/reports` | 회장·총무 |
+| POST | `/groups/:groupId/media/reports/:reportId/resolve` | 회장·총무 |
+| GET | `/groups/:groupId/storage` | 활성 회원. 사용량과 이용권 여부 |
+
+키는 `{R2_PREFIX_ENV}/gatherings/{groupId}/events/{eventId}/photos|videos|receipts/{objectId}` 이다. `member-book/profiles/` 는 키 규칙만 있고 회원수첩 업로드는 연결하지 않는다. 영상은 선언 길이 5분, 사진은 15MB, 영상은 200MB까지다. 확정 때 파일 앞부분으로 형식을 확인한다. 길이 자체는 디코드하지 않는다.
+
 ## 아직 API가 없음
 
-사진·영상, 신고 처리, 영수증 업로드, 수입·지출, 회비 입력, 회계 마감, 인계 실행, 이용권 승인, 계정 삭제, 관리자 대시보드. 저장 키 준비 코드는 `storage/r2.ts`에만 있다.
+영수증 업로드, 수입·지출, 회비 입력, 회계 마감, 인계 실행, 이용권 부여, 계정 삭제, 관리자 대시보드.
 
 이 경로를 404가 아닌 성공으로 흉내 내는 스텁은 두지 않았다.

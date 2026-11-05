@@ -135,6 +135,41 @@ export const gatheringRangeQuerySchema = z.object({
   to: z.string().datetime(),
 });
 
+export const gatheringMediaItemSchema = z.object({
+  kind: z.enum(['PHOTO', 'VIDEO']),
+  mimeType: z.string().trim().min(1).max(100),
+  sizeBytes: z.number().int().positive(),
+  durationMs: z.number().int().positive().optional(),
+  width: z.number().int().positive().max(20000).optional(),
+  height: z.number().int().positive().max(20000).optional(),
+  originalName: z.string().trim().max(200).optional(),
+});
+
+export const gatheringMediaUploadSchema = z.object({
+  items: z.array(gatheringMediaItemSchema).min(1).max(20),
+});
+
+export const gatheringMediaCompleteSchema = z.object({
+  sizeBytes: z.number().int().positive(),
+});
+
+export const gatheringMediaListQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+export const gatheringAlbumQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+});
+
+export const gatheringMediaReportSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const gatheringMediaResolveSchema = z.object({
+  status: z.enum(['RESOLVED', 'DISMISSED']),
+});
+
 export const gatheringPushSchema = z
   .object({
     permission: z.enum(['granted', 'denied']),
@@ -274,4 +309,49 @@ export type GatheringInvitePreview = {
   groupName: string;
   requiresApproval: boolean;
   expiresAt: string;
+};
+
+export type GatheringMediaView = {
+  id: string;
+  kind: 'PHOTO' | 'VIDEO';
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  createdAt: string;
+  uploaderUserId: string;
+  mine: boolean;
+};
+
+export type GatheringMediaUploadItem = {
+  id: string;
+  kind: 'PHOTO' | 'VIDEO';
+  uploadUrl: string;
+  expiresAt: string;
+  headers: Record<string, string>;
+};
+
+export type GatheringAlbumEvent = {
+  eventId: string;
+  title: string;
+  startsAt: string;
+  year: number;
+  photoCount: number;
+  videoCount: number;
+};
+
+export type GatheringAlbumYear = {
+  year: number;
+  photoCount: number;
+  videoCount: number;
+};
+
+export type GatheringStorageUsage = {
+  mediaBytes: number;
+  receiptBytes: number;
+  otherBytes: number;
+  usedBytes: number;
+  quotaBytes: number;
+  subscriptionActive: boolean;
 };

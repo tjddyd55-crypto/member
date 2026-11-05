@@ -81,13 +81,24 @@ export async function updateGatheringEvent(
   return toEventView(event, userId, event.group.name);
 }
 
-export async function listGroupEvents(userId: string, groupId: string, from: Date, to: Date) {
+export async function listGroupEvents(
+  userId: string,
+  groupId: string,
+  from: Date,
+  to: Date,
+  options?: { order?: 'asc' | 'desc'; status?: 'SCHEDULED' | 'CANCELLED' },
+) {
   await requireGroupMember(userId, groupId);
   assertRange(from, to);
   const events = await prisma.gatheringEvent.findMany({
-    where: { groupId, deletedAt: null, startsAt: { gte: from, lt: to } },
+    where: {
+      groupId,
+      deletedAt: null,
+      startsAt: { gte: from, lt: to },
+      ...(options?.status ? { status: options.status } : {}),
+    },
     include: eventInclude,
-    orderBy: { startsAt: 'asc' },
+    orderBy: { startsAt: options?.order ?? 'asc' },
     take: 200,
   });
   return events.map((event) => toEventView(event, userId, event.group.name));

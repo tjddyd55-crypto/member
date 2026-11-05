@@ -47,7 +47,7 @@ export default function NewEventScreen() {
   return (
     <Screen>
       <Title>행사 만들기</Title>
-      <Body>회장과 총무만 등록할 수 있습니다. 저장하면 다른 회원에게 알림을 보냅니다.</Body>
+      <Body>협의회장과 총무만 등록할 수 있습니다. 저장하면 다른 회원에게 알림을 보냅니다.</Body>
       <TextField label="행사명" value={title} onChangeText={setTitle} />
       <TextField label="날짜" value={date} onChangeText={setDate} placeholder="2026-11-20" />
       <TextField label="시작 시간" value={time} onChangeText={setTime} placeholder="19:00" />

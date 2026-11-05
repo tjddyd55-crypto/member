@@ -45,6 +45,7 @@ export const gatheringScheduleRoutes: FastifyPluginAsync = async (app) => {
       params.groupId,
       new Date(query.from),
       new Date(query.to),
+      { order: query.order, status: query.status },
     );
     return { items };
   });

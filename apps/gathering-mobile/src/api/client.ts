@@ -10,6 +10,7 @@ import type {
   GatheringGroupDetail,
   GatheringGroupSummary,
   GatheringInviteCreated,
+  GatheringInviteView,
   GatheringInvitePreview,
   GatheringMediaUploadItem,
   GatheringMediaView,
@@ -212,6 +213,15 @@ export const api = {
       body: JSON.stringify({}),
     });
   },
+  invites(groupId: string) {
+    return request<{ items: GatheringInviteView[] }>(`/api/gathering/groups/${groupId}/invites`);
+  },
+  revokeInvite(groupId: string, inviteId: string) {
+    return request<{ ok: true }>(`/api/gathering/groups/${groupId}/invites/${inviteId}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
   previewInvite(token: string) {
     return request<GatheringInvitePreview>(
       `/api/gathering/invites/${encodeURIComponent(token)}`,
@@ -219,8 +229,15 @@ export const api = {
       false,
     );
   },
-  events(groupId: string, from: string, to: string) {
+  events(
+    groupId: string,
+    from: string,
+    to: string,
+    options?: { order?: 'asc' | 'desc'; status?: 'SCHEDULED' | 'CANCELLED' },
+  ) {
     const params = new URLSearchParams({ from, to });
+    if (options?.order) params.set('order', options.order);
+    if (options?.status) params.set('status', options.status);
     return request<{ items: GatheringEventView[] }>(
       `/api/gathering/groups/${groupId}/events?${params}`,
     );

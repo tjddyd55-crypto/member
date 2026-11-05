@@ -89,9 +89,9 @@ function Steps({
       ) : null}
       {view.actions.nominate ? (
         <>
-          <TextField label="차기 회장 회원 아이디" value={successorId} onChangeText={onSuccessor} autoCapitalize="none" />
+          <TextField label="차기 협의회장 회원 아이디" value={successorId} onChangeText={onSuccessor} autoCapitalize="none" />
           <Button
-            label="차기 회장 지명"
+            label="차기 협의회장 지명"
             onPress={() => {
               const key = nominateKey ?? `handover-${groupId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
               onNominateKey(key);

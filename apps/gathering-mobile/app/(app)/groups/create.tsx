@@ -42,7 +42,7 @@ export default function CreateGroupScreen() {
   return (
     <Screen>
       <Title>모임 만들기</Title>
-      <Body>모임을 만든 사람이 첫 회장입니다. 모임은 해가 바뀌어도 지우지 않습니다.</Body>
+      <Body>모임을 만든 사람이 첫 협의회장입니다. 모임은 해가 바뀌어도 지우지 않습니다.</Body>
       <TextField label="모임 이름" value={name} onChangeText={setName} />
       <TextField label="설명" value={description} onChangeText={setDescription} />
       {error ? <Body>{error}</Body> : null}

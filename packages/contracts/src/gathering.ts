@@ -135,6 +135,8 @@ export const gatheringAttendanceSchema = z.object({
 export const gatheringRangeQuerySchema = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
+  order: z.enum(['asc', 'desc']).optional(),
+  status: z.enum(['SCHEDULED', 'CANCELLED']).optional(),
 });
 
 export const gatheringMediaItemSchema = z.object({

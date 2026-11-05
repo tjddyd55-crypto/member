@@ -307,6 +307,30 @@ describe('모임 테넌트와 초대', () => {
       payload: { directoryConsent: true },
     });
     expect(revoked.json().error.code).toBe('INVITE_REVOKED');
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/invites`,
+      headers: authHeader(token),
+    });
+    expect(listed.statusCode).toBe(200);
+    const items = listed.json().items as Array<{ id: string; revokedAt: string | null }>;
+    expect(items.some((item) => item.id === secondId && item.revokedAt)).toBe(true);
+
+    const thirdId = third.json().invite.id as string;
+    const explicit = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/invites/${thirdId}/revoke`,
+      headers: authHeader(token),
+    });
+    expect(explicit.statusCode).toBe(200);
+    const after = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/invites`,
+      headers: authHeader(token),
+    });
+    const afterItems = after.json().items as Array<{ id: string; revokedAt: string | null }>;
+    expect(afterItems.find((item) => item.id === thirdId)?.revokedAt).toBeTruthy();
   });
 
   it('승인이 필요한 초대는 승인 전에 모임 내부를 열지 않는다', async () => {

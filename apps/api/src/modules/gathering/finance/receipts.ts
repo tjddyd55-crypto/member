@@ -150,6 +150,7 @@ async function reserveReceipts(
   items: ReceiptItem[],
   prefixEnv: string,
 ) {
+  await lockGroup(tx, groupId);
   const period = await readFiscalPeriod(tx, groupId);
   const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(event.startsAt, period));
   const usage = await loadBillableUsage(tx, groupId, new Date());

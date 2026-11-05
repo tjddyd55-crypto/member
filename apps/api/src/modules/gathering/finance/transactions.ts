@@ -26,7 +26,7 @@ export async function createTransaction(userId: string, groupId: string, eventId
     await lockGroup(tx, groupId);
     const period = await readFiscalPeriod(tx, groupId);
     const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt, period));
-    return tx.gatheringFinanceTransaction.create({
+    const row = await tx.gatheringFinanceTransaction.create({
       data: {
         groupId,
         eventId,
@@ -40,15 +40,16 @@ export async function createTransaction(userId: string, groupId: string, eventId
         createdByUserId: userId,
       },
     });
+    return { row, fiscalYear: year.year };
   });
   await writeGatheringAudit(prisma, {
     groupId,
     actorUserId: access.userId,
     action: GatheringAuditAction.FINANCE_WRITE,
     targetType: 'GatheringFinanceTransaction',
-    targetId: created.id,
+    targetId: created.row.id,
   });
-  return presentTransaction(created, fiscalYearOf(created.paidAt));
+  return presentTransaction(created.row, created.fiscalYear);
 }
 
 export async function updateTransaction(
@@ -66,7 +67,7 @@ export async function updateTransaction(
     const current = await requireMutable(tx, groupId, transactionId);
     assertYearOpen(current.financeYear.status);
     const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt, period));
-    return tx.gatheringFinanceTransaction.update({
+    const row = await tx.gatheringFinanceTransaction.update({
       where: { id: current.id },
       data: {
         financeYearId: year.id,
@@ -78,15 +79,16 @@ export async function updateTransaction(
         adjustment: parsed.adjustment,
       },
     });
+    return { row, fiscalYear: year.year };
   });
   await writeGatheringAudit(prisma, {
     groupId,
     actorUserId: access.userId,
     action: GatheringAuditAction.FINANCE_WRITE,
     targetType: 'GatheringFinanceTransaction',
-    targetId: updated.id,
+    targetId: updated.row.id,
   });
-  return presentTransaction(updated, fiscalYearOf(updated.paidAt));
+  return presentTransaction(updated.row, updated.fiscalYear);
 }
 
 export async function deleteTransaction(userId: string, groupId: string, transactionId: string) {
@@ -114,9 +116,10 @@ export async function listEventTransactions(userId: string, groupId: string, eve
   await requireEvent(groupId, eventId);
   const rows = await prisma.gatheringFinanceTransaction.findMany({
     where: { groupId, eventId },
+    include: { financeYear: { select: { year: true } } },
     orderBy: [{ paidAt: 'asc' }, { id: 'asc' }],
   });
-  return { items: rows.map((row) => presentTransaction(row, fiscalYearOf(row.paidAt))) };
+  return { items: rows.map((row) => presentTransaction(row, row.financeYear.year)) };
 }
 
 export function presentTransaction(row: GatheringFinanceTransaction, fiscalYear: number) {

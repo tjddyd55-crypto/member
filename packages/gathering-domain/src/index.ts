@@ -1,6 +1,7 @@
 export { DIRECTORY_CONSENT_KO, IDENTITY_LIMITATION_KO } from './identity.js';
 export { normalizeKoreanMobile } from './phone.js';
-export { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange, isValidFiscalPeriod, kstDateKey, DEFAULT_FISCAL_PERIOD } from './fiscal-year.js';
+export { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf,
+  fiscalWindowsCovering, fiscalYearRange, isValidFiscalPeriod, kstDateKey, DEFAULT_FISCAL_PERIOD } from './fiscal-year.js';
 export type { FiscalPeriod, FiscalYearRange, PaymentAttribution } from './fiscal-year.js';
 export {
   GATHERING_PERMISSIONS,

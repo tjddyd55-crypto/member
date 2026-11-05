@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { fiscalYearOf, fiscalYearRange, isValidFiscalPeriod, type FiscalPeriod } from '@member/gathering-domain';
+import { fiscalWindowsCovering, fiscalYearOf, fiscalYearRange, isValidFiscalPeriod, type FiscalPeriod } from '@member/gathering-domain';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
@@ -119,31 +119,79 @@ async function changeFiscalPeriod(groupId: string, period: FiscalPeriod) {
   }
   await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
-    const open = await tx.gatheringFinanceYear.findFirst({
+    const opens = await tx.gatheringFinanceYear.findMany({
       where: { groupId, status: 'OPEN' },
-      orderBy: { year: 'desc' },
+      orderBy: { year: 'asc' },
     });
-    if (open) {
-      const [transactions, dues, receipts] = await Promise.all([
-        tx.gatheringFinanceTransaction.count({ where: { financeYearId: open.id } }),
-        tx.gatheringMemberDue.count({ where: { financeYearId: open.id } }),
-        tx.gatheringReceiptAsset.count({ where: { financeYearId: open.id, deletedAt: null } }),
+    if (opens.length > 0) {
+      const openIds = opens.map((row) => row.id);
+      const [transactions, dues, readyReceipts] = await Promise.all([
+        tx.gatheringFinanceTransaction.count({ where: { financeYearId: { in: openIds } } }),
+        tx.gatheringMemberDue.count({ where: { financeYearId: { in: openIds } } }),
+        tx.gatheringReceiptAsset.count({
+          where: { financeYearId: { in: openIds }, deletedAt: null, status: 'READY' },
+        }),
       ]);
-      if (transactions + dues + receipts > 0) {
+      if (transactions + dues + readyReceipts > 0) {
         throw new AppError(409, 'PERIOD_LOCKED', '거래나 회비, 영수증이 있는 회계연도의 기간은 바꿀 수 없습니다.');
       }
-      const range = fiscalYearRange(open.year, period);
+      const firstOpen = opens[0];
+      const lastOpen = opens[opens.length - 1];
+      if (!firstOpen || !lastOpen) throw new AppError(409, 'PERIOD_OVERLAP', '바꾼 기간이 열린 해를 덮지 못합니다.');
+      const windows = fiscalWindowsCovering(firstOpen.startsAt, lastOpen.endsAt, period);
       const others = await tx.gatheringFinanceYear.findMany({
-        where: { groupId, id: { not: open.id } },
-        select: { startsAt: true, endsAt: true },
+        where: { groupId, id: { notIn: openIds } },
+        select: { year: true, startsAt: true, endsAt: true },
       });
-      if (others.some((other) => other.startsAt <= range.endsAt && range.startsAt <= other.endsAt)) {
+      if (
+        windows.some((range) =>
+          others.some(
+            (other) =>
+              other.year === range.fiscalYear ||
+              (other.startsAt <= range.endsAt && range.startsAt <= other.endsAt),
+          ),
+        )
+      ) {
         throw new AppError(409, 'PERIOD_OVERLAP', '바꾼 기간이 다른 회계연도와 겹칩니다.');
       }
-      await tx.gatheringFinanceYear.update({
-        where: { id: open.id },
-        data: { startsAt: range.startsAt, endsAt: range.endsAt },
+      const pending = await tx.gatheringReceiptAsset.findMany({
+        where: { financeYearId: { in: openIds }, deletedAt: null, status: { in: ['PENDING', 'FAILED'] } },
+        select: { id: true, event: { select: { startsAt: true } } },
       });
+      const byYear = new Map(opens.map((row) => [row.year, row]));
+      const usedIds = new Set<string>();
+      const created = new Map<number, string>();
+      for (const range of windows) {
+        const existing = byYear.get(range.fiscalYear);
+        if (existing) {
+          await tx.gatheringFinanceYear.update({
+            where: { id: existing.id },
+            data: { startsAt: range.startsAt, endsAt: range.endsAt },
+          });
+          usedIds.add(existing.id);
+          created.set(range.fiscalYear, existing.id);
+          continue;
+        }
+        const row = await tx.gatheringFinanceYear.create({
+          data: {
+            groupId,
+            year: range.fiscalYear,
+            startsAt: range.startsAt,
+            endsAt: range.endsAt,
+            status: 'OPEN',
+            openingBalanceWon: 0,
+          },
+        });
+        created.set(range.fiscalYear, row.id);
+      }
+      for (const receipt of pending) {
+        const financeYearId = created.get(fiscalYearOf(receipt.event.startsAt, period));
+        if (!financeYearId) continue;
+        await tx.gatheringReceiptAsset.update({ where: { id: receipt.id }, data: { financeYearId } });
+      }
+      for (const open of opens) {
+        if (!usedIds.has(open.id)) await tx.gatheringFinanceYear.delete({ where: { id: open.id } });
+      }
     }
     await tx.gatheringGroup.update({
       where: { id: groupId },

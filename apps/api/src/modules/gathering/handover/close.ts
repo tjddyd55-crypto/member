@@ -19,22 +19,36 @@ export async function closeFinanceYear(
   await ensureMemberRole(tx, handover.groupId, handover.fromUserId, actorId);
   await installSuccessor(tx, handover, financeYear.year + 1, actorId, now);
   const nextYear = financeYear.year + 1;
+  const facts = await loadHandoverFacts(tx, financeYear);
+  const range = fiscalYearRange(nextYear, await readFiscalPeriod(tx, handover.groupId));
   const existing = await tx.gatheringFinanceYear.findUnique({
     where: { groupId_year: { groupId: handover.groupId, year: nextYear } },
   });
-  if (existing) throw new AppError(409, 'NEXT_YEAR_EXISTS', '다음 회계연도가 이미 있습니다.');
-  const facts = await loadHandoverFacts(tx, financeYear);
-  const range = fiscalYearRange(nextYear, await readFiscalPeriod(tx, handover.groupId));
-  await tx.gatheringFinanceYear.create({
-    data: {
-      groupId: handover.groupId,
-      year: nextYear,
-      startsAt: range.startsAt,
-      endsAt: range.endsAt,
-      status: 'OPEN',
-      openingBalanceWon: facts.ack.balanceWon,
-    },
-  });
+  if (existing) {
+    const reusable = await emptyOpenYear(tx, existing.id);
+    if (
+      !reusable ||
+      existing.startsAt.getTime() !== range.startsAt.getTime() ||
+      existing.endsAt.getTime() !== range.endsAt.getTime()
+    ) {
+      throw new AppError(409, 'NEXT_YEAR_EXISTS', '다음 회계연도가 이미 있습니다.');
+    }
+    await tx.gatheringFinanceYear.update({
+      where: { id: existing.id },
+      data: { openingBalanceWon: facts.ack.balanceWon },
+    });
+  } else {
+    await tx.gatheringFinanceYear.create({
+      data: {
+        groupId: handover.groupId,
+        year: nextYear,
+        startsAt: range.startsAt,
+        endsAt: range.endsAt,
+        status: 'OPEN',
+        openingBalanceWon: facts.ack.balanceWon,
+      },
+    });
+  }
   await tx.gatheringFinanceYear.update({
     where: { id: financeYear.id },
     data: { status: 'CLOSED', closedAt: now },
@@ -69,6 +83,17 @@ export async function closeFinanceYear(
     meta: { year: financeYear.year, balanceWon: facts.ack.balanceWon },
   });
   return { snapshotId: snapshot.id, contentHash, balanceWon: facts.ack.balanceWon, nextYear };
+}
+
+async function emptyOpenYear(tx: CloseTx, financeYearId: string) {
+  const year = await tx.gatheringFinanceYear.findUnique({ where: { id: financeYearId } });
+  if (!year || year.status !== 'OPEN') return false;
+  const [transactions, dues, receipts] = await Promise.all([
+    tx.gatheringFinanceTransaction.count({ where: { financeYearId } }),
+    tx.gatheringMemberDue.count({ where: { financeYearId } }),
+    tx.gatheringReceiptAsset.count({ where: { financeYearId, deletedAt: null, status: 'READY' } }),
+  ]);
+  return transactions + dues + receipts === 0;
 }
 
 async function endCurrentOfficers(tx: CloseTx, groupId: string, actorId: string, now: Date) {
@@ -159,6 +184,7 @@ function snapshotPayload(
     incomeWon: facts.ack.incomeWon,
     expenseWon: facts.ack.expenseWon,
     closingBalanceWon: facts.ack.balanceWon,
+    duesInClosingBalance: true,
     transactions: facts.transactions.map((row) => ({
       id: row.id,
       eventId: row.eventId,

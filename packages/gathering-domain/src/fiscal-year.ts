@@ -80,6 +80,30 @@ export function calendarYearRange(year: number): { startsAt: Date; endsAt: Date 
   };
 }
 
+/** 기존 구간의 모든 시각이 새 기간의 어떤 회계연도에든 남도록 창을 나눈다. */
+export function fiscalWindowsCovering(
+  startsAt: Date,
+  endsAt: Date,
+  period: FiscalPeriod = DEFAULT_FISCAL_PERIOD,
+): FiscalYearRange[] {
+  if (endsAt.getTime() < startsAt.getTime()) {
+    throw new Error('회계 구간이 뒤집혀 있습니다.');
+  }
+  const windows: FiscalYearRange[] = [];
+  let cursor = startsAt;
+  for (let guard = 0; guard < 8 && cursor.getTime() <= endsAt.getTime(); guard += 1) {
+    const range = fiscalYearRange(fiscalYearOf(cursor, period), period);
+    windows.push(range);
+    const next = new Date(range.endsAt.getTime() + 1);
+    if (next.getTime() <= cursor.getTime()) throw new Error('회계 기간이 진행하지 않습니다.');
+    cursor = next;
+  }
+  if (cursor.getTime() <= endsAt.getTime()) {
+    throw new Error('회계 기간이 열린 해를 덮지 못합니다.');
+  }
+  return windows;
+}
+
 export function fiscalYearRange(
   fiscalYear: number,
   period: FiscalPeriod = DEFAULT_FISCAL_PERIOD,

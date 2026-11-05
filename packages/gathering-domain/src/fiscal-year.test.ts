@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange } from './fiscal-year.js';
+import { attributePayment, calendarYearKst, calendarYearRange, fiscalWindowsCovering, fiscalYearOf, fiscalYearRange } from './fiscal-year.js';
 
 function kst(isoLocal: string): Date {
   return new Date(`${isoLocal}+09:00`);
@@ -59,6 +59,17 @@ describe('회계연도 귀속', () => {
     expect(range.endsAt.toISOString()).toBe(kst('2026-05-31T23:59:59.999').toISOString());
     expect(fiscalYearOf(kst('2026-05-31T23:59:59.999'), june)).toBe(2026);
     expect(fiscalYearOf(kst('2026-06-01T00:00:00.000'), june)).toBe(2027);
+  });
+
+  it('기간을 바꿔도 열린 해에 있던 시작과 끝은 새 창 안에 남는다', () => {
+    const previous = fiscalYearRange(2026);
+    const june = { startMonth: 6, startDay: 1 };
+    const windows = fiscalWindowsCovering(previous.startsAt, previous.endsAt, june);
+    for (const instant of [previous.startsAt, previous.endsAt]) {
+      const owner = windows.find((window) => window.startsAt <= instant && instant <= window.endsAt);
+      expect(owner?.fiscalYear).toBe(fiscalYearOf(instant, june));
+    }
+    expect(windows.map((window) => window.fiscalYear)).toEqual([2026, 2027]);
   });
 
   it('2월 29일 시작은 윤년이 아니면 2월 28일에 시작한다', () => {

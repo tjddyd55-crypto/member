@@ -18,11 +18,14 @@ export async function financeSummary(userId: string, groupId: string, year?: num
       orderBy: { userId: 'asc' },
     }),
   ]);
+  const duesPaidWon = dues.reduce((sum, row) => sum + row.paidAmountWon, 0);
+  const includeDues = await duesCountInBalance(financeYear.id, financeYear.status);
   const totals = summarizeFinance({
     openingBalanceWon: financeYear.openingBalanceWon,
     entries: transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
-    duesPaidWon: dues.reduce((sum, row) => sum + row.paidAmountWon, 0),
+    duesPaidWon: includeDues ? duesPaidWon : 0,
   });
+  if (!includeDues) totals.duesWon = duesPaidWon;
   const yearRows = await prisma.gatheringFinanceYear.findMany({
     where: { groupId },
     orderBy: { year: 'desc' },
@@ -53,6 +56,14 @@ export async function financeSummary(userId: string, groupId: string, year?: num
     })),
     events: eventTotals(transactions),
   };
+}
+
+async function duesCountInBalance(financeYearId: string, status: string) {
+  if (status !== 'CLOSED') return true;
+  const snapshot = await prisma.gatheringFinanceCloseSnapshot.findUnique({ where: { financeYearId } });
+  if (!snapshot) return false;
+  const payload = JSON.parse(snapshot.payloadJson) as { duesInClosingBalance?: boolean };
+  return payload.duesInClosingBalance === true;
 }
 
 async function selectYear(groupId: string, year?: number) {

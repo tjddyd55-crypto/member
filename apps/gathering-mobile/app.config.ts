@@ -14,6 +14,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'light',
   newArchEnabled: true,
   plugins: [
+    'expo-dev-client',
     'expo-router',
     'expo-secure-store',
     'expo-notifications',

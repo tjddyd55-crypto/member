@@ -88,8 +88,20 @@
 
 정정은 `adjustment: true`와 비고가 있는 열린 해 거래다. 영수증 바이트는 50GB에 포함된다. 이용권이 없어도 한도 안이면 영수증은 올릴 수 있다.
 
+## 이용권
+
+앱은 상태만 조회한다. 부여는 `x-gathering-operator-secret`이 있는 운영자 경로다. 비밀이 없으면 404다. 금액, 계좌, 결제 링크는 응답에 없다.
+
+| 메서드 | 경로 | 권한 |
+|---|---|---|
+| GET | `/groups/:groupId/subscription` | 활성 회원 |
+| POST | `/admin/groups/:groupId/subscription` | 모임 로그인 + 운영자 비밀. `PAID` 또는 `COMPLIMENTARY`, `idempotencyKey` |
+| POST | `/jobs/subscription-notices` | `x-gathering-job-secret`. 만료 30일·7일·당일 회장 안내, 지난 이용권은 `EXPIRED` |
+
+갱신은 사용량을 0으로 만들지 않는다. 기간은 승인 시각부터 1년이다.
+
 ## 아직 API가 없음
 
-회계 마감, 인계 실행, 이용권 부여, 계정 삭제, 관리자 대시보드.
+회계 마감, 인계 실행, 계정 삭제, 관리자 대시보드.
 
 이 경로를 404가 아닌 성공으로 흉내 내는 스텁은 두지 않았다.

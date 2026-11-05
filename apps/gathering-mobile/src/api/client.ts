@@ -258,6 +258,15 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  subscription(groupId: string) {
+    return request<{
+      status: 'ACTIVE' | 'EXPIRED' | 'NONE' | string;
+      expiresAt: string | null;
+      uploadsAllowed: boolean;
+      usedBytes: number;
+      quotaBytes: number;
+    }>(`/api/gathering/groups/${groupId}/subscription`);
+  },
   storage(groupId: string) {
     return request<GatheringStorageUsage>(`/api/gathering/groups/${groupId}/storage`);
   },

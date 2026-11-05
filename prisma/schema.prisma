@@ -1003,6 +1003,7 @@ model GatheringSubscription {
   expiresAt        DateTime?
   storageQuotaBytes BigInt                     @default(50000000000)
   note             String?
+  idempotencyKey   String?                     @unique
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 

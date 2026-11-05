@@ -94,7 +94,7 @@ export const gatheringScheduleRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/api/gathering/jobs/reminders', async (request) => {
-    assertJobSecret(request.headers['x-gathering-job-secret']);
+    assertGatheringJobSecret(request.headers['x-gathering-job-secret']);
     return { dispatched: await dispatchEventReminders(new Date()) };
   });
 };
@@ -105,7 +105,7 @@ export function currentJobSecret() {
   return '';
 }
 
-function assertJobSecret(header: string | string[] | undefined) {
+export function assertGatheringJobSecret(header: string | string[] | undefined) {
   const expected = currentJobSecret();
   const provided = Array.isArray(header) ? header[0] : header;
   if (!expected || !provided || !safeEqual(provided, expected)) {

@@ -53,6 +53,11 @@ export function calendarYearKst(instant: Date): number {
   return kstParts(instant).year;
 }
 
+export function kstDateKey(instant: Date): string {
+  const parts = kstParts(instant);
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
 export function calendarYearRange(year: number): { startsAt: Date; endsAt: Date } {
   return {
     startsAt: atKst(year, 1, 1, 0, 0, 0, 0),

@@ -102,11 +102,23 @@ export default function GroupDetailScreen() {
 
 function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged: () => void }) {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [subscriptionText, setSubscriptionText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<GatheringMemberView[]>([]);
   const canInvite = group.permissions.includes('INVITE_MANAGE');
   const canSettings = group.permissions.includes('GROUP_SETTINGS');
   const canManage = group.permissions.includes('MEMBER_MANAGE');
+
+  useEffect(() => {
+    void api.subscription(group.id).then((result) => {
+      if (result.uploadsAllowed && result.expiresAt) {
+        const until = new Date(result.expiresAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+        setSubscriptionText(`이용 상태: 사용할 수 있음. ${until}까지입니다.`);
+        return;
+      }
+      setSubscriptionText('이용 기간이 끝났거나 아직 없습니다. 이미 올린 파일은 볼 수 있고, 새 사진·영상은 올릴 수 없습니다.');
+    }).catch(() => setSubscriptionText(null));
+  }, [group.id]);
 
   useEffect(() => {
     if (!canManage) return;
@@ -139,6 +151,7 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
           ? `회계 기간 ${formatDate(group.financeYear.startsAt)} ~ ${formatDate(group.financeYear.endsAt)}.`
           : '열린 회계연도가 없습니다.'}
       </Notice>
+      {subscriptionText ? <Notice>{subscriptionText}</Notice> : null}
       <Body>내 역할: {group.roles.join(', ') || '없음'}</Body>
       <Body>활동 회원 {group.memberCount}명</Body>
       <Button

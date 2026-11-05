@@ -6,8 +6,9 @@ import type { GatheringAlbumEvent, GatheringAlbumYear } from '@member/contracts'
 import { api } from '../../api/client';
 import { Body, Button, EmptyState, ErrorState, Notice, TextField } from '../../design/ui';
 import { theme } from '../../theme';
+import { signedUrlStillFresh } from '@member/gathering-domain';
 import { prepareAsset, putPreparedFile } from './prepare';
-import { uploadBlockReason } from './upload-block';
+import { chunkForReserve, uploadBlockReason } from './upload-block';
 
 type Destination =
   | { kind: 'event'; id: string; title: string }
@@ -84,19 +85,25 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         setMessage(kind === 'PHOTO' ? '사진 파일을 고르지 않았습니다.' : '영상 파일을 고르지 않았습니다.');
         return;
       }
-      const reserved =
-        destination.kind === 'event'
-          ? await api.createMediaUploads(groupId, destination.id, files)
-          : await api.createFolderUploads(groupId, destination.id, files);
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        const target = reserved.items[index];
-        if (!file || !target) continue;
-        await putPreparedFile(file.uri, target.uploadUrl, target.headers, () => undefined);
-        if (destination.kind === 'event') {
-          await api.completeMedia(groupId, destination.id, target.id, file.sizeBytes);
-        } else {
-          await api.completeFolderMedia(groupId, destination.id, target.id, file.sizeBytes);
+      for (const batch of chunkForReserve(files)) {
+        const reserved =
+          destination.kind === 'event'
+            ? await api.createMediaUploads(groupId, destination.id, batch)
+            : await api.createFolderUploads(groupId, destination.id, batch);
+        for (let index = 0; index < batch.length; index += 1) {
+          const file = batch[index];
+          const target = reserved.items[index];
+          if (!file || !target) continue;
+          const fresh = signedUrlStillFresh(target.expiresAt)
+            ? { status: 'PENDING' as const, uploadUrl: target.uploadUrl, headers: target.headers }
+            : await refreshUploadUrl(destination, target.id);
+          if (fresh.status === 'READY') continue;
+          await putPreparedFile(file.uri, fresh.uploadUrl, fresh.headers, () => undefined);
+          if (destination.kind === 'event') {
+            await api.completeMedia(groupId, destination.id, target.id, file.sizeBytes);
+          } else {
+            await api.completeFolderMedia(groupId, destination.id, target.id, file.sizeBytes);
+          }
         }
       }
       await load();
@@ -170,6 +177,11 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
       })}
     </View>
   );
+
+  async function refreshUploadUrl(target: Destination, assetId: string) {
+    if (target.kind === 'event') return api.resumeMedia(groupId, target.id, assetId);
+    return api.resumeFolderMedia(groupId, target.id, assetId);
+  }
 
   async function createFolder() {
     try {

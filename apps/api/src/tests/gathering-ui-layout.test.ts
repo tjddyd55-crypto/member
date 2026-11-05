@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tabIconSize, tabLabelSize, tabSlotWidth } from '../../../gathering-mobile/src/features/group/tab-layout';
-import { handoverInProgress, uploadBlockReason } from '../../../gathering-mobile/src/features/media/upload-block';
+import { chunkForReserve, handoverInProgress, uploadBlockReason } from '../../../gathering-mobile/src/features/media/upload-block';
 
 describe('모임 화면 배치', () => {
   it('320dp와 360dp에서 다섯 탭이 한 칸씩 들어간다', () => {
@@ -9,6 +9,13 @@ describe('모임 화면 배치', () => {
     expect(tabSlotWidth(412)).toBeGreaterThan(70);
     expect(tabLabelSize(320)).toBeLessThanOrEqual(tabLabelSize(412));
     expect(tabIconSize(320)).toBeLessThanOrEqual(tabIconSize(412));
+  });
+
+  it('앨범 업로드 예약은 한 요청에 20장을 넘기지 않는다', () => {
+    const files = Array.from({ length: 21 }, (_, index) => index);
+    expect(chunkForReserve(files).map((chunk) => chunk.length)).toEqual([20, 1]);
+    expect(chunkForReserve(files.slice(0, 20))).toHaveLength(1);
+    expect(chunkForReserve([])).toEqual([]);
   });
 
   it('인계 중이면 사진 탭 이유가 인계라고 말한다', () => {

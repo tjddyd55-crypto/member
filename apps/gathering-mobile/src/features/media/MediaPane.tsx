@@ -142,17 +142,20 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
       }
     }
     setJobs((current) => [...next, ...current]);
-    try {
-      await reserveBatch(next.filter((job) => !job.assetId));
-    } catch (error) {
-      const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : '예약을 만들지 못했습니다.';
-      setMessage(text);
-      for (const job of next) {
-        if (!job.assetId) updateJob(job.id, { state: 'failed', message: text });
+    for (let index = 0; index < next.length; index += 20) {
+      const chunk = next.slice(index, index + 20);
+      try {
+        await reserveBatch(chunk.filter((job) => !job.assetId));
+      } catch (error) {
+        const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : '예약을 만들지 못했습니다.';
+        setMessage(text);
+        for (const job of chunk) {
+          if (!job.assetId) updateJob(job.id, { state: 'failed', message: text });
+        }
       }
-    }
-    for (const job of next) {
-      if (job.assetId) await transfer(job);
+      for (const job of chunk) {
+        if (job.assetId) await transfer(job);
+      }
     }
     await load();
   };

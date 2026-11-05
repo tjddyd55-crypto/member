@@ -11,6 +11,7 @@ import {
 import {
   completeFolderMediaUpload,
   completeMediaUpload,
+  resumeFolderMediaUpload,
   createFolderMediaUploads,
   createMediaUploads,
   deleteMedia,
@@ -115,6 +116,11 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     const params = groupParams.extend({ folderId: z.string().min(1) }).parse(request.params);
     const body = gatheringMediaUploadSchema.parse(request.body);
     return createFolderMediaUploads(requireGatheringUserId(request), params.groupId, params.folderId, body.items);
+  });
+
+  app.post('/api/gathering/groups/:groupId/folders/:folderId/media/:assetId/resume', auth, async (request) => {
+    const params = groupParams.extend({ folderId: z.string().min(1), assetId: z.string().min(1) }).parse(request.params);
+    return resumeFolderMediaUpload(requireGatheringUserId(request), params.groupId, params.folderId, params.assetId);
   });
 
   app.post('/api/gathering/groups/:groupId/folders/:folderId/media/:assetId/complete', auth, async (request) => {

@@ -356,6 +356,15 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ items }) },
     );
   },
+  resumeFolderMedia(groupId: string, folderId: string, assetId: string) {
+    return request<
+      | { status: 'READY'; media: GatheringMediaView }
+      | { status: 'PENDING'; id: string; uploadUrl: string; expiresAt: string; headers: Record<string, string> }
+    >(`/api/gathering/groups/${groupId}/folders/${folderId}/media/${assetId}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
   completeFolderMedia(groupId: string, folderId: string, assetId: string, sizeBytes: number) {
     return request<{ media: GatheringMediaView }>(
       `/api/gathering/groups/${groupId}/folders/${folderId}/media/${assetId}/complete`,

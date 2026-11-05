@@ -221,15 +221,13 @@ export function EventFinancePane({
   };
 
   const attach = async () => {
-    const picked = await File.pickFileAsync({
-      multipleFiles: true,
-      mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
-    });
-    if (picked.canceled || !picked.result) return;
-    for (const file of picked.result) {
-      const mimeType = mimeOf(file.extension);
+    const picked = await File.pickFileAsync().catch(() => null);
+    if (!picked) return;
+    for (const file of Array.isArray(picked) ? picked : [picked]) {
+      const originalName = fileName(file.uri);
+      const mimeType = allowedReceiptMime(file.type) ?? mimeOf(extensionOf(originalName));
       const created = await api.createReceiptUploads(groupId, eventId, [
-        { mimeType, sizeBytes: file.size, originalName: file.name },
+        { mimeType, sizeBytes: file.size, originalName },
       ]);
       const target = created.items[0];
       if (!target) continue;
@@ -294,6 +292,27 @@ async function openReceipt(
     return;
   }
   await Linking.openURL(file.url);
+}
+
+function fileName(uri: string) {
+  const part = uri.split('/').pop() ?? 'receipt';
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+}
+
+function extensionOf(name: string) {
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 ? name.slice(dot) : '';
+}
+
+function allowedReceiptMime(mimeType: string) {
+  if (mimeType === 'application/pdf' || mimeType === 'image/jpeg' || mimeType === 'image/png' || mimeType === 'image/webp') {
+    return mimeType;
+  }
+  return null;
 }
 
 function mimeOf(extension: string) {

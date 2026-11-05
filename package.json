@@ -28,7 +28,11 @@
     "typescript": "^5.8.2"
   },
   "dependencies": {
-    "@prisma/client": "^6.5.0"
+    "@prisma/client": "^6.5.0",
+    "expo": "54.0.38",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
@@ -36,5 +40,24 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "expo": "54.0.38",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "expo-constants": "18.0.14",
+    "expo-dev-client": "6.0.21",
+    "expo-device": "8.0.10",
+    "expo-file-system": "19.0.24",
+    "expo-image-manipulator": "14.0.8",
+    "expo-image-picker": "17.0.11",
+    "expo-linking": "8.0.12",
+    "expo-notifications": "0.32.17",
+    "expo-router": "6.0.24",
+    "expo-secure-store": "15.0.8",
+    "expo-status-bar": "3.0.9",
+    "expo-system-ui": "6.0.9",
+    "expo-video": "3.0.16"
   }
 }

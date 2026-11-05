@@ -1,4 +1,5 @@
-import { File, UploadType } from 'expo-file-system';
+import { File } from 'expo-file-system';
+import { createUploadTask, FileSystemUploadType } from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import {
@@ -72,13 +73,16 @@ export async function putPreparedFile(
   headers: Record<string, string>,
   onProgress: (loaded: number, total: number) => void,
 ) {
-  const file = new File(uri);
-  const task = file.createUploadTask(url, {
-    httpMethod: 'PUT',
-    uploadType: UploadType.BINARY_CONTENT,
-    headers,
-    onProgress: (progress) => onProgress(progress.bytesSent, progress.totalBytes),
-  });
+  const task = createUploadTask(
+    url,
+    uri,
+    {
+      httpMethod: 'PUT',
+      uploadType: FileSystemUploadType.BINARY_CONTENT,
+      headers,
+    },
+    (progress) => onProgress(progress.totalBytesSent, progress.totalBytesExpectedToSend),
+  );
   const result = await task.uploadAsync();
   if (!result || result.status < 200 || result.status >= 300) {
     throw new Error('파일 전송에 실패했습니다.');

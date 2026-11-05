@@ -3,9 +3,10 @@ import {
   APP_DISPLAY_NAME,
   PROVISIONAL_ANDROID_PACKAGE,
   PROVISIONAL_IOS_BUNDLE_ID,
-} from './app-identity';
+} from './app-identity.js';
 
 const config: ExpoConfig = {
+  owner: 'tjddyd55',
   name: APP_DISPLAY_NAME,
   slug: 'jci-korea-gathering',
   version: '0.1.0',
@@ -17,6 +18,7 @@ const config: ExpoConfig = {
     'expo-dev-client',
     'expo-router',
     'expo-secure-store',
+    'expo-video',
     'expo-notifications',
     [
       'expo-image-picker',
@@ -32,7 +34,7 @@ const config: ExpoConfig = {
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3001',
     eas: {
-      projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
+      projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID ?? 'f5a017a3-82f8-4d73-bc8a-ecd249e994f3',
     },
   },
   ios: {

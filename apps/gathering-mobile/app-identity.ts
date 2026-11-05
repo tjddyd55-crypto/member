@@ -1,4 +1,4 @@
-/** 화면과 스토어에 보이는 이름. 공식 승인이나 제휴를 뜻하지 않는다. */
+/** 화면과 스토어에 보이는 이름. 공식 승인이나 제휴를 뜻하지 않는다. app-identity.js와 같게 유지한다. */
 export const APP_DISPLAY_NAME = 'JCI KOREA';
 
 /**

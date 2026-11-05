@@ -71,8 +71,25 @@
 
 키는 `{R2_PREFIX_ENV}/gatherings/{groupId}/events/{eventId}/photos|videos|receipts/{objectId}` 이다. `member-book/profiles/` 는 키 규칙만 있고 회원수첩 업로드는 연결하지 않는다. 영상은 선언 길이 5분, 사진은 15MB, 영상은 200MB까지다. 확정 때 파일 앞부분으로 형식을 확인한다. 길이 자체는 디코드하지 않는다.
 
+## 장부와 영수증
+
+활성 회원이 조회한다. 수정은 `FINANCE_WRITE`(회장·재무), 영수증 첨부·삭제는 `RECEIPT_WRITE`다. 총무와 일반 회원은 403이다. 금액은 정수 원이고 귀속 연도는 `paidAt`이다. 마감된 해는 409 `FINANCE_YEAR_CLOSED`다.
+
+| 메서드 | 경로 | 권한 |
+|---|---|---|
+| GET | `/groups/:groupId/finance?year` | 활성 회원. 기초잔액·수입·지출·잔액·회비 |
+| POST | `/groups/:groupId/finance/dues` | 회장·재무 |
+| GET/POST | `/groups/:groupId/events/:eventId/transactions` | 조회는 회원, 생성은 회장·재무 |
+| PUT/DELETE | `/groups/:groupId/transactions/:transactionId` | 회장·재무. 열린 해만 |
+| GET/POST | `/groups/:groupId/events/:eventId/receipts` 와 `.../uploads` | 조회는 회원, 업로드는 회장·재무 |
+| POST | `.../receipts/:receiptId/complete` | 올린 사람 |
+| GET | `/groups/:groupId/receipts/:receiptId/download` | 활성 회원 |
+| DELETE | `/groups/:groupId/receipts/:receiptId` | 회장·재무. 마감·보존 영수증은 거절 |
+
+정정은 `adjustment: true`와 비고가 있는 열린 해 거래다. 영수증 바이트는 50GB에 포함된다. 이용권이 없어도 한도 안이면 영수증은 올릴 수 있다.
+
 ## 아직 API가 없음
 
-영수증 업로드, 수입·지출, 회비 입력, 회계 마감, 인계 실행, 이용권 부여, 계정 삭제, 관리자 대시보드.
+회계 마감, 인계 실행, 이용권 부여, 계정 삭제, 관리자 대시보드.
 
 이 경로를 404가 아닌 성공으로 흉내 내는 스텁은 두지 않았다.

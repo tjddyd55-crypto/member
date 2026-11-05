@@ -23,8 +23,12 @@ export type { PendingInviteOutcome } from './invite-retention.js';
 export { isInsideReminderWindow, notificationDedupeKey, REMINDER_WINDOW_MS } from './notices.js';
 export { SharedRefreshGate } from './session-gate.js';
 export type { NoticeKind } from './notices.js';
-export { parseWon } from './money.js';
+export { parseWon, parseWonAllowZero } from './money.js';
 export type { WonParse } from './money.js';
+export { dueStanding, summarizeLedger } from './ledger.js';
+export type { LedgerDirection, LedgerEntry, LedgerTotals } from './ledger.js';
+export { RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES, validateReceiptUpload } from './receipt-policy.js';
+export type { ReceiptValidation } from './receipt-policy.js';
 export { buildGatheringObjectKey, buildMemberBookProfileKey, ObjectKeyError } from './object-key.js';
 export type { GatheringObjectFolder } from './object-key.js';
 export {

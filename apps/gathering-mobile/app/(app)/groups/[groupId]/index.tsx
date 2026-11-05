@@ -3,7 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringGroupDetail, GatheringMemberView } from '@member/contracts';
 import { api } from '../../../../src/api/client';
-import { UNBUILT_FINANCE } from '../../../../src/copy';
+import { GroupFinancePane } from '../../../../src/features/finance/FinancePanes';
 import { AlbumsPane } from '../../../../src/features/media/AlbumsPane';
 import { EventsPane } from '../../../../src/features/schedule/EventsPane';
 import {
@@ -89,14 +89,10 @@ export default function GroupDetailScreen() {
           ) : null}
           {tab === 'photos' ? <AlbumsPane groupId={group.id} /> : null}
           {tab === 'finance' ? (
-            <View style={styles.stack}>
-              <EmptyState title="재무 입력은 아직 없습니다" description={UNBUILT_FINANCE} />
-              {group.financeYear ? (
-                <Notice>
-                  {`${group.financeYear.year}년 기간은 ${formatDate(group.financeYear.startsAt)}부터 ${formatDate(group.financeYear.endsAt)}까지입니다.`}
-                </Notice>
-              ) : null}
-            </View>
+            <GroupFinancePane
+              groupId={group.id}
+              canWrite={group.permissions.includes('FINANCE_WRITE')}
+            />
           ) : null}
         </>
       ) : null}
@@ -140,7 +136,7 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
       {group.description ? <Body>{group.description}</Body> : null}
       <Notice>
         {group.financeYear
-          ? `회계 기간 ${formatDate(group.financeYear.startsAt)} ~ ${formatDate(group.financeYear.endsAt)}. 장부 입력은 아직 없습니다.`
+          ? `회계 기간 ${formatDate(group.financeYear.startsAt)} ~ ${formatDate(group.financeYear.endsAt)}.`
           : '열린 회계연도가 없습니다.'}
       </Notice>
       <Body>내 역할: {group.roles.join(', ') || '없음'}</Body>

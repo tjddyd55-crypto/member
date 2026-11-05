@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { handoverAck, summarizeLedger } from '@member/gathering-domain';
+import { canonicalJson, handoverAck, summarizeLedger } from '@member/gathering-domain';
 
 type FactDb = Prisma.TransactionClient | PrismaClient;
 
@@ -35,7 +35,64 @@ export async function loadHandoverFacts(
       dueCount: dues.length,
       receiptCount: receipts.length,
     }),
+    fingerprint: financeFingerprint({ transactions, dues, receipts }),
   };
+}
+
+function financeFingerprint(input: {
+  transactions: Array<{
+    id: string;
+    direction: string;
+    label: string;
+    amountWon: number;
+    paidAt: Date;
+    note: string | null;
+    adjustment: boolean;
+  }>;
+  dues: Array<{
+    id: string;
+    userId: string;
+    amountWon: number;
+    paidAmountWon: number;
+    paidAt: Date | null;
+    status: string;
+  }>;
+  receipts: Array<{
+    id: string;
+    storageKey: string;
+    checksum: string | null;
+    version: number;
+    sizeBytes: bigint;
+    mimeType: string;
+  }>;
+}) {
+  return canonicalJson({
+    transactions: input.transactions.map((row) => ({
+      id: row.id,
+      direction: row.direction,
+      label: row.label,
+      amountWon: row.amountWon,
+      paidAt: row.paidAt.toISOString(),
+      note: row.note,
+      adjustment: row.adjustment,
+    })),
+    dues: input.dues.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      amountWon: row.amountWon,
+      paidAmountWon: row.paidAmountWon,
+      paidAt: row.paidAt?.toISOString() ?? null,
+      status: row.status,
+    })),
+    receipts: input.receipts.map((row) => ({
+      id: row.id,
+      storageKey: row.storageKey,
+      checksum: row.checksum,
+      version: row.version,
+      sizeBytes: row.sizeBytes.toString(),
+      mimeType: row.mimeType,
+    })),
+  });
 }
 
 export async function countPendingReceipts(db: FactDb, financeYearId: string) {

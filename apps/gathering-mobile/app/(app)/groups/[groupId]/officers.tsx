@@ -15,6 +15,7 @@ export default function OfficersScreen() {
   const [members, setMembers] = useState<GatheringMemberView[]>([]);
   const [canAssign, setCanAssign] = useState(false);
   const [canHandover, setCanHandover] = useState(false);
+  const [handoverEntry, setHandoverEntry] = useState(false);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [userId, setUserId] = useState('');
@@ -34,6 +35,17 @@ export default function OfficersScreen() {
       setMembers(roster.items);
       setCanAssign(group.permissions.includes('ROLE_ASSIGN'));
       setCanHandover(group.permissions.includes('HANDOVER'));
+      const handover = await api.handover(groupId).catch(() => null);
+      setHandoverEntry(
+        Boolean(
+          handover &&
+            (handover.actions.accept ||
+              handover.actions.confirm ||
+              handover.actions.finalize ||
+              handover.actions.cancel ||
+              handover.actions.nominate),
+        ),
+      );
       setStatus('ready');
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : '집행부를 불러오지 못했습니다.');
@@ -99,7 +111,7 @@ export default function OfficersScreen() {
           ) : (
             <Body>역할 변경은 회장만 할 수 있습니다.</Body>
           )}
-          {canHandover ? (
+          {canHandover || handoverEntry ? (
             <Button label="차기 회장 인계" onPress={() => router.push(`/(app)/groups/${groupId}/handover`)} />
           ) : null}
           <Body>역대</Body>

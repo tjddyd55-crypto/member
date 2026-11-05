@@ -12,6 +12,7 @@ export default function HandoverScreen() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [successorId, setSuccessorId] = useState('');
+  const [nominateKey, setNominateKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -45,7 +46,17 @@ export default function HandoverScreen() {
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {message ? <Notice>{message}</Notice> : null}
-      {status === 'ready' && view ? <Steps groupId={groupId} view={view} successorId={successorId} onSuccessor={setSuccessorId} onRun={run} /> : null}
+      {status === 'ready' && view ? (
+        <Steps
+          groupId={groupId}
+          view={view}
+          successorId={successorId}
+          nominateKey={nominateKey}
+          onSuccessor={setSuccessorId}
+          onNominateKey={setNominateKey}
+          onRun={run}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -54,13 +65,17 @@ function Steps({
   groupId,
   view,
   successorId,
+  nominateKey,
   onSuccessor,
+  onNominateKey,
   onRun,
 }: {
   groupId: string;
   view: HandoverView;
   successorId: string;
+  nominateKey: string | null;
   onSuccessor: (value: string) => void;
+  onNominateKey: (value: string | null) => void;
   onRun: (work: () => Promise<unknown>) => Promise<void>;
 }) {
   const preview = view.preview;
@@ -75,7 +90,14 @@ function Steps({
       {view.actions.nominate ? (
         <>
           <TextField label="차기 회장 회원 아이디" value={successorId} onChangeText={onSuccessor} autoCapitalize="none" />
-          <Button label="차기 회장 지명" onPress={() => void onRun(() => api.nominateHandover(groupId, successorId.trim()))} />
+          <Button
+            label="차기 회장 지명"
+            onPress={() => {
+              const key = nominateKey ?? `handover-${groupId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+              onNominateKey(key);
+              void onRun(() => api.nominateHandover(groupId, successorId.trim(), key));
+            }}
+          />
         </>
       ) : null}
       {view.actions.accept && view.handover ? (
@@ -86,6 +108,16 @@ function Steps({
       ) : null}
       {view.actions.finalize && view.handover ? (
         <Button label="최종 인계 승인" onPress={() => void onRun(() => api.finalizeHandover(groupId, view.handover!.id))} />
+      ) : null}
+      {view.actions.cancel && view.handover ? (
+        <Button
+          label="지명 취소"
+          variant="secondary"
+          onPress={() => {
+            onNominateKey(null);
+            void onRun(() => api.cancelHandover(groupId, view.handover!.id));
+          }}
+        />
       ) : null}
     </>
   );

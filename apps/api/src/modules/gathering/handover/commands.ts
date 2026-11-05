@@ -5,6 +5,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
 import { writeGatheringAudit } from '../audit.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
+import { notifyGatheringUser } from '../push/service.js';
 import { closeFinanceYear } from './close.js';
 import { countPendingReceipts, loadHandoverFacts } from './facts.js';
 import { sha256Canonical } from './hash.js';
@@ -56,6 +57,9 @@ export async function nominateHandover(
       const replay = await tx.gatheringHandover.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
       if (replay) {
         if (replay.groupId !== groupId) throw new AppError(409, 'IDEMPOTENCY_CONFLICT', '같은 키를 다른 모임에 쓸 수 없습니다.');
+        if (replay.status === 'CANCELLED' || replay.status === 'FINALIZED') {
+          throw new AppError(409, 'IDEMPOTENCY_USED', '끝난 인계입니다. 새 키로 다시 지명하세요.');
+        }
         return replay;
       }
       const year = await requireOpenYear(tx, groupId);
@@ -76,6 +80,14 @@ export async function nominateHandover(
       action: 'GATHERING_HANDOVER_NOMINATE',
       targetType: 'GatheringHandover',
       targetId: created.id,
+    });
+    await notifyGatheringUser({
+      userId: created.toUserId,
+      groupId,
+      type: 'HANDOVER_NOMINATED',
+      title: 'JCI KOREA',
+      body: '차기 회장으로 지명되었습니다. 인계 화면에서 수락하세요.',
+      dedupeKey: `HANDOVER_NOMINATED:${created.id}`,
     });
     return presentHandover(created);
   } catch (error) {
@@ -103,7 +115,7 @@ export async function confirmHandover(actorId: string, groupId: string, handover
     }
     await tx.gatheringHandover.update({
       where: { id: handover.id },
-      data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmHash: sha256Canonical(facts.ack) },
+      data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmHash: sha256Canonical(facts.fingerprint) },
     });
     return handover.id;
   });
@@ -130,7 +142,7 @@ export async function finalizeHandover(actorId: string, groupId: string, handove
     }
     await assertNoPendingReceipts(tx, handover.financeYearId);
     const facts = await loadHandoverFacts(tx, handover.financeYear);
-    if (sha256Canonical(facts.ack) !== handover.confirmHash) {
+    if (sha256Canonical(facts.fingerprint) !== handover.confirmHash) {
       await tx.gatheringHandover.update({
         where: { id: handover.id },
         data: { status: 'ACCEPTED', confirmedAt: null, confirmHash: null },

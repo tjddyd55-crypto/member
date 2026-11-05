@@ -171,11 +171,9 @@ describe('회계 마감과 인계', () => {
       headers: auth(owner.tokens.accessToken),
       payload: view.json().preview,
     });
-    await app.inject({
-      method: 'POST',
-      url: `/api/gathering/groups/${group.id}/events/${eventId}/transactions`,
-      headers: auth(owner.tokens.accessToken),
-      payload: { direction: 'EXPENSE', label: '추가', amountWon: 500, paidAt: '2026-12-21T02:00:00.000Z' },
+    await prisma.gatheringFinanceTransaction.updateMany({
+      where: { groupId: group.id, label: '식대' },
+      data: { note: '합계는 같고 내용만 바꿈' },
     });
     const stale = await app.inject({
       method: 'POST',
@@ -202,7 +200,7 @@ describe('회계 마감과 인계', () => {
       headers: auth(owner.tokens.accessToken),
     });
     expect(closed.statusCode).toBe(200);
-    expect(closed.json().balanceWon).toBe(6500);
+    expect(closed.json().balanceWon).toBe(7000);
     const replay = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/handover/${handoverId}/finalize`,
@@ -219,7 +217,7 @@ describe('회계 마감과 인계', () => {
     const nextYear = await prisma.gatheringFinanceYear.findFirst({
       where: { groupId: group.id, status: 'OPEN' },
     });
-    expect(nextYear?.openingBalanceWon).toBe(6500);
+    expect(nextYear?.openingBalanceWon).toBe(7000);
     const locked = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${eventId}/transactions`,
@@ -310,6 +308,53 @@ describe('회계 마감과 인계', () => {
     expect(first.json().snapshotId).toBe(second.json().snapshotId);
     const snapshots = await prisma.gatheringFinanceCloseSnapshot.count({ where: { groupId: group.id } });
     expect(snapshots).toBe(1);
+  });
+
+  it('취소된 지명 키는 다시 쓰지 않고, 새 키로만 다시 지명한다', async () => {
+    const owner = await register('회장');
+    const next = await register('차기');
+    const group = await createGroup(owner.tokens.accessToken, '지명 재시도 모임');
+    await join(owner.tokens.accessToken, next.tokens.accessToken, group.id);
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { toUserId: next.user.id, idempotencyKey: 'handover-once' },
+    });
+    expect(first.statusCode).toBe(200);
+    const notice = await prisma.gatheringNotification.findFirst({
+      where: { userId: next.user.id, type: 'HANDOVER_NOMINATED' },
+    });
+    expect(notice?.payloadJson).toContain('인계');
+    const successorView = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/handover`,
+      headers: auth(next.tokens.accessToken),
+    });
+    expect(successorView.json().actions.accept).toBe(true);
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover/${first.json().id}/cancel`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(cancelled.json().status).toBe('CANCELLED');
+    const reused = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { toUserId: next.user.id, idempotencyKey: 'handover-once' },
+    });
+    expect(reused.statusCode).toBe(409);
+    expect(reused.json().error.code).toBe('IDEMPOTENCY_USED');
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { toUserId: next.user.id, idempotencyKey: 'handover-next' },
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().id).not.toBe(first.json().id);
+    expect(again.json().status).toBe('NOMINATED');
   });
 });
 

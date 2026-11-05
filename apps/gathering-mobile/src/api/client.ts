@@ -397,10 +397,10 @@ export const api = {
       };
     }>(`/api/gathering/groups/${groupId}/handover`);
   },
-  nominateHandover(groupId: string, toUserId: string) {
+  nominateHandover(groupId: string, toUserId: string, idempotencyKey: string) {
     return request<{ id: string }>(`/api/gathering/groups/${groupId}/handover`, {
       method: 'POST',
-      body: JSON.stringify({ toUserId, idempotencyKey: `handover-${groupId}-${toUserId}` }),
+      body: JSON.stringify({ toUserId, idempotencyKey }),
     });
   },
   acceptHandover(groupId: string, handoverId: string) {
@@ -419,6 +419,12 @@ export const api = {
     return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/confirm`, {
       method: 'POST',
       body: JSON.stringify(preview),
+    });
+  },
+  cancelHandover(groupId: string, handoverId: string) {
+    return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
   finalizeHandover(groupId: string, handoverId: string) {

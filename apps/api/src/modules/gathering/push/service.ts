@@ -143,6 +143,43 @@ function isUnique(error: unknown) {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
 
+export async function notifyGatheringUser(input: {
+  userId: string;
+  groupId: string;
+  type: string;
+  title: string;
+  body: string;
+  dedupeKey: string;
+}) {
+  try {
+    const created = await prisma.gatheringNotification.create({
+      data: {
+        userId: input.userId,
+        groupId: input.groupId,
+        type: input.type,
+        dedupeKey: input.dedupeKey,
+        payloadJson: JSON.stringify({ body: input.body }),
+      },
+    });
+    const tokens = await prisma.gatheringPushToken.findMany({
+      where: { userId: input.userId, disabledAt: null },
+      select: { token: true },
+    });
+    if (tokens.length === 0) {
+      await markNotice(created.id, 'SKIPPED');
+      return;
+    }
+    await deliver(created.id, tokens.map((row) => row.token), {
+      title: input.title,
+      body: input.body,
+      data: { groupId: input.groupId, kind: input.type },
+    });
+  } catch (error) {
+    if (isUnique(error)) return;
+    throw error;
+  }
+}
+
 export async function dispatchEventReminders(now = new Date()) {
   const until = new Date(now.getTime() + REMINDER_WINDOW_MS);
   const events = await prisma.gatheringEvent.findMany({

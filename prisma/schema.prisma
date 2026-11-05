@@ -588,6 +588,7 @@ enum GatheringFinanceYearStatus {
 enum GatheringHandoverStatus {
   NOMINATED
   ACCEPTED
+  CONFIRMED
   FINALIZED
   CANCELLED
 }
@@ -981,6 +982,8 @@ model GatheringHandover {
   idempotencyKey  String                  @unique
   nominatedAt     DateTime                @default(now())
   acceptedAt      DateTime?
+  confirmedAt     DateTime?
+  confirmHash     String?
   finalizedAt     DateTime?
 
   group       GatheringGroup       @relation(fields: [groupId], references: [id])

@@ -48,6 +48,9 @@ export {
   validateMediaUpload,
 } from './media-policy.js';
 export type { MediaFolder, MediaKind, MediaRejectionCode, MediaValidation } from './media-policy.js';
+export { canonicalJson } from './canonical.js';
+export { applyHandover, handoverAck } from './handover.js';
+export type { HandoverAck, HandoverAction, HandoverStatus } from './handover.js';
 export { canRetryTransfer, signedUrlStillFresh, summarizeTransfer } from './transfer.js';
 export type { TransferItem, TransferState } from './transfer.js';
 export { subscriptionExpiry, subscriptionNoticeDedupeKey, subscriptionNoticeWindow } from './subscription.js';

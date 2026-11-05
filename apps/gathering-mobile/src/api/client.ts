@@ -378,6 +378,61 @@ export const api = {
       `/api/gathering/groups/${groupId}/receipts/${receiptId}/download`,
     );
   },
+  handover(groupId: string) {
+    return request<{
+      preview: {
+        incomeWon: number;
+        expenseWon: number;
+        balanceWon: number;
+        dueCount: number;
+        receiptCount: number;
+      } | null;
+      handover: { id: string; status: string; toUserId: string } | null;
+      actions: {
+        nominate: boolean;
+        accept: boolean;
+        confirm: boolean;
+        finalize: boolean;
+        cancel: boolean;
+      };
+    }>(`/api/gathering/groups/${groupId}/handover`);
+  },
+  nominateHandover(groupId: string, toUserId: string, idempotencyKey: string) {
+    return request<{ id: string }>(`/api/gathering/groups/${groupId}/handover`, {
+      method: 'POST',
+      body: JSON.stringify({ toUserId, idempotencyKey }),
+    });
+  },
+  acceptHandover(groupId: string, handoverId: string) {
+    return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+  confirmHandover(groupId: string, handoverId: string, preview: {
+    incomeWon: number;
+    expenseWon: number;
+    balanceWon: number;
+    dueCount: number;
+    receiptCount: number;
+  }) {
+    return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(preview),
+    });
+  },
+  cancelHandover(groupId: string, handoverId: string) {
+    return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+  finalizeHandover(groupId: string, handoverId: string) {
+    return request<{ balanceWon: number }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/finalize`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
   reportMedia(groupId: string, assetId: string, reason: string) {
     return request<{ id: string }>(`/api/gathering/groups/${groupId}/media/${assetId}/reports`, {
       method: 'POST',

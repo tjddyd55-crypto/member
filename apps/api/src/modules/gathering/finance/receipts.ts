@@ -15,6 +15,7 @@ import { GatheringAuditAction } from '../constants.js';
 import { assertStoredObject } from '../storage/confirm.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
 import { isSubscriptionActive, loadBillableUsage } from '../storage/usage.js';
+import { lockFinanceYear, lockGroup } from '../locks.js';
 import { lockGroupOpenYear, lockOpenYearById } from './years.js';
 
 type ReceiptItem = { mimeType: string; sizeBytes: number; originalName?: string };
@@ -97,19 +98,26 @@ export async function deleteReceipt(userId: string, groupId: string, receiptId: 
   });
   if (!receipt) throw new AppError(404, 'RECEIPT_NOT_FOUND', '영수증을 찾을 수 없습니다.');
   const actor = access.permissions.includes('RECEIPT_WRITE') ? 'TREASURER' : 'OTHER';
-  if (
-    !canDeleteStoredObject({
-      kind: 'RECEIPT',
-      financeYearClosed: receipt.financeYear.status === 'CLOSED' || receipt.immutable,
-      actor,
-    })
-  ) {
-    throw new AppError(403, 'FORBIDDEN', '이 영수증을 삭제할 권한이 없습니다.');
-  }
-  await currentObjectStorage().remove(receipt.storageKey);
-  await prisma.$transaction(async (tx) => {
+  const storageKey = await prisma.$transaction(async (tx) => {
+    await lockGroup(tx, groupId);
+    const current = await tx.gatheringReceiptAsset.findFirst({
+      where: { id: receiptId, groupId, deletedAt: null, status: { in: ['PENDING', 'READY'] } },
+    });
+    if (!current) throw new AppError(404, 'RECEIPT_NOT_FOUND', '영수증을 찾을 수 없습니다.');
+    await lockFinanceYear(tx, current.financeYearId);
+    const year = await tx.gatheringFinanceYear.findUniqueOrThrow({ where: { id: current.financeYearId } });
+    const fresh = await tx.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: current.id } });
+    if (
+      !canDeleteStoredObject({
+        kind: 'RECEIPT',
+        financeYearClosed: year.status === 'CLOSED' || fresh.immutable,
+        actor,
+      })
+    ) {
+      throw new AppError(403, 'FORBIDDEN', '이 영수증을 삭제할 권한이 없습니다.');
+    }
     await tx.gatheringReceiptAsset.update({
-      where: { id: receipt.id },
+      where: { id: fresh.id },
       data: { status: 'DELETED', deletedAt: new Date() },
     });
     await writeGatheringAudit(tx, {
@@ -117,9 +125,11 @@ export async function deleteReceipt(userId: string, groupId: string, receiptId: 
       actorUserId: access.userId,
       action: GatheringAuditAction.RECEIPT_DELETE,
       targetType: 'GatheringReceiptAsset',
-      targetId: receipt.id,
+      targetId: fresh.id,
     });
+    return fresh.storageKey;
   });
+  await currentObjectStorage().remove(storageKey);
   return { ok: true as const };
 }
 

@@ -127,7 +127,10 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
               <TextField label="청구액(원)" value={amount} onChangeText={setAmount} keyboardType="number-pad" />
               <TextField label="납부액(원)" value={paid} onChangeText={setPaid} keyboardType="number-pad" />
               {paidOn ? (
-                <DateTimeField label="납부일" mode="date" value={paidOn} onChange={setPaidOn} />
+                <>
+                  <DateTimeField label="납부일" mode="date" value={paidOn} onChange={setPaidOn} />
+                  <Button label="납부일 지우기" variant="text" onPress={() => setPaidOn(null)} />
+                </>
               ) : (
                 <Button label="납부일 고르기" variant="secondary" onPress={() => setPaidOn(new Date())} />
               )}

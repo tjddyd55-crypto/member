@@ -405,5 +405,31 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       headers: auth(member.tokens.accessToken),
     });
     expect(hidden.statusCode).toBe(403);
+    for (let index = 0; index < 20; index += 1) {
+      const extra = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${groupId}/upload-links`,
+        headers: auth(owner.tokens.accessToken),
+        payload: { folderId: folder.json().id },
+      });
+      expect(extra.statusCode).toBe(200);
+    }
+    const many = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/upload-links?folderId=${folder.json().id}`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(many.json().items).toHaveLength(21);
+    await prisma.gatheringUploadLink.update({
+      where: { id: created.json().id },
+      data: { revokedAt: new Date() },
+    });
+    const afterRevoke = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/upload-links?folderId=${folder.json().id}`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(afterRevoke.json().items).toHaveLength(20);
+    expect(afterRevoke.json().items.some((item: { id: string }) => item.id === created.json().id)).toBe(false);
   });
 });

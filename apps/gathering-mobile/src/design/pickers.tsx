@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { WebView } from 'react-native-webview';
@@ -6,9 +6,13 @@ import { theme } from '../theme';
 import {
   POSTCODE_PAGE,
   composeAddress,
+  dateFromDateInput,
+  dateInputValue,
   formatKoreanDate,
   formatKoreanTime,
   parsePostcodeMessage,
+  timeFromTimeInput,
+  timeInputValue,
 } from '../features/forms/values';
 import { Button, TextField } from './ui';
 
@@ -33,20 +37,39 @@ export function DateTimeField({
     }
     if (selected) onChange(selected);
   };
+  const webValue = mode === 'date' ? dateInputValue(value) : timeInputValue(value);
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={styles.input}>
-        <Text style={styles.value}>{shown}</Text>
-      </Pressable>
+      {Platform.OS === 'web' ? (
+        createElement('input', {
+          type: mode === 'date' ? 'date' : 'time',
+          value: webValue,
+          'aria-label': label,
+          onChange: (event: { target: { value: string } }) => {
+            const next =
+              mode === 'date' ? dateFromDateInput(event.target.value, value) : timeFromTimeInput(event.target.value, value);
+            if (next) onChange(next);
+          },
+          style: webInputStyle,
+        })
+      ) : (
+        <Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={styles.input}>
+          <Text style={styles.value}>{shown}</Text>
+        </Pressable>
+      )}
       {open && Platform.OS === 'android' ? (
         <DateTimePicker locale="ko-KR" value={value} mode={mode} display="default" onChange={change} />
       ) : null}
-      {open && Platform.OS === 'ios' ? (
-        <View>
-          <DateTimePicker value={value} mode={mode} display="spinner" locale="ko-KR" onChange={change} />
-          <Button label="완료" variant="secondary" onPress={() => setOpen(false)} />
-        </View>
+      {Platform.OS === 'ios' ? (
+        <Modal transparent visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
+          <View style={styles.sheetBackdrop}>
+            <View style={styles.sheet}>
+              <DateTimePicker value={value} mode={mode} display="spinner" locale="ko-KR" onChange={change} />
+              <Button label="완료" variant="secondary" onPress={() => setOpen(false)} />
+            </View>
+          </View>
+        </Modal>
       ) : null}
     </View>
   );
@@ -124,4 +147,25 @@ const styles = StyleSheet.create({
   },
   value: { ...theme.typography.body, color: theme.colors.text.primary },
   modal: { flex: 1, backgroundColor: theme.colors.bg.default, paddingTop: theme.space[16] },
+  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheet: {
+    gap: theme.space[12],
+    padding: theme.space[16],
+    backgroundColor: theme.colors.bg.default,
+    borderTopLeftRadius: theme.radius[12],
+    borderTopRightRadius: theme.radius[12],
+  },
 });
+
+const webInputStyle = {
+  minHeight: theme.layout.inputMinHeight,
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: theme.colors.border.default,
+  borderRadius: theme.radius[12],
+  paddingLeft: theme.space[16],
+  paddingRight: theme.space[16],
+  fontSize: 16,
+  color: theme.colors.text.primary,
+  backgroundColor: theme.colors.bg.default,
+};

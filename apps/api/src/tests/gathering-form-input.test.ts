@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   composeAddress,
+  dateFromDateInput,
+  dateInputValue,
   eventStartsAt,
   fiscalMonthDay,
   focusedFieldScrollY,
@@ -18,6 +20,11 @@ describe('모임 입력', () => {
     expect(paidAtFromCalendarDate(new Date(2026, 10, 20, 23, 15))).toBe('2026-11-20T03:00:00.000Z');
     expect(fiscalMonthDay(new Date(2024, 2, 1, 8))).toEqual({ fiscalStartMonth: 3, fiscalStartDay: 1 });
     expect(formatKoreanDate(new Date(2026, 10, 20))).toContain('2026');
+    const picked = new Date(2026, 10, 20, 19, 30, 0);
+    expect(dateInputValue(picked)).toBe('2026-11-20');
+    expect(dateFromDateInput('2026-12-01', picked)?.getMonth()).toBe(11);
+    expect(dateFromDateInput('2026-12-01', picked)?.getDate()).toBe(1);
+    expect(dateFromDateInput('nope', picked)).toBeNull();
   });
 
   it('주소 검색 결과는 도로명에 상세 주소를 붙인다', () => {

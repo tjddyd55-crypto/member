@@ -81,13 +81,16 @@ export async function listUploadLinks(
   if (!filter.eventId === !filter.folderId) {
     throw new AppError(400, 'LINK_TARGET', '행사 또는 폴더 중 하나만 지정하세요.');
   }
+  const now = new Date();
+  // 아직 쓸 수 있는 링크는 개수와 상관없이 모두 돌려준다. 폐기·만료된 링크가 목록 자리를 차지하지 않는다.
   const rows = await prisma.gatheringUploadLink.findMany({
     where: {
       groupId,
+      revokedAt: null,
+      expiresAt: { gt: now },
       ...(filter.folderId ? { folderId: filter.folderId } : { eventId: filter.eventId }),
     },
     orderBy: { createdAt: 'desc' },
-    take: 20,
   });
   return {
     items: rows.map((row) => ({

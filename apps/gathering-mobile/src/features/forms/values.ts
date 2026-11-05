@@ -13,6 +13,32 @@ export function formatKoreanDate(date: Date) {
   return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }).format(date);
 }
 
+export function dateInputValue(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+export function timeInputValue(date: Date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+export function dateFromDateInput(value: string, base: Date) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const next = new Date(base);
+  next.setFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(next.getTime()) ? null : next;
+}
+
+export function timeFromTimeInput(value: string, base: Date) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const next = new Date(base);
+  next.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  return Number.isNaN(next.getTime()) ? null : next;
+}
+
 export function formatKoreanTime(date: Date) {
   return new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }).format(date);
 }

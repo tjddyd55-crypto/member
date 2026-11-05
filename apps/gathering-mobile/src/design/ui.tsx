@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useRef } from 'react';
+import React, { createContext, useContext, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
-  findNodeHandle,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,21 +16,36 @@ import { DISCLAIMER } from '../copy';
 import { focusedFieldScrollY, keyboardAvoidingBehavior } from '../features/forms/values';
 import { theme } from '../theme';
 
-const FormScrollContext = createContext<React.RefObject<ScrollView | null> | null>(null);
+type FormScroll = {
+  contentRef: React.RefObject<View | null>;
+  scrollTo: (y: number) => void;
+};
+
+const FormScrollContext = createContext<FormScroll | null>(null);
 
 export function Screen({ children }: { children: React.ReactNode }) {
   const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
+  const formScroll = useMemo<FormScroll>(
+    () => ({
+      contentRef,
+      scrollTo: (y) => scrollRef.current?.scrollTo({ y, animated: true }),
+    }),
+    [],
+  );
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
-        <FormScrollContext.Provider value={scrollRef}>
+        <FormScrollContext.Provider value={formScroll}>
           <ScrollView
             ref={scrollRef}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
-            contentContainerStyle={styles.content}
+            contentContainerStyle={styles.flexGrow}
           >
-            {children}
+            <View ref={contentRef} collapsable={false} style={styles.content}>
+              {children}
+            </View>
           </ScrollView>
         </FormScrollContext.Provider>
       </KeyboardAvoidingView>
@@ -99,7 +113,7 @@ export function TextField({
   onFocus,
   ...props
 }: TextInputProps & { label: string; error?: string }) {
-  const scrollRef = useContext(FormScrollContext);
+  const formScroll = useContext(FormScrollContext);
   const fieldRef = useRef<View>(null);
   return (
     <View ref={fieldRef} style={styles.field}>
@@ -110,12 +124,11 @@ export function TextField({
         onFocus={(event) => {
           onFocus?.(event);
           const field = fieldRef.current;
-          const scroll = scrollRef?.current;
-          const relative = scroll ? findNodeHandle(scroll) : null;
-          if (!field || !scroll || relative == null) return;
+          const content = formScroll?.contentRef.current;
+          if (!field || !content || !formScroll) return;
           field.measureLayout(
-            relative,
-            (_x, y) => scroll.scrollTo({ y: focusedFieldScrollY(y), animated: true }),
+            content,
+            (_x, y) => formScroll.scrollTo(focusedFieldScrollY(y)),
             () => undefined,
           );
         }}
@@ -166,6 +179,7 @@ export function LoadingState() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg.default },
   flex: { flex: 1 },
+  flexGrow: { flexGrow: 1 },
   content: {
     padding: theme.layout.horizontalGutter,
     gap: theme.space[16],

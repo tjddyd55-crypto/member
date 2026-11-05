@@ -2,7 +2,7 @@
 
 앱은 `apps/gathering-mobile`이다. 회원수첩 앱 `apps/mobile`의 화면은 바꾸지 않았다.
 
-이름 표시는 `JCI KOREA`다. 스플래시와 로그인에 "공식 승인이나 제휴를 뜻하지 않습니다"를 둔다. 로고 이미지는 넣지 않았다. 번들 아이디 `kr.gathering.mobile`은 출시 전 가칭이다.
+표시 이름은 `JCI KOREA`다. 값은 `apps/gathering-mobile/app-identity.ts` 하나다. 스플래시와 로그인에 공식 승인·제휴가 아니라는 문구를 둔다. 로고 이미지는 없다. 번들 식별자도 그 파일의 임시 상수이며, 제출 전 변경 절차는 `08-store-and-devices.md`에 있다.
 
 공통 부품: `Screen`, `Title`, `Body`, `Button`, `TextField`, `Notice`, `EmptyState`, `ErrorState`, `LoadingState`, `Disclaimer`. 배경은 흰색, 제목은 딥네이비, 포인트는 남색과 제한된 파랑, 버튼 높이는 48 이상이다.
 
@@ -31,15 +31,16 @@
 | 모임 만들기       | `app/(app)/groups/create.tsx`    | 생성 후 상세로 이동                                                          |
 | 프로필            | `app/(app)/profile.tsx`          | 회원수첩 계정처럼 프로필이 없을 때                                           |
 | 초대 참여         | `app/invite/[token].tsx`         | 미리보기 후 동의하고 참여. 비로그인이면 코드를 저장했다가 로그인 후 돌아온다 |
-| 모임 상세 홈·회원 | `app/(app)/groups/[groupId].tsx` | 서버 데이터                                                                  |
+| 모임 상세 홈·회원·일정 | `app/(app)/groups/[groupId]/index.tsx` | 일정은 월별 행사 |
+| 행사 만들기·상세 | `groups/[groupId]/events/` | 생성, 수정, 취소, 참석/불참/미정 |
+| 전체 일정 | `app/(app)/calendar.tsx` | 내가 속한 모임만 |
+| 집행부 | `groups/[groupId]/officers.tsx` | 지정·해임은 회장. 이력은 회원도 조회 |
 
 대기 중인 모임 카드는 상세로 들어가지 않는다. 서버도 상세를 403으로 막는다.
 
 ## 아직 없는 화면
 
-모임 상세의 일정, 사진, 재무 탭은 "아직 만들지 않았습니다"만 보여 준다. 잔액 0원을 가짜 장부처럼 보여 주지 않는다. 회계연도 기간만 실제 데이터로 보여 준다.
-
-행사 상세, 재무 입력, 집행부 지정 화면, 인계, 이용권, 알림 설정, 계정 삭제는 없다. 역할 지정은 API에만 있다.
+사진 탭과 재무 탭은 미구현 안내만 보여 준다. 잔액을 0원 장부처럼 보여 주지 않는다. 영수증, 인계, 이용권, 계정 삭제는 없다. 푸시 권한 요청 코드는 앱에 있으나 실기기 수신은 확인하지 않았다.
 
 ## 와이어 개요
 

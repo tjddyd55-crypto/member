@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { GatheringAuthProfile, GatheringAuthUser } from '@member/contracts';
 import { api } from '../api/client';
+import { syncPushRegistration } from '../push/sync';
 import { recoveryReveal } from '../session/recovery-reveal';
 import { tokenStorage } from '../storage/secure';
 
@@ -39,10 +40,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile: GatheringAuthProfile | null;
       recoveryCodes?: string[];
     }) => {
-      await tokenStorage.save(result.tokens);
-      if (result.recoveryCodes?.length) recoveryReveal.set(result.recoveryCodes);
-      setUser(result.user);
-      setProfile(result.profile);
+    await tokenStorage.save(result.tokens);
+    if (result.recoveryCodes?.length) recoveryReveal.set(result.recoveryCodes);
+    setUser(result.user);
+    setProfile(result.profile);
+    void syncPushRegistration();
     },
     [],
   );
@@ -57,7 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const token = await tokenStorage.getAccessToken();
-        if (token) await refreshMe();
+        if (token) {
+          await refreshMe();
+          void syncPushRegistration();
+        }
       } catch {
         await tokenStorage.clear();
         setUser(null);

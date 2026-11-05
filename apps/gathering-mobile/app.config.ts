@@ -1,29 +1,37 @@
 import type { ExpoConfig } from 'expo/config';
+import {
+  APP_DISPLAY_NAME,
+  PROVISIONAL_ANDROID_PACKAGE,
+  PROVISIONAL_IOS_BUNDLE_ID,
+} from './app-identity';
 
 const config: ExpoConfig = {
-  name: 'JCI KOREA',
+  name: APP_DISPLAY_NAME,
   slug: 'jci-korea-gathering',
   version: '0.1.0',
   orientation: 'portrait',
   scheme: 'jcikorea',
   userInterfaceStyle: 'light',
   newArchEnabled: true,
-  plugins: ['expo-router', 'expo-secure-store'],
+  plugins: ['expo-router', 'expo-secure-store', 'expo-notifications'],
   experiments: {
     typedRoutes: false,
   },
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3001',
+    eas: {
+      projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
+    },
   },
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'kr.gathering.mobile',
+    bundleIdentifier: PROVISIONAL_IOS_BUNDLE_ID,
   },
   android: {
     adaptiveIcon: {
       backgroundColor: '#1B3A6B',
     },
-    package: 'kr.gathering.mobile',
+    package: PROVISIONAL_ANDROID_PACKAGE,
   },
 };
 

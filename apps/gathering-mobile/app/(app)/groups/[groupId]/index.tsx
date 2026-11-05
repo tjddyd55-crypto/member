@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringGroupDetail, GatheringMemberView } from '@member/contracts';
-import { api } from '../../../src/api/client';
-import { PHASE_NOTE } from '../../../src/copy';
+import { api } from '../../../../src/api/client';
+import { UNBUILT_FINANCE, UNBUILT_MEDIA } from '../../../../src/copy';
+import { EventsPane } from '../../../../src/features/schedule/EventsPane';
 import {
   Body,
   Button,
@@ -14,8 +15,8 @@ import {
   Screen,
   TextField,
   Title,
-} from '../../../src/design/ui';
-import { theme } from '../../../src/theme';
+} from '../../../../src/design/ui';
+import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
 
@@ -82,8 +83,19 @@ export default function GroupDetailScreen() {
           </View>
           {tab === 'home' ? <HomePane group={group} onChanged={() => void load()} /> : null}
           {tab === 'members' ? <MembersPane groupId={group.id} /> : null}
-          {tab === 'schedule' || tab === 'photos' || tab === 'finance' ? (
-            <UnbuiltPane group={group} tab={tab} />
+          {tab === 'schedule' ? (
+            <EventsPane groupId={group.id} canManage={group.permissions.includes('EVENT_MANAGE')} />
+          ) : null}
+          {tab === 'photos' ? <EmptyState title="사진·영상은 아직 없습니다" description={UNBUILT_MEDIA} /> : null}
+          {tab === 'finance' ? (
+            <View style={styles.stack}>
+              <EmptyState title="재무 입력은 아직 없습니다" description={UNBUILT_FINANCE} />
+              {group.financeYear ? (
+                <Notice>
+                  {`${group.financeYear.year}년 기간은 ${formatDate(group.financeYear.startsAt)}부터 ${formatDate(group.financeYear.endsAt)}까지입니다.`}
+                </Notice>
+              ) : null}
+            </View>
           ) : null}
         </>
       ) : null}
@@ -132,6 +144,11 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
       </Notice>
       <Body>내 역할: {group.roles.join(', ') || '없음'}</Body>
       <Body>활동 회원 {group.memberCount}명</Body>
+      <Button
+        label="집행부"
+        variant="secondary"
+        onPress={() => router.push(`/(app)/groups/${group.id}/officers`)}
+      />
       {canSettings ? (
         <Button
           label={group.inviteRequiresApproval ? '초대 승인 끄기' : '초대 승인 켜기'}
@@ -228,20 +245,6 @@ function MembersPane({ groupId }: { groupId: string }) {
           ) : null}
         </View>
       ))}
-    </View>
-  );
-}
-
-function UnbuiltPane({ group, tab }: { group: GatheringGroupDetail; tab: Tab }) {
-  const label = tab === 'schedule' ? '일정' : tab === 'photos' ? '사진·영상' : '재무';
-  return (
-    <View style={styles.stack}>
-      <EmptyState title={`${label}은 아직 없습니다`} description={PHASE_NOTE} />
-      {tab === 'finance' && group.financeYear ? (
-        <Notice>
-          {`${group.financeYear.year}년 기간은 ${formatDate(group.financeYear.startsAt)}부터 ${formatDate(group.financeYear.endsAt)}까지로 정해 두었습니다. 잔액 숫자는 장부가 생기기 전에는 보여 주지 않습니다.`}
-        </Notice>
-      ) : null}
     </View>
   );
 }

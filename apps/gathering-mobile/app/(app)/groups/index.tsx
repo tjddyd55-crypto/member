@@ -85,6 +85,7 @@ export default function GroupsScreen() {
           </Text>
         </Pressable>
       ))}
+      <Button label="전체 일정" variant="secondary" onPress={() => router.push('/(app)/calendar')} />
       <Button label="모임 만들기" onPress={() => router.push('/(app)/groups/create')} />
       <TextField
         label="초대 코드"

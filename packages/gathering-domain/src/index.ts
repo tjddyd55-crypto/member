@@ -18,5 +18,7 @@ export {
   evaluateUpload,
 } from './storage-policy.js';
 export type { DeleteActor, StorageUsage, UploadDecision, UploadKind } from './storage-policy.js';
+export { isInsideReminderWindow, notificationDedupeKey, REMINDER_WINDOW_MS } from './notices.js';
+export type { NoticeKind } from './notices.js';
 export { parseWon } from './money.js';
 export type { WonParse } from './money.js';

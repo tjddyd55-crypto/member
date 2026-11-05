@@ -3,6 +3,7 @@ import { AppError } from '../../../lib/errors.js';
 import { verifyGatheringAccessToken } from '../tokens.js';
 import { gatheringAuthRoutes } from './auth.js';
 import { gatheringGroupRoutes } from './groups.js';
+import { gatheringScheduleRoutes } from './schedule.js';
 
 export const gatheringRoutes: FastifyPluginAsync = async (app) => {
   app.decorate('authenticateGathering', async (request: FastifyRequest, _reply: FastifyReply) => {
@@ -16,6 +17,7 @@ export const gatheringRoutes: FastifyPluginAsync = async (app) => {
 
   await app.register(gatheringAuthRoutes);
   await app.register(gatheringGroupRoutes);
+  await app.register(gatheringScheduleRoutes);
 };
 
 declare module 'fastify' {

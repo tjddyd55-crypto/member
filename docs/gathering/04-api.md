@@ -34,8 +34,26 @@
 
 가입·로그인·복구·초대 미리보기와 수락은 IP당 10분에 30회다. 이 제한은 서버 프로세스 안뿐이다.
 
-## 스키마만 있고 API가 없음
+## 2단계에서 추가된 API
 
-행사, 참석, 캘린더, 푸시, 사진·영상, 신고, 영수증 업로드, 수입·지출, 회비, 회계 마감, 인계, 이용권 승인, 계정 삭제, 관리자 대시보드.
+| 메서드 | 경로 | 권한 |
+|---|---|---|
+| GET | `/calendar?from&to` | 로그인. 활성 모임만 |
+| GET | `/groups/:groupId/events?from&to` | 활성 회원 |
+| POST | `/groups/:groupId/events` | 회장·총무 |
+| GET | `/groups/:groupId/events/:eventId` | 활성 회원 |
+| PATCH | `/groups/:groupId/events/:eventId` | 회장·총무. 취소 포함 |
+| PUT | `/groups/:groupId/events/:eventId/attendance` | 활성 회원. 취소된 행사는 409 |
+| GET | `/groups/:groupId/officers` | 활성 회원. 현재 역할과 임기 이력 |
+| POST | `/groups/:groupId/officers` | 회장. 기존 역할 지정과 같다 |
+| POST | `/groups/:groupId/officers/:assignmentId/revoke` | 회장. 회장 역할은 거부 |
+| POST | `/push/tokens` | 로그인. `granted` 또는 `denied`. 거절 시 토큰 비활성 |
+| POST | `/jobs/reminders` | `x-gathering-job-secret`. 비밀이 없으면 404 |
+
+행사 등록·변경은 다른 활성 회원에게 한 번 알린다. 리마인드는 시작 1시간 전, 같은 시작 시각에 대해 한 번이다. Expo가 `DeviceNotRegistered`를 주면 그 토큰을 끈다.
+
+## 아직 API가 없음
+
+사진·영상, 신고 처리, 영수증 업로드, 수입·지출, 회비 입력, 회계 마감, 인계 실행, 이용권 승인, 계정 삭제, 관리자 대시보드. 저장 키 준비 코드는 `storage/r2.ts`에만 있다.
 
 이 경로를 404가 아닌 성공으로 흉내 내는 스텁은 두지 않았다.

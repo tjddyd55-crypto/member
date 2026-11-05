@@ -111,6 +111,46 @@ export const gatheringMembershipDecisionSchema = z.object({
   decision: z.enum(['APPROVE', 'REJECT']),
 });
 
+export const gatheringEventWriteSchema = z.object({
+  title: z.string().trim().min(1).max(80),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime().nullable().optional(),
+  place: z.string().trim().max(120).nullable().optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const gatheringEventUpdateSchema = gatheringEventWriteSchema
+  .partial()
+  .extend({
+    status: z.enum(['SCHEDULED', 'CANCELLED']).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, '변경할 항목이 없습니다.');
+
+export const gatheringAttendanceSchema = z.object({
+  status: z.enum(['ATTENDING', 'DECLINED', 'UNDECIDED']),
+});
+
+export const gatheringRangeQuerySchema = z.object({
+  from: z.string().datetime(),
+  to: z.string().datetime(),
+});
+
+export const gatheringPushSchema = z
+  .object({
+    permission: z.enum(['granted', 'denied']),
+    platform: z.enum(['IOS', 'ANDROID']),
+    token: z.string().trim().min(16).max(256).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.permission === 'granted' && !value.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['token'],
+        message: '알림 토큰이 필요합니다.',
+      });
+    }
+  });
+
 export type GatheringRegisterBody = z.infer<typeof gatheringRegisterSchema>;
 export type GatheringLoginBody = z.infer<typeof gatheringLoginSchema>;
 export type GatheringProfileBody = z.infer<typeof gatheringProfileSchema>;
@@ -194,6 +234,40 @@ export type GatheringInviteCreated = {
   invite: GatheringInviteView;
   token: string;
   link: string;
+};
+
+export type GatheringEventView = {
+  id: string;
+  groupId: string;
+  groupName: string;
+  title: string;
+  startsAt: string;
+  endsAt: string | null;
+  place: string | null;
+  description: string | null;
+  status: 'SCHEDULED' | 'CANCELLED';
+  myAttendance: 'ATTENDING' | 'DECLINED' | 'UNDECIDED' | null;
+  counts: { attending: number; declined: number; undecided: number };
+};
+
+export type GatheringOfficerView = {
+  assignmentId: string;
+  userId: string;
+  displayName: string;
+  role: string;
+  title: string | null;
+  assignedAt: string;
+};
+
+export type GatheringOfficerTermView = {
+  id: string;
+  userId: string;
+  displayName: string;
+  role: string;
+  title: string | null;
+  fiscalYear: number;
+  startedAt: string;
+  endedAt: string | null;
 };
 
 export type GatheringInvitePreview = {

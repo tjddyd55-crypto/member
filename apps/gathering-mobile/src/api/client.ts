@@ -1,10 +1,13 @@
 import Constants from 'expo-constants';
 import type {
+  GatheringEventView,
   GatheringGroupDetail,
   GatheringGroupSummary,
   GatheringInviteCreated,
   GatheringInvitePreview,
   GatheringMemberView,
+  GatheringOfficerTermView,
+  GatheringOfficerView,
   GatheringSessionResponse,
 } from '@member/contracts';
 import { tokenStorage } from '../storage/secure';
@@ -173,6 +176,60 @@ export const api = {
       {},
       false,
     );
+  },
+  events(groupId: string, from: string, to: string) {
+    const params = new URLSearchParams({ from, to });
+    return request<{ items: GatheringEventView[] }>(
+      `/api/gathering/groups/${groupId}/events?${params}`,
+    );
+  },
+  calendar(from: string, to: string) {
+    const params = new URLSearchParams({ from, to });
+    return request<{ items: GatheringEventView[] }>(`/api/gathering/calendar?${params}`);
+  },
+  createEvent(groupId: string, body: unknown) {
+    return request<GatheringEventView>(`/api/gathering/groups/${groupId}/events`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  updateEvent(groupId: string, eventId: string, body: unknown) {
+    return request<GatheringEventView>(`/api/gathering/groups/${groupId}/events/${eventId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  },
+  event(groupId: string, eventId: string) {
+    return request<GatheringEventView>(`/api/gathering/groups/${groupId}/events/${eventId}`);
+  },
+  setAttendance(groupId: string, eventId: string, status: 'ATTENDING' | 'DECLINED' | 'UNDECIDED') {
+    return request<GatheringEventView>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/attendance`,
+      { method: 'PUT', body: JSON.stringify({ status }) },
+    );
+  },
+  officers(groupId: string) {
+    return request<{ current: GatheringOfficerView[]; history: GatheringOfficerTermView[] }>(
+      `/api/gathering/groups/${groupId}/officers`,
+    );
+  },
+  assignOfficer(groupId: string, body: { userId: string; role: 'SECRETARY' | 'TREASURER' | 'EXECUTIVE'; title?: string }) {
+    return request<{ assignmentId: string }>(`/api/gathering/groups/${groupId}/officers`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  revokeOfficer(groupId: string, assignmentId: string) {
+    return request<{ ok: boolean }>(
+      `/api/gathering/groups/${groupId}/officers/${assignmentId}/revoke`,
+      { method: 'POST', body: JSON.stringify({}) },
+    );
+  },
+  registerPush(body: { permission: 'granted' | 'denied'; platform: 'IOS' | 'ANDROID'; token?: string }) {
+    return request<{ ok: boolean }>('/api/gathering/push/tokens', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   },
   acceptInvite(token: string) {
     return request<{ groupId: string; status: string }>(

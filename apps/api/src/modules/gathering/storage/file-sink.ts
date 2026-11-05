@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from '../../../config/env.js';
@@ -77,12 +77,26 @@ class FileSinkStorage implements ObjectStorage {
     });
   }
 
-  async presignPut(input: { key: string; contentType: string; expiresInSeconds: number }): Promise<SignedTarget> {
+  async presignPut(input: {
+    key: string;
+    contentType: string;
+    sizeBytes: number;
+    expiresInSeconds: number;
+  }): Promise<SignedTarget> {
     return {
-      url: this.signedUrl('PUT', input.key, input.expiresInSeconds),
+      url: this.signedUrl('PUT', input.key, input.expiresInSeconds, input.sizeBytes),
       expiresAt: expiry(input.expiresInSeconds),
-      headers: { 'Content-Type': input.contentType },
+      headers: { 'Content-Type': input.contentType, 'Content-Length': String(input.sizeBytes) },
     };
+  }
+
+  async relocate(fromKey: string, toKey: string) {
+    try {
+      await copyFile(this.pathFor(fromKey), this.pathFor(toKey));
+    } catch {
+      throw new AppError(409, 'OBJECT_MISSING', '업로드된 파일을 찾지 못했습니다.');
+    }
+    await this.remove(fromKey);
   }
 
   async presignGet(input: { key: string; expiresInSeconds: number }): Promise<SignedTarget> {
@@ -111,10 +125,11 @@ class FileSinkStorage implements ObjectStorage {
     await unlink(this.pathFor(key)).catch(() => undefined);
   }
 
-  private signedUrl(method: 'PUT' | 'GET', key: string, expiresInSeconds: number) {
+  private signedUrl(method: 'PUT' | 'GET', key: string, expiresInSeconds: number, sizeBytes?: number) {
     const exp = Date.now() + expiresInSeconds * 1000;
-    const sig = sign(method, key, exp);
+    const sig = sign(method, key, exp, sizeBytes);
     const query = new URLSearchParams({ key, exp: String(exp), sig });
+    if (sizeBytes != null) query.set('len', String(sizeBytes));
     return `${this.baseUrl}/object?${query.toString()}`;
   }
 
@@ -136,7 +151,9 @@ class FileSinkStorage implements ObjectStorage {
       const key = url.searchParams.get('key') ?? '';
       const exp = Number(url.searchParams.get('exp'));
       const sig = url.searchParams.get('sig') ?? '';
-      if (!method || !key || !verify(method, key, exp, sig)) {
+      const len = url.searchParams.get('len');
+      const sizeBytes = len == null ? undefined : Number(len);
+      if (!method || !key || !verify(method, key, exp, sig, sizeBytes)) {
         response.writeHead(403).end();
         return;
       }
@@ -146,6 +163,10 @@ class FileSinkStorage implements ObjectStorage {
         return;
       }
       const body = await readBody(request);
+      if (sizeBytes != null && body.length !== sizeBytes) {
+        response.writeHead(403).end();
+        return;
+      }
       await writeFile(this.pathFor(key), body);
       response.writeHead(200).end();
     } catch {
@@ -158,13 +179,15 @@ function expiry(expiresInSeconds: number) {
   return new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 }
 
-function sign(method: string, key: string, exp: number) {
-  return createHmac('sha256', env.JWT_ACCESS_SECRET).update(`${method}\n${key}\n${exp}`).digest('hex');
+function sign(method: string, key: string, exp: number, sizeBytes?: number) {
+  const payload = sizeBytes == null ? `${method}\n${key}\n${exp}` : `${method}\n${key}\n${exp}\n${sizeBytes}`;
+  return createHmac('sha256', env.JWT_ACCESS_SECRET).update(payload).digest('hex');
 }
 
-function verify(method: string, key: string, exp: number, sig: string) {
+function verify(method: string, key: string, exp: number, sig: string, sizeBytes?: number) {
   if (!Number.isFinite(exp) || exp < Date.now()) return false;
-  const expected = sign(method, key, exp);
+  if (sizeBytes != null && !Number.isInteger(sizeBytes)) return false;
+  const expected = sign(method, key, exp, sizeBytes);
   const left = Buffer.from(sig);
   const right = Buffer.from(expected);
   if (left.length !== right.length) return false;

@@ -25,6 +25,7 @@ describe('개발용 파일 저장소', () => {
       const put = await devObjectStorage().presignPut({
         key: 'probe',
         contentType: 'text/plain',
+        sizeBytes: 2,
         expiresInSeconds: 60,
       });
       const response = await fetch(put.url, {

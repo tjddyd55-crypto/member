@@ -13,11 +13,11 @@ export function subscriptionExpiry(startsAt: Date): Date {
 
 /**
  * 만료 30일, 7일, 당일(한국 달력)에 한 번씩 알린다.
- * 이미 지난 이용권은 알림 창이 아니다.
+ * 만료 시각이 지나도 같은 한국 날짜이면 당일 알림을 남긴다.
  */
 export function subscriptionNoticeWindow(expiresAt: Date, now: Date): SubscriptionNoticeWindow | null {
-  if (now.getTime() >= expiresAt.getTime()) return null;
   if (kstDateKey(now) === kstDateKey(expiresAt)) return 'DAY_0';
+  if (now.getTime() >= expiresAt.getTime()) return null;
   const remaining = expiresAt.getTime() - now.getTime();
   if (remaining <= 7 * DAY_MS) return 'DAYS_7';
   if (remaining <= 30 * DAY_MS) return 'DAYS_30';

@@ -198,6 +198,35 @@ describe('모임 이용권', () => {
     });
     expect(noteCount).toBe(1);
   });
+
+  it('미래 시작 갱신은 현재 이용권을 바로 끄지 않는다', async () => {
+    const owner = await register('미래회장');
+    const group = await createGroup(owner.tokens.accessToken);
+    const headers = { ...auth(owner.tokens.accessToken), 'x-gathering-operator-secret': currentOperatorSecret() };
+    const current = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/admin/groups/${group.id}/subscription`,
+      headers,
+      payload: { source: 'PAID', idempotencyKey: `now-${group.id}` },
+    });
+    expect(current.statusCode).toBe(200);
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const scheduled = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/admin/groups/${group.id}/subscription`,
+      headers,
+      payload: { source: 'PAID', idempotencyKey: `later-${group.id}`, startsAt: future },
+    });
+    expect(scheduled.statusCode).toBe(200);
+    const still = await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: current.json().id } });
+    expect(still.status).toBe('ACTIVE');
+    const view = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/subscription`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(view.json().uploadsAllowed).toBe(true);
+  });
 });
 
 async function cleanup() {

@@ -79,16 +79,14 @@ export async function dispatchSubscriptionNotices(now = new Date()) {
   let created = 0;
   for (const row of rows) {
     if (!row.expiresAt) continue;
+    const window = subscriptionNoticeWindow(row.expiresAt, now);
+    if (window) created += await notifyPresidents(row.groupId, row.expiresAt, window);
     if (row.expiresAt.getTime() <= now.getTime()) {
       await prisma.gatheringSubscription.updateMany({
         where: { id: row.id, status: 'ACTIVE' },
         data: { status: 'EXPIRED' },
       });
-      continue;
     }
-    const window = subscriptionNoticeWindow(row.expiresAt, now);
-    if (!window) continue;
-    created += await notifyPresidents(row.groupId, row.expiresAt, window);
   }
   return { created };
 }
@@ -108,8 +106,15 @@ async function saveGrant(
     }
     return replay;
   }
-  const previous = await tx.gatheringSubscription.findFirst({ where: { groupId, status: 'ACTIVE' } });
-  if (previous) {
+  const now = new Date();
+  const previous = await tx.gatheringSubscription.findFirst({
+    where: { groupId, status: 'ACTIVE' },
+    orderBy: { startsAt: 'desc' },
+  });
+  const currentStillCovers = Boolean(
+    previous?.startsAt && previous.expiresAt && previous.startsAt <= now && previous.expiresAt > now,
+  );
+  if (previous && !(startsAt > now && currentStillCovers)) {
     await tx.gatheringSubscription.update({ where: { id: previous.id }, data: { status: 'EXPIRED' } });
   }
   const created = await tx.gatheringSubscription.create({

@@ -13,7 +13,8 @@ describe('모임 이용권 기간', () => {
     expect(subscriptionNoticeWindow(expires, new Date('2026-11-10T00:00:00.000Z'))).toBe('DAYS_30');
     expect(subscriptionNoticeWindow(expires, new Date('2026-11-28T00:00:00.000Z'))).toBe('DAYS_7');
     expect(subscriptionNoticeWindow(expires, new Date('2026-11-30T16:00:00.000Z'))).toBe('DAY_0');
-    expect(subscriptionNoticeWindow(expires, expires)).toBeNull();
+    expect(subscriptionNoticeWindow(expires, expires)).toBe('DAY_0');
+    expect(subscriptionNoticeWindow(expires, new Date('2026-12-01T15:00:00.000Z'))).toBeNull();
   });
 
   it('같은 만료 시각의 알림은 한 번만 만든다', () => {

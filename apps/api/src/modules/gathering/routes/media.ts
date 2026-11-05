@@ -12,6 +12,7 @@ import {
   completeMediaUpload,
   createMediaUploads,
   deleteMedia,
+  resumeMediaUpload,
   storageSummary,
 } from '../media/commands.js';
 import { downloadMedia, listAlbums, listEventMedia } from '../media/queries.js';
@@ -31,6 +32,11 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     const params = eventParams.parse(request.params);
     const body = gatheringMediaUploadSchema.parse(request.body);
     return createMediaUploads(requireGatheringUserId(request), params.groupId, params.eventId, body.items);
+  });
+
+  app.post('/api/gathering/groups/:groupId/events/:eventId/media/:assetId/resume', auth, async (request) => {
+    const params = eventAssetParams.parse(request.params);
+    return resumeMediaUpload(requireGatheringUserId(request), params.groupId, params.eventId, params.assetId);
   });
 
   app.post('/api/gathering/groups/:groupId/events/:eventId/media/:assetId/complete', auth, async (request) => {

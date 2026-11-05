@@ -144,6 +144,7 @@ describe('행사 사진·영상', () => {
     expect(created.statusCode).toBe(200);
     const item = created.json().items[0];
     expect(item.uploadUrl).toContain('https://storage.test/put/');
+    expect(item.headers['Content-Length']).toBe('32');
     const stored = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: item.id } });
     expect(stored.storageKey).toBe(`test/gatherings/${group.id}/events/${event.id}/photos/${stored.storageKey.split('/').at(-1)}`);
     expect(stored.status).toBe('PENDING');
@@ -157,7 +158,7 @@ describe('행사 사진·영상', () => {
     expect(missing.statusCode).toBe(409);
     expect(missing.json().error.code).toBe('OBJECT_MISSING');
 
-    storage.put(stored.storageKey, jpeg(32));
+    storage.put(`${stored.storageKey}-pending`, jpeg(32));
     const ready = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${item.id}/complete`,
@@ -172,6 +173,17 @@ describe('행사 사진·영상', () => {
       payload: { sizeBytes: 32 },
     });
     expect(again.statusCode).toBe(200);
+    expect(storage.objects.has(stored.storageKey)).toBe(true);
+    expect(storage.objects.has(`${stored.storageKey}-pending`)).toBe(false);
+    storage.put(stored.storageKey, jpeg(16));
+    const tampered = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${item.id}/complete`,
+      headers: auth(member.tokens.accessToken),
+      payload: { sizeBytes: 32 },
+    });
+    expect(tampered.statusCode).toBe(409);
+    expect(tampered.json().error.code).toBe('SIZE_MISMATCH');
 
     const list = await app.inject({
       method: 'GET',
@@ -264,7 +276,7 @@ describe('행사 사진·영상', () => {
     });
     const assetId = created.json().items[0].id as string;
     const row = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: assetId } });
-    storage.put(row.storageKey, Buffer.alloc(32, 7));
+    storage.put(`${row.storageKey}-pending`, Buffer.alloc(32, 7));
     const spoofed = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${assetId}/complete`,
@@ -272,6 +284,7 @@ describe('행사 사진·영상', () => {
       payload: { sizeBytes: 32 },
     });
     expect(spoofed.statusCode).toBe(415);
+    expect(storage.objects.has(`${row.storageKey}-pending`)).toBe(false);
 
     const retry = await app.inject({
       method: 'POST',
@@ -281,7 +294,7 @@ describe('행사 사진·영상', () => {
     });
     const secondId = retry.json().items[0].id as string;
     const second = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: secondId } });
-    storage.put(second.storageKey, jpeg(32));
+    storage.put(`${second.storageKey}-pending`, jpeg(32));
     await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${secondId}/complete`,
@@ -338,7 +351,7 @@ describe('행사 사진·영상', () => {
     });
     const assetId = created.json().items[0].id as string;
     const row = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: assetId } });
-    storage.put(row.storageKey, jpeg(24));
+    storage.put(`${row.storageKey}-pending`, jpeg(24));
     await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${assetId}/complete`,
@@ -381,6 +394,30 @@ describe('행사 사진·영상', () => {
     });
     expect(unconfigured.statusCode).toBe(503);
     expect(unconfigured.json().error.code).toBe('STORAGE_UNCONFIGURED');
+  });
+
+  it('재시도는 새 예약을 만들지 않고 대기 중인 업로드를 다시 연다', async () => {
+    const owner = await register('재시도회장');
+    const group = await createGroup(owner.tokens.accessToken, '재시도 모임');
+    await grantPass(group.id, owner.user.id);
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-03-01T03:00:00.000Z');
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/media/uploads`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 24 }] },
+    });
+    const assetId = created.json().items[0].id as string;
+    const resumed = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${assetId}/resume`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json().status).toBe('PENDING');
+    expect(resumed.json().headers['Content-Length']).toBe('24');
+    const count = await prisma.gatheringMediaAsset.count({ where: { eventId: event.id } });
+    expect(count).toBe(1);
   });
 });
 

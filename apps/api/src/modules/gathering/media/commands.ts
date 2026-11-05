@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { GatheringMediaKind } from '@prisma/client';
+import type { GatheringMediaAsset, GatheringMediaKind } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import {
   SIGNED_URL_TTL_SECONDS,
@@ -39,6 +39,7 @@ type ReservedUpload = {
   kind: GatheringMediaKind;
   mimeType: string;
   storageKey: string;
+  sizeBytes: number;
 };
 
 export async function createMediaUploads(
@@ -67,9 +68,10 @@ export async function completeMediaUpload(
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_UPLOAD');
   const asset = await requireOwnedPendingOrReady(userId, groupId, eventId, assetId);
-  if (asset.status === 'READY') return { media: presentMedia(asset, userId) };
+  if (asset.status === 'READY') return revalidateReady(asset, userId);
   await assertPendingStillValid(asset.id, asset.createdAt, asset.sizeBytes, sizeBytes);
-  await confirmStoredObject(asset.storageKey, asset.mimeType, sizeBytes);
+  await confirmStoredObject(pendingObjectKey(asset.storageKey), asset.mimeType, sizeBytes);
+  await promotePendingObject(asset.storageKey, sizeBytes);
   const ready = await markReady(asset.id);
   await writeGatheringAudit(prisma, {
     groupId,
@@ -82,15 +84,43 @@ export async function completeMediaUpload(
   return { media: presentMedia(ready, userId) };
 }
 
+export async function resumeMediaUpload(userId: string, groupId: string, eventId: string, assetId: string) {
+  await requireGroupMember(userId, groupId);
+  const asset = await requireOwnedPendingOrReady(userId, groupId, eventId, assetId);
+  if (asset.status === 'READY') {
+    const checked = await revalidateReady(asset, userId);
+    return { status: 'READY' as const, media: checked.media };
+  }
+  if (!isPendingUploadLive(asset.createdAt, new Date())) {
+    await discardPending(asset.storageKey);
+    throw new AppError(409, 'UPLOAD_EXPIRED', '업로드 확인 시간이 지났습니다. 다시 시도하세요.');
+  }
+  const storage = currentObjectStorage();
+  const target = await storage.presignPut({
+    key: pendingObjectKey(asset.storageKey),
+    contentType: asset.mimeType,
+    sizeBytes: Number(asset.sizeBytes),
+    expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+  });
+  return {
+    status: 'PENDING' as const,
+    id: asset.id,
+    uploadUrl: target.url,
+    expiresAt: target.expiresAt,
+    headers: target.headers,
+  };
+}
+
 export async function deleteMedia(userId: string, groupId: string, assetId: string) {
   const access = await requireGroupMember(userId, groupId);
   const asset = await prisma.gatheringMediaAsset.findFirst({
-    where: { id: assetId, groupId, deletedAt: null, status: { in: ['PENDING', 'READY'] } },
+    where: { id: assetId, groupId, deletedAt: null, status: { in: ['PENDING', 'READY', 'FAILED'] } },
   });
   if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
   assertCanDelete(access, asset.uploaderUserId);
   const storage = currentObjectStorage();
   await storage.remove(asset.storageKey);
+  await storage.remove(pendingObjectKey(asset.storageKey));
   await markDeleted(asset.id, groupId, access.userId);
   return { ok: true as const };
 }
@@ -156,7 +186,13 @@ async function insertPending(
       status: 'PENDING',
     },
   });
-  return { id: created.id, kind: created.kind, mimeType: created.mimeType, storageKey };
+  return {
+    id: created.id,
+    kind: created.kind,
+    mimeType: created.mimeType,
+    storageKey,
+    sizeBytes: item.sizeBytes,
+  };
 }
 
 async function signUploads(
@@ -167,8 +203,9 @@ async function signUploads(
     const items = [];
     for (const row of reserved) {
       const target = await storage.presignPut({
-        key: row.storageKey,
+        key: pendingObjectKey(row.storageKey),
         contentType: row.mimeType,
+        sizeBytes: row.sizeBytes,
         expiresInSeconds: SIGNED_URL_TTL_SECONDS,
       });
       items.push({
@@ -216,19 +253,46 @@ async function assertPendingStillValid(assetId: string, createdAt: Date, reserve
   }
 }
 
+function pendingObjectKey(finalKey: string) {
+  return `${finalKey}-pending`;
+}
+
+async function revalidateReady(asset: GatheringMediaAsset, userId: string) {
+  const head = await currentObjectStorage().head(asset.storageKey);
+  if (!head || head.sizeBytes !== Number(asset.sizeBytes)) {
+    throw new AppError(409, 'SIZE_MISMATCH', '저장된 파일이 확인된 크기와 다릅니다.');
+  }
+  return { media: presentMedia(asset, userId) };
+}
+
 async function confirmStoredObject(storageKey: string, mimeType: string, sizeBytes: number) {
   const storage = currentObjectStorage();
   const head = await storage.head(storageKey);
   if (!head) throw new AppError(409, 'OBJECT_MISSING', '업로드된 파일을 찾지 못했습니다.');
   if (head.sizeBytes !== sizeBytes) {
-    await failByKey(storageKey);
+    await discardPending(finalKeyFromPending(storageKey));
     throw new AppError(409, 'SIZE_MISMATCH', '저장소의 파일 크기가 일치하지 않습니다.');
   }
   const header = await storage.readPrefix(storageKey, 16);
   if (!matchesDeclaredType(mimeType, header)) {
-    await failByKey(storageKey);
+    await discardPending(finalKeyFromPending(storageKey));
     throw new AppError(415, 'UNSUPPORTED_TYPE', '파일 내용이 선언한 형식과 다릅니다.');
   }
+}
+
+async function promotePendingObject(finalKey: string, sizeBytes: number) {
+  const storage = currentObjectStorage();
+  await storage.relocate(pendingObjectKey(finalKey), finalKey);
+  const head = await storage.head(finalKey);
+  if (!head || head.sizeBytes !== sizeBytes) {
+    await storage.remove(finalKey);
+    await discardPending(finalKey);
+    throw new AppError(409, 'SIZE_MISMATCH', '확정된 파일 크기가 일치하지 않습니다.');
+  }
+}
+
+function finalKeyFromPending(pendingKey: string) {
+  return pendingKey.endsWith('-pending') ? pendingKey.slice(0, -'-pending'.length) : pendingKey;
 }
 
 async function markReady(assetId: string) {
@@ -238,9 +302,10 @@ async function markReady(assetId: string) {
   });
 }
 
-async function failByKey(storageKey: string) {
+async function discardPending(finalKey: string) {
+  await currentObjectStorage().remove(pendingObjectKey(finalKey));
   await prisma.gatheringMediaAsset.updateMany({
-    where: { storageKey, status: 'PENDING' },
+    where: { storageKey: finalKey, status: 'PENDING' },
     data: { status: 'FAILED' },
   });
 }

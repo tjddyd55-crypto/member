@@ -264,9 +264,10 @@ export const api = {
       `/api/gathering/groups/${groupId}/albums${query}`,
     );
   },
-  eventMedia(groupId: string, eventId: string) {
+  eventMedia(groupId: string, eventId: string, cursor?: string) {
+    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
     return request<{ items: GatheringMediaView[]; nextCursor: string | null }>(
-      `/api/gathering/groups/${groupId}/events/${eventId}/media`,
+      `/api/gathering/groups/${groupId}/events/${eventId}/media${query}`,
     );
   },
   createMediaUploads(
@@ -286,6 +287,21 @@ export const api = {
       `/api/gathering/groups/${groupId}/events/${eventId}/media/uploads`,
       { method: 'POST', body: JSON.stringify({ items }) },
     );
+  },
+  resumeMedia(groupId: string, eventId: string, assetId: string) {
+    return request<
+      | { status: 'READY'; media: GatheringMediaView }
+      | {
+          status: 'PENDING';
+          id: string;
+          uploadUrl: string;
+          expiresAt: string;
+          headers: Record<string, string>;
+        }
+    >(`/api/gathering/groups/${groupId}/events/${eventId}/media/${assetId}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
   },
   completeMedia(groupId: string, eventId: string, assetId: string, sizeBytes: number) {
     return request<{ media: GatheringMediaView }>(

@@ -17,6 +17,9 @@ type Job = {
   total: number;
   message: string;
   file: PreparedUpload;
+  assetId?: string;
+  uploadUrl?: string;
+  headers?: Record<string, string>;
 };
 
 export function MediaPane({ groupId, eventId }: { groupId: string; eventId: string }) {
@@ -26,12 +29,14 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
   const [message, setMessage] = useState('');
   const [uploadsAllowed, setUploadsAllowed] = useState(false);
   const [viewer, setViewer] = useState<{ uri: string; kind: 'PHOTO' | 'VIDEO' } | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
     try {
       const [media, usage] = await Promise.all([api.eventMedia(groupId, eventId), api.storage(groupId)]);
       setItems(media.items);
+      setNextCursor(media.nextCursor);
       setUploadsAllowed(usage.subscriptionActive);
       setStatus('ready');
     } catch (error) {
@@ -40,25 +45,60 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
     }
   }, [eventId, groupId]);
 
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    const media = await api.eventMedia(groupId, eventId, nextCursor);
+    setItems((current) => [...current, ...media.items]);
+    setNextCursor(media.nextCursor);
+  };
+
   useEffect(() => {
     void load();
   }, [load]);
 
-  const sendOne = async (job: Job) => {
+  const reserveBatch = async (pending: Job[]) => {
+    for (let index = 0; index < pending.length; index += 20) {
+      const chunk = pending.slice(index, index + 20);
+      const created = await api.createMediaUploads(groupId, eventId, chunk.map((job) => toIntent(job.file)));
+      chunk.forEach((job, offset) => {
+        const target = created.items[offset];
+        if (!target) return;
+        job.assetId = target.id;
+        job.uploadUrl = target.uploadUrl;
+        job.headers = target.headers;
+        updateJob(job.id, { assetId: target.id, uploadUrl: target.uploadUrl, headers: target.headers });
+      });
+    }
+  };
+
+  const transfer = async (job: Job) => {
     updateJob(job.id, { state: 'uploading', message: '' });
     try {
-      const created = await api.createMediaUploads(groupId, eventId, [toIntent(job.file)]);
-      const target = created.items[0];
-      if (!target) throw new Error('업로드 주소를 받지 못했습니다.');
-      await putPreparedFile(job.file.uri, target.uploadUrl, target.headers, (loaded, total) => {
+      if (!job.assetId) await reserveBatch([job]);
+      if (!job.assetId) throw new Error('업로드 주소를 받지 못했습니다.');
+      let uploadUrl = job.uploadUrl;
+      let headers = job.headers;
+      if (!uploadUrl || !headers) {
+        const resumed = await api.resumeMedia(groupId, eventId, job.assetId);
+        if (resumed.status === 'READY') {
+          updateJob(job.id, { state: 'done', loaded: job.file.sizeBytes, total: job.file.sizeBytes });
+          return;
+        }
+        uploadUrl = resumed.uploadUrl;
+        headers = resumed.headers;
+      }
+      await putPreparedFile(job.file.uri, uploadUrl, headers, (loaded, total) => {
         updateJob(job.id, { loaded, total, state: 'uploading' });
       });
       updateJob(job.id, { state: 'confirming' });
-      await api.completeMedia(groupId, eventId, target.id, job.file.sizeBytes);
-      updateJob(job.id, { state: 'done', loaded: job.file.sizeBytes, total: job.file.sizeBytes });
+      await api.completeMedia(groupId, eventId, job.assetId, job.file.sizeBytes);
+      job.uploadUrl = undefined;
+      updateJob(job.id, { state: 'done', loaded: job.file.sizeBytes, total: job.file.sizeBytes, uploadUrl: undefined });
     } catch (error) {
+      job.uploadUrl = undefined;
       updateJob(job.id, {
         state: 'failed',
+        uploadUrl: undefined,
         message: error instanceof ApiError ? error.message : error instanceof Error ? error.message : '업로드에 실패했습니다.',
       });
     }
@@ -94,7 +134,9 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
       }
     }
     setJobs((current) => [...next, ...current]);
-    for (const job of next) await sendOne(job);
+    const fresh = next.filter((job) => !job.assetId);
+    await reserveBatch(fresh);
+    for (const job of next) await transfer(job);
     await load();
   };
 
@@ -123,7 +165,7 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
           </Body>
           {job.message ? <Body>{job.message}</Body> : null}
           {canRetryTransfer(job.state) ? (
-            <Button label="다시 시도" variant="secondary" onPress={() => void sendOne(job).then(() => load())} />
+            <Button label="다시 시도" variant="secondary" onPress={() => void transfer(job).then(() => load())} />
           ) : null}
         </View>
       ))}
@@ -135,6 +177,7 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
           <MediaThumb key={item.id} groupId={groupId} item={item} onOpen={() => void open(item)} />
         ))}
       </View>
+      {nextCursor ? <Button label="이전 사진 더 보기" variant="secondary" onPress={() => void loadMore()} /> : null}
       {viewer ? <MediaViewer kind={viewer.kind} uri={viewer.uri} onClose={() => setViewer(null)} /> : null}
     </View>
   );

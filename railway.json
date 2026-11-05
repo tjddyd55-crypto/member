@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "buildCommand": "npx prisma generate --schema prisma/schema.prisma && npm run build"
+  },
+  "deploy": {
+    "preDeployCommand": "npm run db:migrate:deploy",
+    "startCommand": "npm run start -w @member/api",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}

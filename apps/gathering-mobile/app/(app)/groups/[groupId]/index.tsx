@@ -178,6 +178,11 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
         variant="secondary"
         onPress={() => router.push(`/(app)/groups/${group.id}/officers`)}
       />
+      <Button
+        label="모임 설정"
+        variant="secondary"
+        onPress={() => router.push(`/(app)/groups/${group.id}/settings`)}
+      />
       {canSettings ? (
         <Button
           label={group.inviteRequiresApproval ? '초대 승인 끄기' : '초대 승인 켜기'}

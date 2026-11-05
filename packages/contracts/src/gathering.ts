@@ -63,6 +63,8 @@ export const gatheringGroupUpdateSchema = z
     name: gatheringDisplayNameSchema.optional(),
     description: z.string().trim().max(500).nullable().optional(),
     inviteRequiresApproval: z.boolean().optional(),
+    fiscalStartMonth: z.number().int().min(1).max(12).optional(),
+    fiscalStartDay: z.number().int().min(1).max(31).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, '변경할 항목이 없습니다.');
 
@@ -180,7 +182,8 @@ export const gatheringTransactionSchema = z.object({
 });
 
 export const gatheringDueSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.string().min(1).optional(),
+  displayName: z.string().trim().min(1).max(40).optional(),
   year: z.number().int().min(2000).max(2100),
   amountWon: z.number().int(),
   paidAmountWon: z.number().int(),
@@ -281,6 +284,8 @@ export type GatheringGroupDetail = {
   name: string;
   description: string | null;
   inviteRequiresApproval: boolean;
+  fiscalStartMonth: number;
+  fiscalStartDay: number;
   roles: string[];
   permissions: string[];
   president: { userId: string; displayName: string; localJcName: string } | null;
@@ -430,8 +435,11 @@ export type GatheringFinanceSummary = {
   incomeWon: number;
   expenseWon: number;
   balanceWon: number;
+  eventIncomeWon: number;
+  duesWon: number;
+  years: Array<{ year: number; status: string; startsAt: string; endsAt: string }>;
   dues: GatheringDueView[];
-  events: Array<{ eventId: string; title: string; incomeWon: number; expenseWon: number }>;
+  events: Array<{ eventId: string; title: string; incomeWon: number; expenseWon: number; netWon: number }>;
 };
 
 export type GatheringStorageUsage = {

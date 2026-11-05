@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange } from './fiscal-year.js';
+import { attributePayment, calendarYearKst, calendarYearRange, fiscalWindowsCovering, fiscalYearOf, fiscalYearRange } from './fiscal-year.js';
 
 function kst(isoLocal: string): Date {
   return new Date(`${isoLocal}+09:00`);
@@ -50,5 +50,34 @@ describe('회계연도 귀속', () => {
     expect(calendarYearKst(range.startsAt)).toBe(2026);
     expect(calendarYearKst(range.endsAt)).toBe(2026);
     expect(fiscalYearOf(range.endsAt)).toBe(2027);
+  });
+
+  it('모임이 정한 시작일 직전부터 다음 시작 직전까지를 한 해로 본다', () => {
+    const june = { startMonth: 6, startDay: 1 };
+    const range = fiscalYearRange(2026, june);
+    expect(range.startsAt.toISOString()).toBe(kst('2025-06-01T00:00:00.000').toISOString());
+    expect(range.endsAt.toISOString()).toBe(kst('2026-05-31T23:59:59.999').toISOString());
+    expect(fiscalYearOf(kst('2026-05-31T23:59:59.999'), june)).toBe(2026);
+    expect(fiscalYearOf(kst('2026-06-01T00:00:00.000'), june)).toBe(2027);
+  });
+
+  it('기간을 바꿔도 열린 해에 있던 시작과 끝은 새 창 안에 남는다', () => {
+    const previous = fiscalYearRange(2026);
+    const june = { startMonth: 6, startDay: 1 };
+    const windows = fiscalWindowsCovering(previous.startsAt, previous.endsAt, june);
+    for (const instant of [previous.startsAt, previous.endsAt]) {
+      const owner = windows.find((window) => window.startsAt <= instant && instant <= window.endsAt);
+      expect(owner?.fiscalYear).toBe(fiscalYearOf(instant, june));
+    }
+    expect(windows.map((window) => window.fiscalYear)).toEqual([2026, 2027]);
+  });
+
+  it('2월 29일 시작은 윤년이 아니면 2월 28일에 시작한다', () => {
+    const leapStart = { startMonth: 2, startDay: 29 };
+    const leap = fiscalYearRange(2025, leapStart);
+    expect(leap.startsAt.toISOString()).toBe(kst('2024-02-29T00:00:00.000').toISOString());
+    expect(leap.endsAt.toISOString()).toBe(kst('2025-02-27T23:59:59.999').toISOString());
+    const common = fiscalYearRange(2026, leapStart);
+    expect(common.startsAt.toISOString()).toBe(kst('2025-02-28T00:00:00.000').toISOString());
   });
 });

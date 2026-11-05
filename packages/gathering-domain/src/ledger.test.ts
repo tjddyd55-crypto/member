@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dueStanding, summarizeLedger } from './ledger.js';
+import { dueStanding, summarizeFinance, summarizeLedger } from './ledger.js';
 import { parseWonAllowZero } from './money.js';
 import { validateReceiptUpload } from './receipt-policy.js';
 
@@ -11,6 +11,18 @@ describe('행사 장부 합계', () => {
         { direction: 'EXPENSE', amountWon: 700 },
       ]),
     ).toEqual({ incomeWon: 5000, expenseWon: 700, balanceWon: 5300 });
+  });
+
+  it('회비 납부액은 행사 수입과 겹치지 않게 합계에 한 번만 들어간다', () => {
+    const totals = summarizeFinance({
+      openingBalanceWon: 0,
+      entries: [{ direction: 'INCOME', amountWon: 3000 }],
+      duesPaidWon: 10000,
+    });
+    expect(totals.eventIncomeWon).toBe(3000);
+    expect(totals.duesWon).toBe(10000);
+    expect(totals.incomeWon).toBe(13000);
+    expect(totals.balanceWon).toBe(13000);
   });
 
   it('납부액으로 회비 상태를 나누고 0원을 납부액으로만 허용한다', () => {

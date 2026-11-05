@@ -181,7 +181,10 @@ export const api = {
   group(groupId: string) {
     return request<GatheringGroupDetail>(`/api/gathering/groups/${groupId}`);
   },
-  updateGroup(groupId: string, body: { inviteRequiresApproval?: boolean; name?: string }) {
+  updateGroup(
+    groupId: string,
+    body: { inviteRequiresApproval?: boolean; name?: string; fiscalStartMonth?: number; fiscalStartDay?: number },
+  ) {
     return request<GatheringGroupDetail>(`/api/gathering/groups/${groupId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),

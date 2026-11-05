@@ -1,6 +1,15 @@
 import type { Prisma } from '@prisma/client';
+import type { FiscalPeriod } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
+
+export async function readFiscalPeriod(tx: Prisma.TransactionClient, groupId: string): Promise<FiscalPeriod> {
+  const group = await tx.gatheringGroup.findUniqueOrThrow({
+    where: { id: groupId },
+    select: { fiscalStartMonth: true, fiscalStartDay: true },
+  });
+  return { startMonth: group.fiscalStartMonth, startDay: group.fiscalStartDay };
+}
 
 export async function lockGroupOpenYear(tx: Prisma.TransactionClient, groupId: string, year: number) {
   await lockGroup(tx, groupId);

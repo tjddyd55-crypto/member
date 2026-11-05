@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from '../../../lib/errors.js';
 import { verifyGatheringAccessToken } from '../tokens.js';
 import { gatheringAuthRoutes } from './auth.js';
+import { gatheringFinanceRoutes } from './finance.js';
 import { gatheringGroupRoutes } from './groups.js';
 import { gatheringMediaRoutes } from './media.js';
 import { gatheringScheduleRoutes } from './schedule.js';
@@ -20,6 +21,7 @@ export const gatheringRoutes: FastifyPluginAsync = async (app) => {
   await app.register(gatheringGroupRoutes);
   await app.register(gatheringScheduleRoutes);
   await app.register(gatheringMediaRoutes);
+  await app.register(gatheringFinanceRoutes);
 };
 
 declare module 'fastify' {

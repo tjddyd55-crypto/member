@@ -3,9 +3,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringEventView } from '@member/contracts';
 import { Pressable, Text, View } from 'react-native';
 import { api } from '../../../../../src/api/client';
-import { UNBUILT_FINANCE } from '../../../../../src/copy';
+import { EventFinancePane } from '../../../../../src/features/finance/FinancePanes';
 import { MediaPane } from '../../../../../src/features/media/MediaPane';
-import { Body, Button, EmptyState, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../../src/design/ui';
+import { Body, Button, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../../src/design/ui';
 import { theme } from '../../../../../src/theme';
 
 const ATTENDANCE = [
@@ -27,6 +27,8 @@ export default function EventDetailScreen() {
   const [place, setPlace] = useState('');
   const [title, setTitle] = useState('');
   const [canManage, setCanManage] = useState(false);
+  const [canFinance, setCanFinance] = useState(false);
+  const [canReceipt, setCanReceipt] = useState(false);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -36,6 +38,8 @@ export default function EventDetailScreen() {
       setTitle(next.title);
       setPlace(next.place ?? '');
       setCanManage(group.permissions.includes('EVENT_MANAGE'));
+      setCanFinance(group.permissions.includes('FINANCE_WRITE'));
+      setCanReceipt(group.permissions.includes('RECEIPT_WRITE'));
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '행사를 불러오지 못했습니다.');
@@ -82,7 +86,14 @@ export default function EventDetailScreen() {
             ))}
           </View>
           {tab === 'media' ? <MediaPane eventId={eventId} groupId={groupId} /> : null}
-          {tab === 'finance' ? <EmptyState title="재무 입력은 아직 없습니다" description={UNBUILT_FINANCE} /> : null}
+          {tab === 'finance' ? (
+            <EventFinancePane
+              canAttach={canReceipt}
+              canWrite={canFinance}
+              eventId={eventId}
+              groupId={groupId}
+            />
+          ) : null}
           {tab === 'info' ? (
             <>
           <Body>{event.status === 'CANCELLED' ? '취소된 행사' : event.groupName}</Body>

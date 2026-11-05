@@ -4,6 +4,9 @@ import type {
   GatheringAlbumEvent,
   GatheringAlbumYear,
   GatheringEventView,
+  GatheringFinanceSummary,
+  GatheringReceiptView,
+  GatheringTransactionView,
   GatheringGroupDetail,
   GatheringGroupSummary,
   GatheringInviteCreated,
@@ -318,6 +321,53 @@ export const api = {
     return request<{ ok: boolean }>(`/api/gathering/groups/${groupId}/media/${assetId}`, {
       method: 'DELETE',
     });
+  },
+  finance(groupId: string, year?: number) {
+    const query = year ? `?year=${year}` : '';
+    return request<GatheringFinanceSummary>(`/api/gathering/groups/${groupId}/finance${query}`);
+  },
+  eventTransactions(groupId: string, eventId: string) {
+    return request<{ items: GatheringTransactionView[] }>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/transactions`,
+    );
+  },
+  createTransaction(groupId: string, eventId: string, body: unknown) {
+    return request<GatheringTransactionView>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/transactions`,
+      { method: 'POST', body: JSON.stringify(body) },
+    );
+  },
+  saveDue(groupId: string, body: unknown) {
+    return request<{ id: string; status: string }>(`/api/gathering/groups/${groupId}/finance/dues`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  eventReceipts(groupId: string, eventId: string) {
+    return request<{ items: GatheringReceiptView[] }>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/receipts`,
+    );
+  },
+  createReceiptUploads(
+    groupId: string,
+    eventId: string,
+    items: Array<{ mimeType: string; sizeBytes: number; originalName?: string }>,
+  ) {
+    return request<{ items: Array<{ id: string; uploadUrl: string; headers: Record<string, string> }> }>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/receipts/uploads`,
+      { method: 'POST', body: JSON.stringify({ items }) },
+    );
+  },
+  completeReceipt(groupId: string, eventId: string, receiptId: string, sizeBytes: number) {
+    return request<GatheringReceiptView>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/receipts/${receiptId}/complete`,
+      { method: 'POST', body: JSON.stringify({ sizeBytes }) },
+    );
+  },
+  downloadReceipt(groupId: string, receiptId: string) {
+    return request<{ url: string; mimeType: string }>(
+      `/api/gathering/groups/${groupId}/receipts/${receiptId}/download`,
+    );
   },
   reportMedia(groupId: string, assetId: string, reason: string) {
     return request<{ id: string }>(`/api/gathering/groups/${groupId}/media/${assetId}/reports`, {

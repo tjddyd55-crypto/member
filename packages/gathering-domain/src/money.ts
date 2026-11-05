@@ -12,3 +12,9 @@ export function parseWon(amount: unknown): WonParse {
   }
   return { ok: true, value: amount };
 }
+
+/** 납부액은 0원을 허용한다. 청구액은 parseWon 을 쓴다. */
+export function parseWonAllowZero(amount: unknown): WonParse {
+  if (amount === 0) return { ok: true, value: 0 };
+  return parseWon(amount);
+}

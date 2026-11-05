@@ -20,11 +20,8 @@
 
 ## 다음 구현 순서
 
-스키마는 이미 있다. API는 없다.
-
 1. 사진·영상 API와 앨범 화면은 연결했다. 실기기 업로드와 실제 R2 자격 증명은 아직이다.
-2. 영수증: `GatheringReceiptAsset`. 행사 단위. 열린 해는 재무만 삭제. 마감 후 `immutable`.
-3. 회계: `GatheringFinanceTransaction.paidAt`으로 회계연도를 정한다. 금액은 정수 원. 회비는 `GatheringMemberDue`.
-4. 인계: `GatheringHandover` 상태 `NOMINATED → ACCEPTED → FINALIZED`. 최종 승인은 스냅샷 한 트랜잭션과 `idempotencyKey`로 한 번만 닫는다. 회장 역할 변경은 그 전이 아니다.
+2. 영수증과 행사 장부, 회비는 연결했다. 마감 후 영수증 잠금은 인계 PR에서 닫는다.
+3. 인계: `GatheringHandover` 상태 `NOMINATED → ACCEPTED → FINALIZED`. 최종 승인은 스냅샷 한 트랜잭션과 `idempotencyKey`로 한 번만 닫는다. 회장 역할 변경은 그 전이 아니다.
 
 결제 화면, 계좌번호, 외부 송금 안내는 정책 결정 전에 넣지 않는다. 요금은 모임당 연 30,000원, 누적 50GB, 회원 수 제한 없음, 자동결제 없음이다.

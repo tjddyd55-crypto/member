@@ -170,6 +170,38 @@ export const gatheringMediaResolveSchema = z.object({
   status: z.enum(['RESOLVED', 'DISMISSED']),
 });
 
+export const gatheringTransactionSchema = z.object({
+  direction: z.enum(['INCOME', 'EXPENSE']),
+  label: z.string().trim().min(1).max(80),
+  amountWon: z.number().int(),
+  paidAt: z.string().datetime(),
+  note: z.string().trim().max(500).nullable().optional(),
+  adjustment: z.boolean().optional(),
+});
+
+export const gatheringDueSchema = z.object({
+  userId: z.string().min(1),
+  year: z.number().int().min(2000).max(2100),
+  amountWon: z.number().int(),
+  paidAmountWon: z.number().int(),
+  paidAt: z.string().datetime().nullable().optional(),
+  status: z.enum(['UNPAID', 'PARTIAL', 'PAID', 'WAIVED']).optional(),
+});
+
+export const gatheringReceiptItemSchema = z.object({
+  mimeType: z.string().trim().min(1).max(100),
+  sizeBytes: z.number().int().positive(),
+  originalName: z.string().trim().max(200).optional(),
+});
+
+export const gatheringReceiptUploadSchema = z.object({
+  items: z.array(gatheringReceiptItemSchema).min(1).max(10),
+});
+
+export const gatheringFinanceQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+});
+
 export const gatheringPushSchema = z
   .object({
     permission: z.enum(['granted', 'denied']),
@@ -345,6 +377,50 @@ export type GatheringAlbumYear = {
   year: number;
   photoCount: number;
   videoCount: number;
+};
+
+export type GatheringTransactionView = {
+  id: string;
+  eventId: string;
+  direction: 'INCOME' | 'EXPENSE';
+  label: string;
+  amountWon: number;
+  paidAt: string;
+  note: string | null;
+  adjustment: boolean;
+  fiscalYear: number;
+};
+
+export type GatheringReceiptView = {
+  id: string;
+  mimeType: string;
+  sizeBytes: number;
+  originalName: string | null;
+  immutable: boolean;
+  createdAt: string;
+};
+
+export type GatheringDueView = {
+  id: string;
+  userId: string;
+  displayName: string;
+  amountWon: number;
+  paidAmountWon: number;
+  paidAt: string | null;
+  status: string;
+};
+
+export type GatheringFinanceSummary = {
+  year: number;
+  status: string;
+  startsAt: string;
+  endsAt: string;
+  openingBalanceWon: number;
+  incomeWon: number;
+  expenseWon: number;
+  balanceWon: number;
+  dues: GatheringDueView[];
+  events: Array<{ eventId: string; title: string; incomeWon: number; expenseWon: number }>;
 };
 
 export type GatheringStorageUsage = {

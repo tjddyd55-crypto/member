@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/mobile-member-book-foundation
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: member
+          POSTGRES_PASSWORD: member
+          POSTGRES_DB: member
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U member -d member"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://member:member@localhost:5432/member?schema=public
+      # CI 전용 자리 값이다. 운영 비밀이 아니고 GitHub Secrets를 쓰지 않는다.
+      JWT_ACCESS_SECRET: ci-access-placeholder-32chars-min
+      JWT_REFRESH_SECRET: ci-refresh-placeholder-32chars-min
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate --schema prisma/schema.prisma
+      - run: npm run build
+      - run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - run: npm run db:seed
+      - run: npm test
+      - run: npm run typecheck -w @member/api
+      - run: npm run typecheck -w @member/gathering-mobile
+      - run: npm run typecheck -w @member/mobile

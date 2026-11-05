@@ -24,23 +24,20 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [message, setMessage] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
   const [uploadsAllowed, setUploadsAllowed] = useState(true);
-  const [handoverStatus, setHandoverStatus] = useState<string | null>(null);
   const [destination, setDestination] = useState<Destination | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     setStatus('loading');
     try {
-      const [result, subscription, handover] = await Promise.all([
+      const [result, subscription] = await Promise.all([
         api.albums(groupId, year ?? undefined),
         api.subscription(groupId).catch(() => null),
-        api.handover(groupId).catch(() => null),
       ]);
       setYears(result.years);
       setEvents(result.events);
       setFolders(result.folders ?? []);
       setUploadsAllowed(subscription?.uploadsAllowed ?? false);
-      setHandoverStatus(handover?.handover?.status ?? null);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '앨범을 불러오지 못했습니다.');
@@ -54,7 +51,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
 
   const destinationCount = events.length + folders.length;
   const blockReason = uploadBlockReason({
-    handoverStatus,
     uploadsAllowed,
     destinationCount,
     destinationChosen: destination != null,

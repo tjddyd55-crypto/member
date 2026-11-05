@@ -30,22 +30,16 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [uploadsAllowed, setUploadsAllowed] = useState(false);
-  const [handoverStatus, setHandoverStatus] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ uri: string; kind: 'PHOTO' | 'VIDEO' } | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
     try {
-      const [media, usage, handover] = await Promise.all([
-        api.eventMedia(groupId, eventId),
-        api.storage(groupId),
-        api.handover(groupId).catch(() => null),
-      ]);
+      const [media, usage] = await Promise.all([api.eventMedia(groupId, eventId), api.storage(groupId)]);
       setItems(media.items);
       setNextCursor(media.nextCursor);
       setUploadsAllowed(usage.subscriptionActive);
-      setHandoverStatus(handover?.handover?.status ?? null);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '사진·영상을 불러오지 못했습니다.');
@@ -109,7 +103,7 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
     }
   };
 
-  const uploadReason = uploadBlockReason({ handoverStatus, uploadsAllowed, destinationCount: 1, destinationChosen: true });
+  const uploadReason = uploadBlockReason({ uploadsAllowed, destinationCount: 1, destinationChosen: true });
 
   const pick = async (kind: 'PHOTO' | 'VIDEO') => {
     if (uploadReason) return;

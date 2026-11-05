@@ -110,7 +110,6 @@ export default function GroupDetailScreen() {
 
 function HomePane({ group }: { group: GatheringGroupDetail }) {
   const [uploadNote, setUploadNote] = useState<string | null>(null);
-  const [handoverStatus, setHandoverStatus] = useState<string | null>(null);
   const [handoverPrompt, setHandoverPrompt] = useState<string | null>(null);
   const [nextEvent, setNextEvent] = useState('다음 행사 없음');
   const [recentEvent, setRecentEvent] = useState('최근 행사 없음');
@@ -119,20 +118,14 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
 
   useEffect(() => {
     void api.subscription(group.id).then((result) => {
-      setUploadNote(
-        uploadBlockReason({
-          uploadsAllowed: result.uploadsAllowed,
-          handoverStatus,
-        }),
-      );
+      setUploadNote(uploadBlockReason({ uploadsAllowed: result.uploadsAllowed }));
     }).catch(() => setUploadNote(null));
-  }, [group.id, handoverStatus]);
+  }, [group.id]);
 
   useEffect(() => {
     void api
       .handover(group.id)
       .then((view) => {
-        setHandoverStatus(view.handover?.status ?? null);
         if (view.actions.accept) setHandoverPrompt('차기 협의회장으로 지명되었습니다. 인계를 확인해 주세요.');
         else if (handoverInProgress(view.handover?.status)) setHandoverPrompt('진행 중인 인계가 있습니다.');
         else if (view.actions.nominate) setHandoverPrompt(null);

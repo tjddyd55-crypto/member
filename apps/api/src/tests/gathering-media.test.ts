@@ -417,6 +417,138 @@ describe('행사 사진·영상', () => {
     expect(unconfigured.json().error.code).toBe('STORAGE_UNCONFIGURED');
   });
 
+  it('인계 전과 중과 후에도 사진 업로드는 되고, 이용권·용량·비회원은 막힌다', async () => {
+    const owner = await register('사진인계회장');
+    const next = await register('사진차기회장');
+    const outsider = await register('사진외부');
+    const group = await createGroup(owner.tokens.accessToken, '사진 인계 모임');
+    await join(owner.tokens.accessToken, next.tokens.accessToken, group.id);
+    await grantPass(group.id, owner.user.id);
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-04-01T03:00:00.000Z');
+    const folder = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/folders`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { title: '인계 중 사진' },
+    });
+    expect(folder.statusCode).toBe(200);
+
+    const reserve = (token = owner.tokens.accessToken) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/media/uploads`,
+        headers: auth(token),
+        payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+      });
+    const reserveFolder = () =>
+      app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/folders/${folder.json().id}/media/uploads`,
+        headers: auth(owner.tokens.accessToken),
+        payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+      });
+
+    expect((await reserve()).statusCode).toBe(200);
+    const outsiderUpload = await reserve(outsider.tokens.accessToken);
+    expect(outsiderUpload.statusCode).toBe(404);
+    const noLink = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/public/uploads/not-a-real-token/reserve',
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(noLink.statusCode).toBe(404);
+
+    const nominated = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { toUserId: next.user.id, idempotencyKey: `photo-handover-${group.id}` },
+    });
+    expect(nominated.statusCode).toBe(200);
+    const duringNominate = await reserve();
+    expect(duringNominate.statusCode).toBe(200);
+    const handoverId = nominated.json().id as string;
+    expect(
+      (await prisma.gatheringHandover.findUniqueOrThrow({ where: { id: handoverId } })).status,
+    ).toBe('NOMINATED');
+
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover/${handoverId}/accept`,
+      headers: auth(next.tokens.accessToken),
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect((await reserve()).statusCode).toBe(200);
+    expect((await reserveFolder()).statusCode).toBe(200);
+
+    const preview = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/handover`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover/${handoverId}/confirm`,
+      headers: auth(owner.tokens.accessToken),
+      payload: preview.json().preview,
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect((await reserve()).statusCode).toBe(200);
+
+    const link = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/upload-links`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { eventId: event.id },
+    });
+    expect(link.statusCode).toBe(200);
+    const guest = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${link.json().token}/reserve`,
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(guest.statusCode).toBe(200);
+
+    const finalized = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/handover/${handoverId}/finalize`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(finalized.statusCode).toBe(200);
+    expect((await reserve()).statusCode).toBe(200);
+    expect(
+      (await prisma.gatheringHandover.findUniqueOrThrow({ where: { id: handoverId } })).status,
+    ).toBe('FINALIZED');
+
+    await prisma.gatheringSubscription.updateMany({
+      where: { groupId: group.id },
+      data: { expiresAt: new Date(Date.now() - 60_000) },
+    });
+    const expired = await reserve();
+    expect(expired.statusCode).toBe(403);
+    expect(expired.json().error.code).toBe('SUBSCRIPTION_EXPIRED');
+
+    await prisma.gatheringSubscription.updateMany({
+      where: { groupId: group.id },
+      data: { expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    });
+    await prisma.gatheringMediaAsset.create({
+      data: {
+        groupId: group.id,
+        eventId: event.id,
+        uploaderUserId: owner.user.id,
+        kind: 'PHOTO',
+        storageKey: `test/gatherings/${group.id}/events/${event.id}/photos/full`,
+        mimeType: 'image/jpeg',
+        sizeBytes: BigInt(STORAGE_QUOTA_BYTES - 10),
+        status: 'READY',
+      },
+    });
+    const quota = await reserve();
+    expect(quota.statusCode).toBe(409);
+    expect(quota.json().error.code).toBe('QUOTA_EXCEEDED');
+  });
+
   it('재시도는 새 예약을 만들지 않고 대기 중인 업로드를 다시 연다', async () => {
     const owner = await register('재시도회장');
     const group = await createGroup(owner.tokens.accessToken, '재시도 모임');
@@ -445,7 +577,11 @@ describe('행사 사진·영상', () => {
 async function cleanup() {
   if (groupIds.length === 0) return;
   await prisma.gatheringMediaReport.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringUploadLink.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringMediaAsset.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringMediaFolder.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringHandover.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringFinanceCloseSnapshot.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringSubscriptionAudit.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringSubscription.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringNotification.deleteMany({ where: { groupId: { in: groupIds } } });

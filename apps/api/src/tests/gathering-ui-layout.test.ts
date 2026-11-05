@@ -21,9 +21,7 @@ describe('모임 화면 배치', () => {
   it('인계 중이면 사진 탭 이유가 인계라고 말한다', () => {
     expect(handoverInProgress('CONFIRMED')).toBe(true);
     expect(handoverInProgress('FINALIZED')).toBe(false);
-    expect(
-      uploadBlockReason({ handoverStatus: 'NOMINATED', uploadsAllowed: false, destinationCount: 0 }),
-    ).toContain('인계가 진행 중');
+    expect(uploadBlockReason({ uploadsAllowed: true, destinationCount: 1, destinationChosen: true })).toBeNull();
     expect(uploadBlockReason({ uploadsAllowed: false, destinationCount: 1, destinationChosen: true })).toContain(
       '이용 기간',
     );

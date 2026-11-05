@@ -9,8 +9,6 @@ export const IDENTITY_LIMITATION =
 export const DIRECTORY_CONSENT =
   '모임에 참여하면 이름, 소속 로컬, 휴대폰 번호가 그 모임 구성원에게 보이고 전화와 문자로 연결될 수 있습니다.';
 
-export const UNBUILT_MEDIA = '사진·영상 업로드는 아직 없습니다. 저장소 버킷도 연결하지 않았습니다.';
-
 export const UNBUILT_FINANCE =
   '재무 입력, 영수증, 회계 마감은 아직 없습니다. 회계연도 기간만 서버 데이터로 보여 줍니다.';
 

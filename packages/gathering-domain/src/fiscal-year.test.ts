@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attributePayment, fiscalYearOf, fiscalYearRange } from './fiscal-year.js';
+import { attributePayment, calendarYearKst, calendarYearRange, fiscalYearOf, fiscalYearRange } from './fiscal-year.js';
 
 function kst(isoLocal: string): Date {
   return new Date(`${isoLocal}+09:00`);
@@ -41,5 +41,14 @@ describe('회계연도 귀속', () => {
     expect(boundary.eventFiscalYear).toBe(2026);
     expect(boundary.paymentFiscalYear).toBe(2027);
     expect(boundary.sameFiscalYear).toBe(false);
+  });
+
+  it('앨범 연도는 한국 달력 연도이고 회계연도 경계와 다르다', () => {
+    expect(calendarYearKst(new Date('2026-12-31T15:30:00.000Z'))).toBe(2027);
+    expect(calendarYearKst(kst('2026-12-31T23:00:00.000'))).toBe(2026);
+    const range = calendarYearRange(2026);
+    expect(calendarYearKst(range.startsAt)).toBe(2026);
+    expect(calendarYearKst(range.endsAt)).toBe(2026);
+    expect(fiscalYearOf(range.endsAt)).toBe(2027);
   });
 });

@@ -13,7 +13,18 @@ const config: ExpoConfig = {
   scheme: 'jcikorea',
   userInterfaceStyle: 'light',
   newArchEnabled: true,
-  plugins: ['expo-router', 'expo-secure-store', 'expo-notifications'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    'expo-notifications',
+    [
+      'expo-image-picker',
+      {
+        photosPermission: '행사 사진과 영상을 올리기 위해 앨범 접근이 필요합니다.',
+        microphonePermission: false,
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: false,
   },

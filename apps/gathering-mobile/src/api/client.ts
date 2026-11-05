@@ -1,15 +1,20 @@
 import Constants from 'expo-constants';
 import { SharedRefreshGate } from '@member/gathering-domain';
 import type {
+  GatheringAlbumEvent,
+  GatheringAlbumYear,
   GatheringEventView,
   GatheringGroupDetail,
   GatheringGroupSummary,
   GatheringInviteCreated,
   GatheringInvitePreview,
+  GatheringMediaUploadItem,
+  GatheringMediaView,
   GatheringMemberView,
   GatheringOfficerTermView,
   GatheringOfficerView,
   GatheringSessionResponse,
+  GatheringStorageUsage,
 } from '@member/contracts';
 import { tokenStorage } from '../storage/secure';
 
@@ -248,6 +253,60 @@ export const api = {
     return request<{ ok: boolean }>('/api/gathering/push/tokens', {
       method: 'POST',
       body: JSON.stringify(body),
+    });
+  },
+  storage(groupId: string) {
+    return request<GatheringStorageUsage>(`/api/gathering/groups/${groupId}/storage`);
+  },
+  albums(groupId: string, year?: number) {
+    const query = year ? `?year=${year}` : '';
+    return request<{ years: GatheringAlbumYear[]; events: GatheringAlbumEvent[] }>(
+      `/api/gathering/groups/${groupId}/albums${query}`,
+    );
+  },
+  eventMedia(groupId: string, eventId: string) {
+    return request<{ items: GatheringMediaView[]; nextCursor: string | null }>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/media`,
+    );
+  },
+  createMediaUploads(
+    groupId: string,
+    eventId: string,
+    items: Array<{
+      kind: 'PHOTO' | 'VIDEO';
+      mimeType: string;
+      sizeBytes: number;
+      durationMs?: number;
+      width?: number;
+      height?: number;
+      originalName?: string;
+    }>,
+  ) {
+    return request<{ items: GatheringMediaUploadItem[] }>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/media/uploads`,
+      { method: 'POST', body: JSON.stringify({ items }) },
+    );
+  },
+  completeMedia(groupId: string, eventId: string, assetId: string, sizeBytes: number) {
+    return request<{ media: GatheringMediaView }>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/media/${assetId}/complete`,
+      { method: 'POST', body: JSON.stringify({ sizeBytes }) },
+    );
+  },
+  downloadMedia(groupId: string, assetId: string) {
+    return request<{ url: string; expiresAt: string; mimeType: string; kind: 'PHOTO' | 'VIDEO' }>(
+      `/api/gathering/groups/${groupId}/media/${assetId}/download`,
+    );
+  },
+  deleteMedia(groupId: string, assetId: string) {
+    return request<{ ok: boolean }>(`/api/gathering/groups/${groupId}/media/${assetId}`, {
+      method: 'DELETE',
+    });
+  },
+  reportMedia(groupId: string, assetId: string, reason: string) {
+    return request<{ id: string }>(`/api/gathering/groups/${groupId}/media/${assetId}/reports`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   },
   acceptInvite(token: string) {

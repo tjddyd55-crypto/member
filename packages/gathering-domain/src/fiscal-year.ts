@@ -48,6 +48,18 @@ export function fiscalYearOf(instant: Date): number {
   return parts.year;
 }
 
+/** 앨범 연도는 회계연도가 아니라 행사 시작의 한국 달력 연도다. */
+export function calendarYearKst(instant: Date): number {
+  return kstParts(instant).year;
+}
+
+export function calendarYearRange(year: number): { startsAt: Date; endsAt: Date } {
+  return {
+    startsAt: atKst(year, 1, 1, 0, 0, 0, 0),
+    endsAt: atKst(year, 12, 31, 23, 59, 59, 999),
+  };
+}
+
 export function fiscalYearRange(fiscalYear: number): FiscalYearRange {
   return {
     fiscalYear,

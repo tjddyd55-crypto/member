@@ -26,3 +26,4 @@ export class SlidingWindowLimiter {
 }
 
 export const gatheringAuthLimiter = new SlidingWindowLimiter(30, 10 * 60 * 1000);
+export const gatheringUploadLimiter = new SlidingWindowLimiter(30, 10 * 60 * 1000);

@@ -224,9 +224,10 @@ export function EventFinancePane({
     try {
       const picked = await File.pickFileAsync().catch(() => null);
       if (!picked) return;
-      for (const file of Array.isArray(picked) ? picked : [picked]) {
-        const originalName = fileName(file.uri);
-        const mimeType = allowedReceiptMime(file.type) ?? mimeOf(extensionOf(originalName));
+      for (const pickedFile of Array.isArray(picked) ? picked : [picked]) {
+        const file = new File(pickedFile.uri);
+        const originalName = file.name || fileName(file.uri);
+        const mimeType = receiptMime(file);
         const created = await api.createReceiptUploads(groupId, eventId, [
           { mimeType, sizeBytes: file.size, originalName },
         ]);
@@ -312,19 +313,29 @@ function extensionOf(name: string) {
   return dot >= 0 ? name.slice(dot) : '';
 }
 
+function receiptMime(file: File) {
+  const fromType = allowedReceiptMime(file.type);
+  if (fromType) return fromType;
+  const fromName = mimeFromExtension(file.extension || extensionOf(file.name));
+  if (fromName) return fromName;
+  throw new Error('영수증은 JPEG, PNG, WebP, PDF만 첨부할 수 있습니다.');
+}
+
 function allowedReceiptMime(mimeType: string) {
+  if (mimeType === 'image/jpg') return 'image/jpeg';
   if (mimeType === 'application/pdf' || mimeType === 'image/jpeg' || mimeType === 'image/png' || mimeType === 'image/webp') {
     return mimeType;
   }
   return null;
 }
 
-function mimeOf(extension: string) {
+function mimeFromExtension(extension: string) {
   const normalized = extension.toLowerCase();
   if (normalized === '.pdf') return 'application/pdf';
   if (normalized === '.png') return 'image/png';
   if (normalized === '.webp') return 'image/webp';
-  return 'image/jpeg';
+  if (normalized === '.jpg' || normalized === '.jpeg') return 'image/jpeg';
+  return null;
 }
 
 const styles = StyleSheet.create({

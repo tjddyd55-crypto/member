@@ -134,7 +134,7 @@ export function EventFinancePane({
         direction,
         label: label.trim(),
         amountWon: Number(amount),
-        paidAt: `${paidOn}T12:00:00.000+09:00`,
+        paidAt: new Date(`${paidOn}T12:00:00+09:00`).toISOString(),
         note: note.trim() || null,
       });
       setLabel('');

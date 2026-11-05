@@ -174,7 +174,7 @@ export const gatheringTransactionSchema = z.object({
   direction: z.enum(['INCOME', 'EXPENSE']),
   label: z.string().trim().min(1).max(80),
   amountWon: z.number().int(),
-  paidAt: z.string().datetime(),
+  paidAt: z.string().datetime({ offset: true }),
   note: z.string().trim().max(500).nullable().optional(),
   adjustment: z.boolean().optional(),
 });
@@ -184,7 +184,7 @@ export const gatheringDueSchema = z.object({
   year: z.number().int().min(2000).max(2100),
   amountWon: z.number().int(),
   paidAmountWon: z.number().int(),
-  paidAt: z.string().datetime().nullable().optional(),
+  paidAt: z.string().datetime({ offset: true }).nullable().optional(),
   status: z.enum(['UNPAID', 'PARTIAL', 'PAID', 'WAIVED']).optional(),
 });
 

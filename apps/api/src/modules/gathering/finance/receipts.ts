@@ -15,7 +15,7 @@ import { GatheringAuditAction } from '../constants.js';
 import { assertStoredObject } from '../storage/confirm.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
 import { isSubscriptionActive, loadBillableUsage } from '../storage/usage.js';
-import { lockGroupOpenYear } from './years.js';
+import { lockGroupOpenYear, lockOpenYearById } from './years.js';
 
 type ReceiptItem = { mimeType: string; sizeBytes: number; originalName?: string };
 
@@ -50,10 +50,7 @@ export async function completeReceiptUpload(
     fail: () => failReceipt(receipt.id),
   });
   const ready = await prisma.$transaction(async (tx) => {
-    const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(receipt.event.startsAt));
-    if (receipt.financeYearId !== year.id) {
-      throw new AppError(409, 'FINANCE_YEAR_CLOSED', '마감된 회계연도의 영수증은 확정할 수 없습니다.');
-    }
+    await lockOpenYearById(tx, groupId, receipt.financeYearId);
     return tx.gatheringReceiptAsset.update({
       where: { id: receipt.id },
       data: { status: 'READY' },

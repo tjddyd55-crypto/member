@@ -307,6 +307,51 @@ describe('행사 장부와 영수증', () => {
     });
     expect(removed.statusCode).toBe(403);
   });
+
+  it('오프셋 결제일을 받고, 영수증 확정은 예약한 회계연도를 본다', async () => {
+    const owner = await register('오프셋회장');
+    const group = await createGroup(owner.tokens.accessToken, '오프셋 모임');
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-10-28T12:00:00.000Z');
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+      headers: auth(owner.tokens.accessToken),
+      payload: {
+        direction: 'EXPENSE',
+        label: '새벽 결제',
+        amountWon: 9000,
+        paidAt: '2026-10-29T00:40:00.000+09:00',
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().fiscalYear).toBe(2026);
+    const uploaded = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/uploads`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { items: [{ mimeType: 'application/pdf', sizeBytes: 32 }] },
+    });
+    const receiptId = uploaded.json().items[0].id as string;
+    const row = await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: receiptId } });
+    const reservedYear = row.financeYearId;
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { startsAt: '2026-12-24T15:00:00.000Z' },
+    });
+    storage.put(row.storageKey, pdf(32));
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/${receiptId}/complete`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { sizeBytes: 32 },
+    });
+    expect(ready.statusCode).toBe(200);
+    const saved = await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: receiptId } });
+    expect(saved.financeYearId).toBe(reservedYear);
+    expect(saved.status).toBe('READY');
+  });
 });
 
 async function cleanup() {

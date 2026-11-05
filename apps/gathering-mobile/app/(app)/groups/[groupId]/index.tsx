@@ -107,8 +107,6 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
   const [pending, setPending] = useState<GatheringMemberView[]>([]);
   const [handoverPrompt, setHandoverPrompt] = useState<string | null>(null);
   const canInvite = group.permissions.includes('INVITE_MANAGE');
-  const [periodMonth, setPeriodMonth] = useState(String(group.fiscalStartMonth));
-  const [periodDay, setPeriodDay] = useState(String(group.fiscalStartDay));
   const canSettings = group.permissions.includes('GROUP_SETTINGS');
   const canManage = group.permissions.includes('MEMBER_MANAGE');
 
@@ -180,22 +178,11 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
         variant="secondary"
         onPress={() => router.push(`/(app)/groups/${group.id}/officers`)}
       />
-      {canSettings ? (
-        <>
-          <TextField label="회계 시작 월" value={periodMonth} onChangeText={setPeriodMonth} keyboardType="number-pad" />
-          <TextField label="회계 시작 일" value={periodDay} onChangeText={setPeriodDay} keyboardType="number-pad" />
-          <Button
-            label="회계 시작일 저장"
-            variant="secondary"
-            onPress={() =>
-              void api
-                .updateGroup(group.id, { fiscalStartMonth: Number(periodMonth), fiscalStartDay: Number(periodDay) })
-                .then(onChanged)
-                .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : '회계 기간을 바꾸지 못했습니다.'))
-            }
-          />
-        </>
-      ) : null}
+      <Button
+        label="모임 설정"
+        variant="secondary"
+        onPress={() => router.push(`/(app)/groups/${group.id}/settings`)}
+      />
       {canSettings ? (
         <Button
           label={group.inviteRequiresApproval ? '초대 승인 끄기' : '초대 승인 켜기'}

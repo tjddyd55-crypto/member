@@ -437,7 +437,7 @@ export type GatheringFinanceSummary = {
   balanceWon: number;
   eventIncomeWon: number;
   duesWon: number;
-  years: Array<{ year: number; status: string }>;
+  years: Array<{ year: number; status: string; startsAt: string; endsAt: string }>;
   dues: GatheringDueView[];
   events: Array<{ eventId: string; title: string; incomeWon: number; expenseWon: number; netWon: number }>;
 };

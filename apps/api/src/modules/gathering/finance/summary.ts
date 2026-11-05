@@ -23,11 +23,17 @@ export async function financeSummary(userId: string, groupId: string, year?: num
     entries: transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
     duesPaidWon: dues.reduce((sum, row) => sum + row.paidAmountWon, 0),
   });
-  const years = await prisma.gatheringFinanceYear.findMany({
+  const yearRows = await prisma.gatheringFinanceYear.findMany({
     where: { groupId },
     orderBy: { year: 'desc' },
-    select: { year: true, status: true },
+    select: { year: true, status: true, startsAt: true, endsAt: true },
   });
+  const years = yearRows.map((row) => ({
+    year: row.year,
+    status: row.status,
+    startsAt: row.startsAt.toISOString(),
+    endsAt: row.endsAt.toISOString(),
+  }));
   return {
     year: financeYear.year,
     status: financeYear.status,

@@ -405,6 +405,22 @@ describe('행사 장부와 영수증', () => {
     expect(summary.json().events[0].netWon).toBe(4000);
     const rows = await prisma.gatheringFinanceTransaction.count({ where: { groupId: group.id } });
     expect(rows).toBe(1);
+    const member = await register('기간회원');
+    await join(owner.tokens.accessToken, member.tokens.accessToken, group.id);
+    const denied = await app.inject({
+      method: 'PATCH',
+      url: `/api/gathering/groups/${group.id}`,
+      headers: auth(member.tokens.accessToken),
+      payload: { fiscalStartMonth: 7, fiscalStartDay: 1 },
+    });
+    expect(denied.statusCode).toBe(403);
+    const closedView = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/finance?year=${group.financeYear.year}`,
+      headers: auth(member.tokens.accessToken),
+    });
+    expect(closedView.statusCode).toBe(200);
+    expect(closedView.json().eventIncomeWon).toBe(4000);
   });
 });
 

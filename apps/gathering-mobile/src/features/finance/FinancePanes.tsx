@@ -56,15 +56,41 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
         <MoneyCard label="현재 잔액" value={summary.balanceWon} />
       </View>
       <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원. 회비는 행사 장부에 다시 넣지 않습니다.`}</Body>
-      <View style={styles.row}>
-        {summary.years.map((item) => (
-          <Button key={item.year} label={item.year === summary.year ? `${item.year} 보는 중` : String(item.year)} variant={item.year === summary.year ? 'primary' : 'secondary'} onPress={() => void load(item.year)} />
-        ))}
+      <View style={styles.years}>
+        {summary.years.map((item) => {
+          const selected = item.year === summary.year;
+          return (
+            <Pressable
+              key={item.year}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => void load(item.year)}
+              style={[styles.year, selected && styles.yearOn]}
+            >
+              <Text style={[styles.yearTitle, selected && styles.yearOnText]}>{item.year} 회계연도</Text>
+              <Text style={[styles.yearRange, selected && styles.yearOnText]}>{fiscalRange(item.startsAt, item.endsAt)}</Text>
+            </Pressable>
+          );
+        })}
       </View>
       {closed ? <Notice>마감된 회계연도는 조회만 됩니다.</Notice> : null}
-      <View style={styles.row}>
-        <Button label={tab === 'events' ? '행사별 장부 선택됨' : '행사별 장부'} variant={tab === 'events' ? 'primary' : 'secondary'} onPress={() => setTab('events')} />
-        <Button label={tab === 'dues' ? '회원 회비 선택됨' : '회원 회비'} variant={tab === 'dues' ? 'primary' : 'secondary'} onPress={() => setTab('dues')} />
+      <View style={styles.segment}>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: tab === 'events' }}
+          onPress={() => setTab('events')}
+          style={[styles.segmentItem, tab === 'events' && styles.segmentOn]}
+        >
+          <Text style={[styles.segmentLabel, tab === 'events' && styles.segmentOnText]}>행사별 장부</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: tab === 'dues' }}
+          onPress={() => setTab('dues')}
+          style={[styles.segmentItem, tab === 'dues' && styles.segmentOn]}
+        >
+          <Text style={[styles.segmentLabel, tab === 'dues' && styles.segmentOnText]}>회원 회비</Text>
+        </Pressable>
       </View>
       {tab === 'events' ? (
         summary.events.length === 0 ? (
@@ -134,6 +160,12 @@ function MoneyCard({ label, value }: { label: string; value: number }) {
       <Text style={styles.cardValue}>{WON.format(value)}원</Text>
     </View>
   );
+}
+
+function fiscalRange(startsAt: string, endsAt: string) {
+  const format = (iso: string) =>
+    new Date(iso).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'numeric', day: 'numeric' });
+  return `${format(startsAt)} ~ ${format(endsAt)}`;
 }
 
 function dueLabel(status: string) {
@@ -354,4 +386,28 @@ const styles = StyleSheet.create({
   cardValue: { ...theme.typography.body, color: theme.colors.text.primary },
   line: { ...theme.typography.body, color: theme.colors.text.primary },
   thumb: { width: 96, height: 96, borderRadius: theme.radius[12] },
+  years: { gap: theme.space[8] },
+  year: {
+    minHeight: 48,
+    borderRadius: theme.radius[12],
+    paddingHorizontal: theme.space[12],
+    paddingVertical: theme.space[8],
+    backgroundColor: theme.colors.bg.subtle,
+    gap: 2,
+  },
+  yearOn: { backgroundColor: '#1B3A6B' },
+  yearTitle: { ...theme.typography.cardTitle, color: '#1B3A6B' },
+  yearRange: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
+  yearOnText: { color: '#FFFFFF' },
+  segment: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    borderRadius: theme.radius[12],
+    overflow: 'hidden',
+    backgroundColor: theme.colors.bg.subtle,
+  },
+  segmentItem: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  segmentOn: { backgroundColor: '#1B3A6B' },
+  segmentLabel: { ...theme.typography.button, color: '#1B3A6B' },
+  segmentOnText: { color: '#FFFFFF' },
 });

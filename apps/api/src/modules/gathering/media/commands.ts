@@ -151,9 +151,22 @@ export async function completeMediaUpload(
   return { media: presentMedia(ready, userId) };
 }
 
+export async function resumeFolderMediaUpload(userId: string, groupId: string, folderId: string, assetId: string) {
+  return resignOwnedUpload(userId, groupId, assetId, { folderId });
+}
+
 export async function resumeMediaUpload(userId: string, groupId: string, eventId: string, assetId: string) {
+  return resignOwnedUpload(userId, groupId, assetId, { eventId });
+}
+
+async function resignOwnedUpload(
+  userId: string,
+  groupId: string,
+  assetId: string,
+  scope: { eventId?: string; folderId?: string },
+) {
   await requireGroupMember(userId, groupId);
-  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { eventId });
+  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, scope);
   if (asset.status === 'READY') {
     const checked = await revalidateReady(asset, userId);
     return { status: 'READY' as const, media: checked.media };

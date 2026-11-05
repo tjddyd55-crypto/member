@@ -5,6 +5,15 @@ import { Body, Button, ErrorState, LoadingState, Notice, Screen, TextField, Titl
 
 type HandoverView = Awaited<ReturnType<typeof api.handover>>;
 
+function handoverStatusLabel(status: string | undefined) {
+  if (status === 'NOMINATED') return '차기 협의회장 지명';
+  if (status === 'ACCEPTED') return '차기 협의회장 수락';
+  if (status === 'CONFIRMED') return '합계 확인';
+  if (status === 'FINALIZED') return '인계 완료';
+  if (status === 'CANCELLED') return '인계 취소';
+  return '아직 지명 전';
+}
+
 export default function HandoverScreen() {
   const params = useLocalSearchParams<{ groupId: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
@@ -81,7 +90,7 @@ function Steps({
   const preview = view.preview;
   return (
     <>
-      <Body>상태: {view.handover?.status ?? '아직 지명 전'}</Body>
+      <Body>상태: {handoverStatusLabel(view.handover?.status)}</Body>
       {preview ? (
         <Body>
           수입 {preview.incomeWon}원 · 지출 {preview.expenseWon}원 · 잔액 {preview.balanceWon}원 · 회비 {preview.dueCount}건 · 영수증 {preview.receiptCount}장

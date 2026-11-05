@@ -8,6 +8,7 @@ import { Body, Button, EmptyState, ErrorState, Notice } from '../../design/ui';
 import { theme } from '../../theme';
 import { MediaViewer } from './MediaViewer';
 import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
+import { uploadBlockReason } from './upload-block';
 
 type Job = {
   id: string;
@@ -102,14 +103,17 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
     }
   };
 
-  const pick = async () => {
+  const uploadReason = uploadBlockReason({ uploadsAllowed, destinationCount: 1, destinationChosen: true });
+
+  const pick = async (kind: 'PHOTO' | 'VIDEO') => {
+    if (uploadReason) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setMessage('앨범 접근을 허용해야 사진·영상을 올릴 수 있습니다.');
       return;
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
+      mediaTypes: kind === 'PHOTO' ? ['images'] : ['videos'],
       allowsMultipleSelection: true,
       quality: 1,
     });
@@ -132,17 +136,20 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
       }
     }
     setJobs((current) => [...next, ...current]);
-    try {
-      await reserveBatch(next.filter((job) => !job.assetId));
-    } catch (error) {
-      const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : '예약을 만들지 못했습니다.';
-      setMessage(text);
-      for (const job of next) {
-        if (!job.assetId) updateJob(job.id, { state: 'failed', message: text });
+    for (let index = 0; index < next.length; index += 20) {
+      const chunk = next.slice(index, index + 20);
+      try {
+        await reserveBatch(chunk.filter((job) => !job.assetId));
+      } catch (error) {
+        const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : '예약을 만들지 못했습니다.';
+        setMessage(text);
+        for (const job of chunk) {
+          if (!job.assetId) updateJob(job.id, { state: 'failed', message: text });
+        }
       }
-    }
-    for (const job of next) {
-      if (job.assetId) await transfer(job);
+      for (const job of chunk) {
+        if (job.assetId) await transfer(job);
+      }
     }
     await load();
   };
@@ -153,11 +160,9 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
     <View style={styles.stack}>
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {message ? <Notice>{message}</Notice> : null}
-      {uploadsAllowed ? (
-        <Button label="사진·영상 올리기" onPress={() => void pick()} />
-      ) : (
-        <Notice>지금은 새 사진·영상을 올릴 수 없습니다. 이미 올린 파일은 볼 수 있습니다.</Notice>
-      )}
+      <Button label="사진 올리기" disabled={Boolean(uploadReason)} onPress={() => void pick('PHOTO')} />
+      <Button label="영상 올리기" disabled={Boolean(uploadReason)} onPress={() => void pick('VIDEO')} />
+      {uploadReason ? <Notice>{uploadReason}</Notice> : null}
       {jobs.length > 0 ? (
         <Body>
           전송 {progress.loaded}/{progress.total}

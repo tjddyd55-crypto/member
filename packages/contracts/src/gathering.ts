@@ -1,0 +1,203 @@
+import { z } from 'zod';
+
+export const gatheringPhoneSchema = z.string().trim().min(8).max(20);
+export const gatheringPasswordSchema = z
+  .string()
+  .min(8, '비밀번호는 8자 이상이어야 합니다.')
+  .max(72, '비밀번호는 72자 이하여야 합니다.')
+  .regex(/[A-Za-z]/, '비밀번호에 영문을 포함하세요.')
+  .regex(/[0-9]/, '비밀번호에 숫자를 포함하세요.');
+
+export const gatheringDisplayNameSchema = z.string().trim().min(1).max(40);
+export const gatheringLocalJcSchema = z.string().trim().min(1).max(60);
+
+export const gatheringRegisterSchema = z.object({
+  name: gatheringDisplayNameSchema,
+  phone: gatheringPhoneSchema,
+  password: gatheringPasswordSchema,
+  localJcName: gatheringLocalJcSchema,
+  directoryConsent: z.literal(true, {
+    errorMap: () => ({ message: '모임 안 연락처 공개에 동의해야 합니다.' }),
+  }),
+});
+
+export const gatheringLoginSchema = z.object({
+  phone: gatheringPhoneSchema,
+  password: z.string().min(1).max(72),
+});
+
+export const gatheringRefreshSchema = z.object({
+  refreshToken: z.string().min(20),
+});
+
+export const gatheringLogoutSchema = z.object({
+  refreshToken: z.string().min(20).optional(),
+});
+
+export const gatheringProfileSchema = z.object({
+  name: gatheringDisplayNameSchema,
+  localJcName: gatheringLocalJcSchema,
+  directoryConsent: z.literal(true, {
+    errorMap: () => ({ message: '모임 안 연락처 공개에 동의해야 합니다.' }),
+  }),
+});
+
+export const gatheringRecoveryRedeemSchema = z.object({
+  phone: gatheringPhoneSchema,
+  recoveryCode: z.string().trim().min(8).max(32),
+  newPassword: gatheringPasswordSchema,
+});
+
+export const gatheringRecoveryRequestSchema = z.object({
+  phone: gatheringPhoneSchema,
+  note: z.string().trim().max(500).optional(),
+});
+
+export const gatheringGroupCreateSchema = z.object({
+  name: gatheringDisplayNameSchema,
+  description: z.string().trim().max(500).optional(),
+});
+
+export const gatheringGroupUpdateSchema = z
+  .object({
+    name: gatheringDisplayNameSchema.optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+    inviteRequiresApproval: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, '변경할 항목이 없습니다.');
+
+export const gatheringInviteCreateSchema = z.object({
+  expiresInHours: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 30)
+    .optional(),
+  requiresApproval: z.boolean().optional(),
+  maxUses: z.number().int().min(1).max(1000).nullable().optional(),
+  revokeInviteId: z.string().min(1).optional(),
+  groupId: z.string().optional(),
+});
+
+export const gatheringAcceptInviteSchema = z.object({
+  directoryConsent: z.literal(true, {
+    errorMap: () => ({ message: '모임 안 연락처 공개에 동의해야 합니다.' }),
+  }),
+});
+
+export const gatheringRoleAssignSchema = z
+  .object({
+    userId: z.string().min(1),
+    role: z.enum(['SECRETARY', 'TREASURER', 'EXECUTIVE']),
+    title: z.string().trim().min(1).max(40).optional(),
+    groupId: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.role === 'EXECUTIVE' && !value.title) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['title'],
+        message: '추가 집행부 직함이 필요합니다.',
+      });
+    }
+  });
+
+export const gatheringMemberQuerySchema = z.object({
+  q: z.string().trim().max(40).optional(),
+  status: z.enum(['ACTIVE', 'PENDING']).optional(),
+});
+
+export const gatheringMembershipDecisionSchema = z.object({
+  decision: z.enum(['APPROVE', 'REJECT']),
+});
+
+export type GatheringRegisterBody = z.infer<typeof gatheringRegisterSchema>;
+export type GatheringLoginBody = z.infer<typeof gatheringLoginSchema>;
+export type GatheringProfileBody = z.infer<typeof gatheringProfileSchema>;
+
+export type GatheringAuthUser = {
+  id: string;
+  phone: string | null;
+  status: string;
+};
+
+export type GatheringAuthProfile = {
+  displayName: string;
+  localJcName: string;
+  directoryConsentAt: string;
+};
+
+export type GatheringSessionResponse = {
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+  };
+  user: GatheringAuthUser;
+  profile: GatheringAuthProfile | null;
+  identityLimitation: string;
+  recoveryCodes?: string[];
+};
+
+export type GatheringGroupSummary = {
+  id: string;
+  name: string;
+  description: string | null;
+  membershipStatus: 'ACTIVE' | 'PENDING';
+  roles: string[];
+  presidentName: string | null;
+  memberCount: number;
+  financeYear: number | null;
+};
+
+export type GatheringFinanceYearView = {
+  year: number;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  openingBalanceWon: number;
+};
+
+export type GatheringGroupDetail = {
+  id: string;
+  name: string;
+  description: string | null;
+  inviteRequiresApproval: boolean;
+  roles: string[];
+  permissions: string[];
+  president: { userId: string; displayName: string; localJcName: string } | null;
+  memberCount: number;
+  financeYear: GatheringFinanceYearView | null;
+  pendingCount: number | null;
+};
+
+export type GatheringMemberView = {
+  membershipId: string;
+  userId: string;
+  displayName: string;
+  localJcName: string;
+  phone: string | null;
+  status: string;
+  roles: Array<{ id: string; role: string; title: string | null }>;
+};
+
+export type GatheringInviteView = {
+  id: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  requiresApproval: boolean;
+  maxUses: number | null;
+  useCount: number;
+};
+
+export type GatheringInviteCreated = {
+  invite: GatheringInviteView;
+  token: string;
+  link: string;
+};
+
+export type GatheringInvitePreview = {
+  groupName: string;
+  requiresApproval: boolean;
+  expiresAt: string;
+};

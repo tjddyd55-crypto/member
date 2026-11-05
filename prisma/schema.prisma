@@ -115,12 +115,41 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  memberships      LocalMembership[]
-  refreshSessions  RefreshSession[]
-  memberProfiles   MemberProfile[]   @relation("UserMemberProfiles")
+  memberships         LocalMembership[]
+  refreshSessions     RefreshSession[]
+  memberProfiles      MemberProfile[]   @relation("UserMemberProfiles")
   approvedMemberships LocalMembership[] @relation("MembershipApprover")
-  auditLogs        AuditLog[]
-  createdFiles     FileObject[]      @relation("FileCreator")
+  auditLogs           AuditLog[]
+  createdFiles        FileObject[]      @relation("FileCreator")
+
+  gatheringProfile               GatheringProfile?
+  gatheringAffiliations          GatheringLocalAffiliation[]
+  gatheringMemberships           GatheringMembership[]           @relation("GatheringMemberUser")
+  gatheringApprovedMemberships   GatheringMembership[]           @relation("GatheringMembershipApprover")
+  gatheringSessions              GatheringSession[]
+  gatheringRecoveryCodes         GatheringRecoveryCode[]
+  gatheringRecoveryRequests      GatheringRecoveryRequest[]
+  gatheringGroupsCreated         GatheringGroup[]                @relation("GatheringGroupCreator")
+  gatheringInvitesCreated        GatheringInvite[]               @relation("GatheringInviteCreator")
+  gatheringRoleSubjects          GatheringRoleAssignment[]       @relation("GatheringRoleSubject")
+  gatheringRolesAssigned         GatheringRoleAssignment[]       @relation("GatheringRoleAssigner")
+  gatheringRolesRevoked          GatheringRoleAssignment[]       @relation("GatheringRoleRevoker")
+  gatheringExecutiveTerms        GatheringExecutiveTerm[]
+  gatheringEventsCreated         GatheringEvent[]                @relation("GatheringEventCreator")
+  gatheringAttendances           GatheringEventAttendance[]
+  gatheringMediaUploaded         GatheringMediaAsset[]           @relation("GatheringMediaUploader")
+  gatheringMediaReports          GatheringMediaReport[]          @relation("GatheringMediaReporter")
+  gatheringTransactionsCreated   GatheringFinanceTransaction[]   @relation("GatheringTransactionCreator")
+  gatheringDues                  GatheringMemberDue[]
+  gatheringReceiptsUploaded      GatheringReceiptAsset[]         @relation("GatheringReceiptUploader")
+  gatheringSnapshotsClosed       GatheringFinanceCloseSnapshot[] @relation("GatheringSnapshotCloser")
+  gatheringHandoversFrom         GatheringHandover[]             @relation("GatheringHandoverFrom")
+  gatheringHandoversTo           GatheringHandover[]             @relation("GatheringHandoverTo")
+  gatheringSubscriptionsApproved GatheringSubscription[]         @relation("GatheringSubscriptionApprover")
+  gatheringSubscriptionAudits    GatheringSubscriptionAudit[]    @relation("GatheringSubscriptionAuditor")
+  gatheringPushTokens            GatheringPushToken[]
+  gatheringNotifications         GatheringNotification[]
+  gatheringAuditLogs             GatheringAuditLog[]             @relation("GatheringAuditActor")
 }
 
 model LocalMembership {
@@ -484,4 +513,618 @@ model AuditLog {
   actor User?  @relation(fields: [actorUserId], references: [id])
 
   @@index([localId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// 모임관리 모듈
+// 회원수첩의 Event, AuditLog, LocalMembership 과 이름이 겹치지 않게
+// 모델·테이블을 gathering_ 접두로 둔다. 테넌트 키는 groupId 이다.
+// 계정 자체는 위의 User 를 공유한다.
+// ---------------------------------------------------------------------------
+
+enum GatheringMembershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  WITHDRAWN
+}
+
+enum GatheringRole {
+  PRESIDENT
+  SECRETARY
+  TREASURER
+  EXECUTIVE
+  MEMBER
+}
+
+enum GatheringAttendance {
+  ATTENDING
+  DECLINED
+  UNDECIDED
+}
+
+enum GatheringEventStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum GatheringObjectStatus {
+  PENDING
+  READY
+  FAILED
+  DELETED
+}
+
+enum GatheringMediaKind {
+  PHOTO
+  VIDEO
+}
+
+enum GatheringReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+enum GatheringEntryDirection {
+  INCOME
+  EXPENSE
+}
+
+enum GatheringDueStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  WAIVED
+}
+
+enum GatheringFinanceYearStatus {
+  OPEN
+  CLOSED
+}
+
+enum GatheringHandoverStatus {
+  NOMINATED
+  ACCEPTED
+  FINALIZED
+  CANCELLED
+}
+
+enum GatheringSubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum GatheringSubscriptionSource {
+  PAID
+  COMPLIMENTARY
+}
+
+enum GatheringRecoveryStatus {
+  OPEN
+  APPROVED
+  REJECTED
+}
+
+enum GatheringPushPlatform {
+  IOS
+  ANDROID
+}
+
+enum GatheringNotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// 지시문 User 의 모임용 표시 이름. 회원수첩 이름은 MemberProfile 에 있다.
+model GatheringProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  displayName        String
+  directoryConsentAt DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("gathering_profiles")
+}
+
+/// 지시문 UserLocalAffiliation. 회원수첩 LocalMembership 과 별개다.
+model GatheringLocalAffiliation {
+  id          String   @id @default(cuid())
+  userId      String
+  localJcName String
+  isCurrent   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isCurrent])
+  @@map("gathering_local_affiliations")
+}
+
+/// 지시문 Group.
+model GatheringGroup {
+  id                     String   @id @default(cuid())
+  name                   String
+  description            String?
+  inviteRequiresApproval Boolean  @default(false)
+  createdByUserId        String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  createdBy          User                           @relation("GatheringGroupCreator", fields: [createdByUserId], references: [id])
+  memberships        GatheringMembership[]
+  invites            GatheringInvite[]
+  roleAssignments    GatheringRoleAssignment[]
+  executiveTerms     GatheringExecutiveTerm[]
+  events             GatheringEvent[]
+  mediaAssets        GatheringMediaAsset[]
+  mediaReports       GatheringMediaReport[]
+  financeYears       GatheringFinanceYear[]
+  transactions       GatheringFinanceTransaction[]
+  dues               GatheringMemberDue[]
+  receipts           GatheringReceiptAsset[]
+  closeSnapshots     GatheringFinanceCloseSnapshot[]
+  handovers          GatheringHandover[]
+  subscriptions      GatheringSubscription[]
+  subscriptionAudits GatheringSubscriptionAudit[]
+  notifications      GatheringNotification[]
+  auditLogs          GatheringAuditLog[]
+  attendances        GatheringEventAttendance[]
+
+  @@index([createdByUserId])
+  @@map("gathering_groups")
+}
+
+model GatheringMembership {
+  id                 String                     @id @default(cuid())
+  groupId            String
+  userId             String
+  status             GatheringMembershipStatus  @default(PENDING)
+  directoryConsentAt DateTime?
+  joinedAt           DateTime?
+  approvedAt         DateTime?
+  approvedByUserId   String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  group      GatheringGroup           @relation(fields: [groupId], references: [id])
+  user       User                     @relation("GatheringMemberUser", fields: [userId], references: [id])
+  approvedBy User?                    @relation("GatheringMembershipApprover", fields: [approvedByUserId], references: [id])
+  roles      GatheringRoleAssignment[]
+
+  @@unique([groupId, userId])
+  @@index([userId, status])
+  @@index([groupId, status])
+  @@map("gathering_memberships")
+}
+
+model GatheringInvite {
+  id               String    @id @default(cuid())
+  groupId          String
+  tokenHash        String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  requiresApproval Boolean
+  maxUses          Int?
+  useCount         Int       @default(0)
+  createdByUserId  String
+  createdAt        DateTime  @default(now())
+
+  group     GatheringGroup @relation(fields: [groupId], references: [id])
+  createdBy User           @relation("GatheringInviteCreator", fields: [createdByUserId], references: [id])
+
+  @@index([groupId, createdAt])
+  @@map("gathering_invites")
+}
+
+model GatheringRoleAssignment {
+  id               String         @id @default(cuid())
+  groupId          String
+  membershipId     String
+  userId           String
+  role             GatheringRole
+  title            String?
+  assignedByUserId String
+  assignedAt       DateTime       @default(now())
+  revokedAt        DateTime?
+  revokedByUserId  String?
+
+  group      GatheringGroup      @relation(fields: [groupId], references: [id])
+  membership GatheringMembership @relation(fields: [membershipId], references: [id])
+  user       User                @relation("GatheringRoleSubject", fields: [userId], references: [id])
+  assignedBy User                @relation("GatheringRoleAssigner", fields: [assignedByUserId], references: [id])
+  revokedBy  User?               @relation("GatheringRoleRevoker", fields: [revokedByUserId], references: [id])
+
+  @@index([groupId, userId, revokedAt])
+  @@index([groupId, role, revokedAt])
+  @@map("gathering_role_assignments")
+}
+
+model GatheringExecutiveTerm {
+  id        String         @id @default(cuid())
+  groupId   String
+  userId    String
+  role      GatheringRole
+  title     String?
+  fiscalYear Int
+  startedAt DateTime
+  endedAt   DateTime?
+
+  group GatheringGroup @relation(fields: [groupId], references: [id])
+  user  User           @relation(fields: [userId], references: [id])
+
+  @@index([groupId, fiscalYear])
+  @@index([userId])
+  @@map("gathering_executive_terms")
+}
+
+/// 회원수첩 Event 와 별개의 모임 행사.
+model GatheringEvent {
+  id              String                @id @default(cuid())
+  groupId         String
+  title           String
+  startsAt        DateTime
+  place           String?
+  description     String?
+  status          GatheringEventStatus  @default(SCHEDULED)
+  createdByUserId String
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  deletedAt       DateTime?
+
+  group        GatheringGroup             @relation(fields: [groupId], references: [id])
+  createdBy    User                       @relation("GatheringEventCreator", fields: [createdByUserId], references: [id])
+  attendances  GatheringEventAttendance[]
+  mediaAssets  GatheringMediaAsset[]
+  transactions GatheringFinanceTransaction[]
+  receipts     GatheringReceiptAsset[]
+
+  @@index([groupId, startsAt])
+  @@index([groupId, deletedAt])
+  @@map("gathering_events")
+}
+
+model GatheringEventAttendance {
+  id        String              @id @default(cuid())
+  groupId   String
+  eventId   String
+  userId    String
+  status    GatheringAttendance @default(UNDECIDED)
+  updatedAt DateTime            @updatedAt
+
+  group GatheringGroup @relation(fields: [groupId], references: [id])
+  event GatheringEvent @relation(fields: [eventId], references: [id])
+  user  User           @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([groupId, eventId])
+  @@map("gathering_event_attendances")
+}
+
+model GatheringMediaAsset {
+  id             String                 @id @default(cuid())
+  groupId        String
+  eventId        String
+  uploaderUserId String
+  kind           GatheringMediaKind
+  storageKey     String                 @unique
+  originalName   String?
+  mimeType       String
+  sizeBytes      BigInt
+  checksum       String?
+  width          Int?
+  height         Int?
+  durationMs     Int?
+  status         GatheringObjectStatus  @default(PENDING)
+  retentionHold  Boolean                @default(false)
+  createdAt      DateTime               @default(now())
+  deletedAt      DateTime?
+
+  group    GatheringGroup        @relation(fields: [groupId], references: [id])
+  event    GatheringEvent        @relation(fields: [eventId], references: [id])
+  uploader User                  @relation("GatheringMediaUploader", fields: [uploaderUserId], references: [id])
+  reports  GatheringMediaReport[]
+
+  @@index([groupId, eventId])
+  @@index([uploaderUserId])
+  @@map("gathering_media_assets")
+}
+
+model GatheringMediaReport {
+  id             String                 @id @default(cuid())
+  groupId        String
+  mediaAssetId   String
+  reporterUserId String
+  reason         String
+  status         GatheringReportStatus  @default(OPEN)
+  createdAt      DateTime               @default(now())
+  resolvedAt     DateTime?
+
+  group   GatheringGroup      @relation(fields: [groupId], references: [id])
+  media   GatheringMediaAsset @relation(fields: [mediaAssetId], references: [id])
+  reporter User               @relation("GatheringMediaReporter", fields: [reporterUserId], references: [id])
+
+  @@index([groupId, status])
+  @@index([mediaAssetId])
+  @@map("gathering_media_reports")
+}
+
+model GatheringFinanceYear {
+  id                String                     @id @default(cuid())
+  groupId           String
+  year              Int
+  startsAt          DateTime
+  endsAt            DateTime
+  status            GatheringFinanceYearStatus @default(OPEN)
+  openingBalanceWon Int                        @default(0)
+  closedAt          DateTime?
+
+  group        GatheringGroup                @relation(fields: [groupId], references: [id])
+  transactions GatheringFinanceTransaction[]
+  dues         GatheringMemberDue[]
+  receipts     GatheringReceiptAsset[]
+  snapshot     GatheringFinanceCloseSnapshot?
+  handovers    GatheringHandover[]
+
+  @@unique([groupId, year])
+  @@index([groupId, status])
+  @@map("gathering_finance_years")
+}
+
+model GatheringFinanceTransaction {
+  id            String                  @id @default(cuid())
+  groupId       String
+  eventId       String
+  financeYearId String
+  direction     GatheringEntryDirection
+  label         String
+  amountWon     Int
+  paidAt        DateTime
+  note          String?
+  createdByUserId String
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  group       GatheringGroup      @relation(fields: [groupId], references: [id])
+  event       GatheringEvent      @relation(fields: [eventId], references: [id])
+  financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
+  createdBy   User                @relation("GatheringTransactionCreator", fields: [createdByUserId], references: [id])
+
+  @@index([groupId, paidAt])
+  @@index([eventId])
+  @@index([financeYearId])
+  @@map("gathering_finance_transactions")
+}
+
+model GatheringMemberDue {
+  id            String             @id @default(cuid())
+  groupId       String
+  userId        String
+  financeYearId String
+  amountWon     Int
+  paidAmountWon Int                @default(0)
+  paidAt        DateTime?
+  status        GatheringDueStatus @default(UNPAID)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  group       GatheringGroup       @relation(fields: [groupId], references: [id])
+  user        User                 @relation(fields: [userId], references: [id])
+  financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
+
+  @@unique([groupId, userId, financeYearId])
+  @@index([financeYearId])
+  @@map("gathering_member_dues")
+}
+
+model GatheringReceiptAsset {
+  id              String                @id @default(cuid())
+  groupId         String
+  eventId         String
+  financeYearId   String
+  storageKey      String                @unique
+  originalName    String?
+  mimeType        String
+  sizeBytes       BigInt
+  checksum        String?
+  version         Int                   @default(1)
+  immutable       Boolean               @default(false)
+  status          GatheringObjectStatus @default(PENDING)
+  uploadedByUserId String
+  createdAt       DateTime              @default(now())
+  deletedAt       DateTime?
+
+  group       GatheringGroup       @relation(fields: [groupId], references: [id])
+  event       GatheringEvent       @relation(fields: [eventId], references: [id])
+  financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
+  uploader    User                 @relation("GatheringReceiptUploader", fields: [uploadedByUserId], references: [id])
+
+  @@index([groupId, eventId])
+  @@index([financeYearId])
+  @@map("gathering_receipt_assets")
+}
+
+model GatheringFinanceCloseSnapshot {
+  id            String   @id @default(cuid())
+  groupId       String
+  financeYearId String   @unique
+  payloadJson   String
+  contentHash   String
+  closedByUserId String
+  createdAt     DateTime @default(now())
+
+  group       GatheringGroup       @relation(fields: [groupId], references: [id])
+  financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
+  closedBy    User                 @relation("GatheringSnapshotCloser", fields: [closedByUserId], references: [id])
+
+  @@index([groupId])
+  @@map("gathering_finance_close_snapshots")
+}
+
+model GatheringHandover {
+  id              String                  @id @default(cuid())
+  groupId         String
+  financeYearId   String
+  fromUserId      String
+  toUserId        String
+  status          GatheringHandoverStatus @default(NOMINATED)
+  idempotencyKey  String                  @unique
+  nominatedAt     DateTime                @default(now())
+  acceptedAt      DateTime?
+  finalizedAt     DateTime?
+
+  group       GatheringGroup       @relation(fields: [groupId], references: [id])
+  financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
+  fromUser    User                 @relation("GatheringHandoverFrom", fields: [fromUserId], references: [id])
+  toUser      User                 @relation("GatheringHandoverTo", fields: [toUserId], references: [id])
+
+  @@index([groupId, financeYearId, status])
+  @@map("gathering_handovers")
+}
+
+model GatheringSubscription {
+  id               String                      @id @default(cuid())
+  groupId          String
+  status           GatheringSubscriptionStatus
+  source           GatheringSubscriptionSource
+  approvedByUserId String?
+  approvedAt       DateTime?
+  startsAt         DateTime?
+  expiresAt        DateTime?
+  storageQuotaBytes BigInt                     @default(50000000000)
+  note             String?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  group    GatheringGroup               @relation(fields: [groupId], references: [id])
+  approver User?                        @relation("GatheringSubscriptionApprover", fields: [approvedByUserId], references: [id])
+  audits   GatheringSubscriptionAudit[]
+
+  @@index([groupId, status])
+  @@map("gathering_subscriptions")
+}
+
+model GatheringSubscriptionAudit {
+  id             String   @id @default(cuid())
+  groupId        String
+  subscriptionId String
+  action         String
+  actorUserId    String
+  metaJson       String?
+  createdAt      DateTime @default(now())
+
+  group        GatheringGroup        @relation(fields: [groupId], references: [id])
+  subscription GatheringSubscription @relation(fields: [subscriptionId], references: [id])
+  actor        User                  @relation("GatheringSubscriptionAuditor", fields: [actorUserId], references: [id])
+
+  @@index([groupId, createdAt])
+  @@map("gathering_subscription_audits")
+}
+
+model GatheringPushToken {
+  id         String                @id @default(cuid())
+  userId     String
+  token      String                @unique
+  platform   GatheringPushPlatform
+  disabledAt DateTime?
+  lastSeenAt DateTime?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("gathering_push_tokens")
+}
+
+model GatheringNotification {
+  id          String                       @id @default(cuid())
+  userId      String
+  groupId     String?
+  type        String
+  payloadJson String?
+  status      GatheringNotificationStatus  @default(PENDING)
+  dedupeKey   String?                      @unique
+  createdAt   DateTime                     @default(now())
+  sentAt      DateTime?
+
+  user  User            @relation(fields: [userId], references: [id])
+  group GatheringGroup? @relation(fields: [groupId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([groupId])
+  @@map("gathering_notifications")
+}
+
+/// 회원수첩 AuditLog 와 별개. 모임 권한·초대·복구 이력을 남긴다.
+model GatheringAuditLog {
+  id          String   @id @default(cuid())
+  groupId     String?
+  actorUserId String?
+  action      String
+  targetType  String?
+  targetId    String?
+  metaJson    String?
+  createdAt   DateTime @default(now())
+
+  group GatheringGroup? @relation(fields: [groupId], references: [id])
+  actor User?           @relation("GatheringAuditActor", fields: [actorUserId], references: [id])
+
+  @@index([groupId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("gathering_audit_logs")
+}
+
+/// 회원수첩 RefreshSession 은 LocalMembership 이 필수라 모임 세션을 분리한다.
+model GatheringSession {
+  id           String    @id @default(cuid())
+  userId       String
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("gathering_sessions")
+}
+
+model GatheringRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, usedAt])
+  @@map("gathering_recovery_codes")
+}
+
+model GatheringRecoveryRequest {
+  id        String                  @id @default(cuid())
+  userId    String?
+  phoneHash String
+  note      String?
+  status    GatheringRecoveryStatus @default(OPEN)
+  createdAt DateTime                @default(now())
+  resolvedAt DateTime?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([phoneHash, createdAt])
+  @@map("gathering_recovery_requests")
 }

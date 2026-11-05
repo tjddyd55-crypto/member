@@ -43,6 +43,7 @@ export function toMemberView(member: {
   status: string;
   user: {
     phone: string | null;
+    status?: string;
     gatheringProfile: { displayName: string } | null;
     gatheringAffiliations: Array<{ localJcName: string }>;
   };
@@ -51,7 +52,9 @@ export function toMemberView(member: {
   return {
     membershipId: member.id,
     userId: member.userId,
-    displayName: member.user.gatheringProfile?.displayName ?? '이름 없음',
+    displayName:
+      member.user.gatheringProfile?.displayName ??
+      (member.user.status === 'DELETED' ? '탈퇴한 회원' : '이름 없음'),
     localJcName: member.user.gatheringAffiliations[0]?.localJcName ?? '',
     phone: member.user.phone,
     status: member.status,

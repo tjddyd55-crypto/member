@@ -2,6 +2,7 @@ import { calendarYearKst, MEDIA_PAGE_LIMIT, SIGNED_URL_TTL_SECONDS } from '@memb
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
+import { assertNotBlocked, blockedUserIds } from '../moderation/blocks.js';
 import { currentObjectStorage } from '../storage/r2.js';
 import { decodeMediaCursor, encodeMediaCursor, presentMedia } from './present.js';
 
@@ -14,6 +15,7 @@ export async function listEventMedia(
 ) {
   await requireGroupMember(userId, groupId);
   await requireListedEvent(groupId, eventId);
+  const hidden = await blockedUserIds(groupId, userId);
   const decoded = cursor ? decodeMediaCursor(cursor) : null;
   if (cursor && !decoded) throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
   const rows = await prisma.gatheringMediaAsset.findMany({
@@ -22,6 +24,7 @@ export async function listEventMedia(
       eventId,
       status: 'READY',
       deletedAt: null,
+      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
       ...cursorFilter(decoded),
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -41,6 +44,7 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
     where: { id: assetId, groupId, status: 'READY', deletedAt: null },
   });
   if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
+  await assertNotBlocked(groupId, userId, asset.uploaderUserId);
   const target = await currentObjectStorage().presignGet({
     key: asset.storageKey,
     expiresInSeconds: SIGNED_URL_TTL_SECONDS,
@@ -55,9 +59,15 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
 
 export async function listAlbums(userId: string, groupId: string, year?: number) {
   await requireGroupMember(userId, groupId);
+  const hidden = await blockedUserIds(groupId, userId);
   const counts = await prisma.gatheringMediaAsset.groupBy({
     by: ['eventId', 'kind'],
-    where: { groupId, status: 'READY', deletedAt: null },
+    where: {
+      groupId,
+      status: 'READY',
+      deletedAt: null,
+      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
+    },
     _count: { _all: true },
   });
   const events = await prisma.gatheringEvent.findMany({

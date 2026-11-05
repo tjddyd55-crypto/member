@@ -202,6 +202,17 @@ export const gatheringFinanceQuerySchema = z.object({
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 });
 
+export const gatheringAccountDeleteSchema = z.object({
+  password: z.string().min(1).max(72),
+  confirm: z.literal(true, {
+    errorMap: () => ({ message: '계정 삭제에 동의해야 합니다.' }),
+  }),
+});
+
+export const gatheringBlockSchema = z.object({
+  userId: z.string().min(1),
+});
+
 export const gatheringPushSchema = z
   .object({
     permission: z.enum(['granted', 'denied']),

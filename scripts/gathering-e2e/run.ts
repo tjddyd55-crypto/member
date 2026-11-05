@@ -243,6 +243,7 @@ async function cleanupRows() {
     const groupIds = createdGroupIds;
     const userIds = createdUserIds;
     if (groupIds.length > 0) {
+      await prisma.gatheringMemberBlock.deleteMany({ where: { groupId: { in: groupIds } } });
       await prisma.gatheringMediaReport.deleteMany({ where: { groupId: { in: groupIds } } });
       await prisma.gatheringMediaAsset.deleteMany({ where: { groupId: { in: groupIds } } });
       await prisma.gatheringReceiptAsset.deleteMany({ where: { groupId: { in: groupIds } } });

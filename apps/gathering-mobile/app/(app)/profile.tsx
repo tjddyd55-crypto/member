@@ -53,6 +53,9 @@ export default function ProfileScreen() {
           />
         </>
       )}
+      <Button label="개인정보 처리방침" variant="text" onPress={() => router.push('/(app)/legal/privacy')} />
+      <Button label="이용약관" variant="text" onPress={() => router.push('/(app)/legal/terms')} />
+      <Button label="계정 삭제" variant="text" onPress={() => router.push('/(app)/account-delete')} />
       <Button label="내 모임으로" variant="text" onPress={() => router.back()} />
     </Screen>
   );

@@ -9,7 +9,9 @@ import {
   gatheringMediaUploadSchema,
 } from '@member/contracts';
 import {
+  completeFolderMediaUpload,
   completeMediaUpload,
+  createFolderMediaUploads,
   createMediaUploads,
   deleteMedia,
   resumeMediaUpload,
@@ -107,6 +109,24 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     const params = groupParams.parse(request.params);
     const body = z.object({ title: z.string() }).parse(request.body);
     return createMediaFolder(requireGatheringUserId(request), params.groupId, body.title);
+  });
+
+  app.post('/api/gathering/groups/:groupId/folders/:folderId/media/uploads', auth, async (request) => {
+    const params = groupParams.extend({ folderId: z.string().min(1) }).parse(request.params);
+    const body = gatheringMediaUploadSchema.parse(request.body);
+    return createFolderMediaUploads(requireGatheringUserId(request), params.groupId, params.folderId, body.items);
+  });
+
+  app.post('/api/gathering/groups/:groupId/folders/:folderId/media/:assetId/complete', auth, async (request) => {
+    const params = groupParams.extend({ folderId: z.string().min(1), assetId: z.string().min(1) }).parse(request.params);
+    const body = gatheringMediaCompleteSchema.parse(request.body);
+    return completeFolderMediaUpload(
+      requireGatheringUserId(request),
+      params.groupId,
+      params.folderId,
+      params.assetId,
+      body.sizeBytes,
+    );
   });
 
   app.get('/api/gathering/groups/:groupId/folders/:folderId/media', auth, async (request) => {

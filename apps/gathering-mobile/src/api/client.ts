@@ -338,6 +338,30 @@ export const api = {
       `/api/gathering/groups/${groupId}/events/${eventId}/media${query}`,
     );
   },
+  createFolderUploads(
+    groupId: string,
+    folderId: string,
+    items: Array<{
+      kind: 'PHOTO' | 'VIDEO';
+      mimeType: string;
+      sizeBytes: number;
+      durationMs?: number;
+      width?: number;
+      height?: number;
+      originalName?: string;
+    }>,
+  ) {
+    return request<{ items: GatheringMediaUploadItem[] }>(
+      `/api/gathering/groups/${groupId}/folders/${folderId}/media/uploads`,
+      { method: 'POST', body: JSON.stringify({ items }) },
+    );
+  },
+  completeFolderMedia(groupId: string, folderId: string, assetId: string, sizeBytes: number) {
+    return request<{ media: GatheringMediaView }>(
+      `/api/gathering/groups/${groupId}/folders/${folderId}/media/${assetId}/complete`,
+      { method: 'POST', body: JSON.stringify({ sizeBytes }) },
+    );
+  },
   createMediaUploads(
     groupId: string,
     eventId: string,

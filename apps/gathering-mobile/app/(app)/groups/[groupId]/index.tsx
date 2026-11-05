@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState, type ComponentProps } from 'react';
+import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringGroupDetail, GatheringMemberView } from '@member/contracts';
 import { api } from '../../../../src/api/client';
@@ -18,21 +19,26 @@ import {
   Title,
 } from '../../../../src/design/ui';
 import { visibleRoleLabels } from '../../../../src/copy';
+import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
+import { handoverInProgress, uploadBlockReason } from '../../../../src/features/media/upload-block';
 import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
 
-const TABS: Array<{ id: Tab; label: string; icon: string }> = [
-  { id: 'home', label: '홈', icon: '⌂' },
-  { id: 'members', label: '회원', icon: '☺' },
-  { id: 'schedule', label: '일정', icon: '▦' },
-  { id: 'photos', label: '사진', icon: '▣' },
-  { id: 'finance', label: '재무', icon: '₩' },
+const TABS: Array<{ id: Tab; label: string; icon: ComponentProps<typeof Ionicons>['name'] }> = [
+  { id: 'home', label: '홈', icon: 'home' },
+  { id: 'members', label: '회원', icon: 'people' },
+  { id: 'schedule', label: '일정', icon: 'calendar' },
+  { id: 'photos', label: '사진', icon: 'images' },
+  { id: 'finance', label: '재무', icon: 'wallet' },
 ];
 
 export default function GroupDetailScreen() {
   const params = useLocalSearchParams<{ groupId: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
+  const { width } = useWindowDimensions();
+  const labelSize = tabLabelSize(width);
+  const iconSize = tabIconSize(width);
   const [tab, setTab] = useState<Tab>('home');
   const [group, setGroup] = useState<GatheringGroupDetail | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -76,8 +82,10 @@ export default function GroupDetailScreen() {
                   onPress={() => setTab(item.id)}
                   style={[styles.tab, selected && styles.tabOn]}
                 >
-                  <Text style={[styles.tabIcon, selected && styles.tabOnText]}>{item.icon}</Text>
-                  <Text style={[styles.tabLabel, selected && styles.tabOnText]}>{item.label}</Text>
+                  <Ionicons name={item.icon} size={iconSize} color={selected ? '#FFFFFF' : '#1B3A6B'} />
+                  <Text style={[styles.tabLabel, { fontSize: labelSize }, selected && styles.tabOnText]} numberOfLines={1}>
+                    {item.label}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -102,6 +110,7 @@ export default function GroupDetailScreen() {
 
 function HomePane({ group }: { group: GatheringGroupDetail }) {
   const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [handoverStatus, setHandoverStatus] = useState<string | null>(null);
   const [handoverPrompt, setHandoverPrompt] = useState<string | null>(null);
   const [nextEvent, setNextEvent] = useState('다음 행사 없음');
   const [recentEvent, setRecentEvent] = useState('최근 행사 없음');
@@ -110,18 +119,24 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
 
   useEffect(() => {
     void api.subscription(group.id).then((result) => {
-      setUploadNote(result.uploadsAllowed ? null : '새 사진과 영상은 지금 올릴 수 없습니다. 이미 올린 파일은 볼 수 있습니다.');
+      setUploadNote(
+        uploadBlockReason({
+          uploadsAllowed: result.uploadsAllowed,
+          handoverStatus,
+        }),
+      );
     }).catch(() => setUploadNote(null));
-  }, [group.id]);
+  }, [group.id, handoverStatus]);
 
   useEffect(() => {
     void api
       .handover(group.id)
       .then((view) => {
+        setHandoverStatus(view.handover?.status ?? null);
         if (view.actions.accept) setHandoverPrompt('차기 협의회장으로 지명되었습니다. 인계를 확인해 주세요.');
-        else if (view.actions.confirm || view.actions.finalize || view.actions.cancel || view.actions.nominate) {
-          setHandoverPrompt('진행 중인 인계가 있습니다.');
-        } else setHandoverPrompt(null);
+        else if (handoverInProgress(view.handover?.status)) setHandoverPrompt('진행 중인 인계가 있습니다.');
+        else if (view.actions.nominate) setHandoverPrompt(null);
+        else setHandoverPrompt(null);
       })
       .catch(() => setHandoverPrompt(null));
   }, [group.id]);
@@ -157,7 +172,9 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
       <View style={styles.card}>
         <Text style={styles.name}>다음 행사</Text>
         <Body>{nextEvent}</Body>
-        <Text style={styles.name}>최근 행사</Text>
+      </View>
+      <View style={styles.cardQuiet}>
+        <Text style={styles.meta}>최근 행사</Text>
         <Body>{recentEvent}</Body>
       </View>
       <View style={styles.card}>
@@ -273,20 +290,18 @@ function MembersPane({ groupId }: { groupId: string }) {
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space[8] },
+  tabs: { flexDirection: 'row', flexWrap: 'nowrap', width: '100%' },
   tab: {
-    flexGrow: 1,
-    flexBasis: 64,
+    flex: 1,
+    minWidth: 0,
     minHeight: 48,
-    paddingHorizontal: theme.space[4],
     paddingVertical: theme.space[4],
     borderRadius: theme.radius[12],
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabOn: { backgroundColor: '#1B3A6B' },
-  tabIcon: { fontSize: 16, color: theme.colors.text.secondary },
-  tabLabel: { fontSize: 14, lineHeight: 20, textAlign: 'center', color: theme.colors.text.secondary },
+  tabLabel: { lineHeight: 16, textAlign: 'center', color: '#1B3A6B' },
   tabOnText: { color: '#FFFFFF' },
   stack: { gap: theme.space[12] },
   card: {
@@ -294,6 +309,11 @@ const styles = StyleSheet.create({
     padding: theme.space[16],
     borderRadius: theme.radius[12],
     backgroundColor: theme.colors.bg.subtle,
+  },
+  cardQuiet: {
+    gap: theme.space[4],
+    paddingVertical: theme.space[8],
+    paddingHorizontal: theme.space[16],
   },
   row: { flexDirection: 'row', gap: theme.space[8], alignItems: 'center' },
   name: { ...theme.typography.cardTitle, color: theme.colors.text.primary },

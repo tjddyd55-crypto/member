@@ -8,6 +8,7 @@ import { Body, Button, EmptyState, ErrorState, Notice } from '../../design/ui';
 import { theme } from '../../theme';
 import { MediaViewer } from './MediaViewer';
 import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
+import { uploadBlockReason } from './upload-block';
 
 type Job = {
   id: string;
@@ -29,16 +30,22 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [uploadsAllowed, setUploadsAllowed] = useState(false);
+  const [handoverStatus, setHandoverStatus] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ uri: string; kind: 'PHOTO' | 'VIDEO' } | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
     try {
-      const [media, usage] = await Promise.all([api.eventMedia(groupId, eventId), api.storage(groupId)]);
+      const [media, usage, handover] = await Promise.all([
+        api.eventMedia(groupId, eventId),
+        api.storage(groupId),
+        api.handover(groupId).catch(() => null),
+      ]);
       setItems(media.items);
       setNextCursor(media.nextCursor);
       setUploadsAllowed(usage.subscriptionActive);
+      setHandoverStatus(handover?.handover?.status ?? null);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '사진·영상을 불러오지 못했습니다.');
@@ -102,14 +109,17 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
     }
   };
 
-  const pick = async () => {
+  const uploadReason = uploadBlockReason({ handoverStatus, uploadsAllowed, destinationCount: 1, destinationChosen: true });
+
+  const pick = async (kind: 'PHOTO' | 'VIDEO') => {
+    if (uploadReason) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setMessage('앨범 접근을 허용해야 사진·영상을 올릴 수 있습니다.');
       return;
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
+      mediaTypes: kind === 'PHOTO' ? ['images'] : ['videos'],
       allowsMultipleSelection: true,
       quality: 1,
     });
@@ -153,11 +163,9 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
     <View style={styles.stack}>
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {message ? <Notice>{message}</Notice> : null}
-      {uploadsAllowed ? (
-        <Button label="사진·영상 올리기" onPress={() => void pick()} />
-      ) : (
-        <Notice>지금은 새 사진·영상을 올릴 수 없습니다. 이미 올린 파일은 볼 수 있습니다.</Notice>
-      )}
+      <Button label="사진 올리기" disabled={Boolean(uploadReason)} onPress={() => void pick('PHOTO')} />
+      <Button label="영상 올리기" disabled={Boolean(uploadReason)} onPress={() => void pick('VIDEO')} />
+      {uploadReason ? <Notice>{uploadReason}</Notice> : null}
       {jobs.length > 0 ? (
         <Body>
           전송 {progress.loaded}/{progress.total}

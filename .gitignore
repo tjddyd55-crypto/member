@@ -11,6 +11,8 @@ coverage/
 .DS_Store
 apps/mobile/dist-web/
 apps/mobile/.env
+apps/gathering-mobile/.env
+apps/gathering-mobile/dist-web/
 apps/api/.env
 .env
 packages/*/dist/

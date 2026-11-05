@@ -10,6 +10,7 @@
   "exclude": ["src/tests"],
   "references": [
     { "path": "../../packages/shared" },
-    { "path": "../../packages/contracts" }
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/gathering-domain" }
   ]
 }

@@ -77,6 +77,44 @@ export type MemberListItem = {
   email: string | null;
 };
 
+export type {
+  GatheringAuthProfile,
+  GatheringAuthUser,
+  GatheringFinanceYearView,
+  GatheringGroupDetail,
+  GatheringGroupSummary,
+  GatheringInviteCreated,
+  GatheringEventView,
+  GatheringInvitePreview,
+  GatheringOfficerTermView,
+  GatheringOfficerView,
+  GatheringInviteView,
+  GatheringMemberView,
+  GatheringSessionResponse,
+} from './gathering.js';
+export {
+  gatheringAcceptInviteSchema,
+  gatheringAttendanceSchema,
+  gatheringEventUpdateSchema,
+  gatheringEventWriteSchema,
+  gatheringPushSchema,
+  gatheringRangeQuerySchema,
+  gatheringGroupCreateSchema,
+  gatheringGroupUpdateSchema,
+  gatheringInviteCreateSchema,
+  gatheringLoginSchema,
+  gatheringLogoutSchema,
+  gatheringMemberQuerySchema,
+  gatheringMembershipDecisionSchema,
+  gatheringPasswordSchema,
+  gatheringProfileSchema,
+  gatheringRecoveryRedeemSchema,
+  gatheringRecoveryRequestSchema,
+  gatheringRefreshSchema,
+  gatheringRegisterSchema,
+  gatheringRoleAssignSchema,
+} from './gathering.js';
+
 export type MemberDetail = MemberListItem & {
   birthDate: string | null;
   homeAddress: string | null;

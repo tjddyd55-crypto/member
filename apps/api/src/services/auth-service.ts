@@ -35,8 +35,25 @@ export function signAccessToken(payload: AccessPayload) {
 
 export function verifyAccessToken(token: string): AccessPayload {
   try {
-    return jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessPayload;
-  } catch {
+    const raw = jwt.verify(token, env.JWT_ACCESS_SECRET);
+    if (typeof raw === 'string') {
+      throw new AppError(401, 'UNAUTHORIZED', '유효하지 않은 액세스 토큰입니다.');
+    }
+    if (raw.aud === 'gathering' || raw.typ === 'gathering_access') {
+      throw new AppError(401, 'UNAUTHORIZED', '유효하지 않은 액세스 토큰입니다.');
+    }
+    if (!raw.sub || !raw.membershipId || !raw.localId || !raw.role || !raw.membershipStatus) {
+      throw new AppError(401, 'UNAUTHORIZED', '유효하지 않은 액세스 토큰입니다.');
+    }
+    return {
+      sub: raw.sub,
+      membershipId: String(raw.membershipId),
+      localId: String(raw.localId),
+      role: raw.role as AccessPayload['role'],
+      membershipStatus: raw.membershipStatus as AccessPayload['membershipStatus'],
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError(401, 'UNAUTHORIZED', '유효하지 않은 액세스 토큰입니다.');
   }
 }
@@ -129,7 +146,11 @@ export async function revokeRefreshToken(refreshToken: string) {
   });
 }
 
-export async function loginWithPassword(identifier: string, password: string, membershipId?: string) {
+export async function loginWithPassword(
+  identifier: string,
+  password: string,
+  membershipId?: string,
+) {
   const user = await prisma.user.findFirst({
     where: {
       OR: [{ phone: identifier }, { email: identifier }],
@@ -153,9 +174,7 @@ export async function loginWithPassword(identifier: string, password: string, me
     throw new AppError(403, 'USER_BLOCKED', '정지되었거나 사용할 수 없는 계정입니다.');
   }
 
-  const candidates = user.memberships.filter((m) =>
-    ['ACTIVE', 'PENDING'].includes(m.status),
-  );
+  const candidates = user.memberships.filter((m) => ['ACTIVE', 'PENDING'].includes(m.status));
 
   if (candidates.length === 0) {
     throw new AppError(403, 'NO_MEMBERSHIP', '활성 멤버십이 없습니다.');

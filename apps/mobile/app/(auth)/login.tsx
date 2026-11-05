@@ -8,8 +8,8 @@ import { theme } from '../../src/theme';
 
 export default function LoginScreen() {
   const { login, user, membership } = useAuth();
-  const [identifier, setIdentifier] = useState('01000001003');
-  const [password, setPassword] = useState('Passw0rd!');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 

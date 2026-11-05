@@ -7,17 +7,10 @@ import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { localRoutes } from './routes/local.js';
 import { memberRoutes } from './routes/members.js';
+import { gatheringRoutes } from './modules/gathering/routes/index.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: env.NODE_ENV !== 'test' });
-
-  await app.register(cors, { origin: true });
-  await app.register(authPlugin);
-  await app.register(authRoutes);
-  await app.register(localRoutes);
-  await app.register(memberRoutes);
-
-  app.get('/health', async () => ({ ok: true }));
 
   app.setErrorHandler((err, _request, reply) => {
     if (err instanceof ZodError) {
@@ -43,6 +36,15 @@ export async function buildApp() {
       error: { code: 'INTERNAL', message: '서버 오류가 발생했습니다.' },
     });
   });
+
+  await app.register(cors, { origin: true });
+  await app.register(authPlugin);
+  await app.register(authRoutes);
+  await app.register(localRoutes);
+  await app.register(memberRoutes);
+  await app.register(gatheringRoutes);
+
+  app.get('/health', async () => ({ ok: true }));
 
   return app;
 }

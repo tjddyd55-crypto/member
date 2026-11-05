@@ -7,10 +7,10 @@
     "packages/*"
   ],
   "scripts": {
-    "lint": "npm run lint -w @member/api && npm run lint -w @member/mobile",
-    "typecheck": "npm run typecheck -w @member/shared && npm run typecheck -w @member/contracts && npm run typecheck -w @member/api && npm run typecheck -w @member/mobile",
-    "test": "npm run test -w @member/api",
-    "build": "npm run build -w @member/shared && npm run build -w @member/contracts && npm run build -w @member/api",
+    "lint": "npm run lint -w @member/api && npm run lint -w @member/mobile && npm run lint -w @member/gathering-mobile",
+    "typecheck": "npm run typecheck -w @member/shared && npm run typecheck -w @member/contracts && npm run typecheck -w @member/gathering-domain && npm run typecheck -w @member/api && npm run typecheck -w @member/mobile && npm run typecheck -w @member/gathering-mobile",
+    "test": "npm run test -w @member/gathering-domain && npm run test -w @member/api",
+    "build": "npm run build -w @member/shared && npm run build -w @member/contracts && npm run build -w @member/gathering-domain && npm run build -w @member/api",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
     "db:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",

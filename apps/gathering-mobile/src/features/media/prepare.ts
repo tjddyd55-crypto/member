@@ -1,4 +1,4 @@
-import { File } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import { createUploadTask, FileSystemUploadType } from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import type { ImagePickerAsset } from 'expo-image-picker';
@@ -73,20 +73,41 @@ export async function putPreparedFile(
   headers: Record<string, string>,
   onProgress: (loaded: number, total: number) => void,
 ) {
-  const task = createUploadTask(
-    url,
-    uri,
-    {
-      httpMethod: 'PUT',
-      uploadType: FileSystemUploadType.BINARY_CONTENT,
-      headers,
-    },
-    (progress) => onProgress(progress.totalBytesSent, progress.totalBytesExpectedToSend),
-  );
-  const result = await task.uploadAsync();
-  if (!result || result.status < 200 || result.status >= 300) {
-    throw new Error('파일 전송에 실패했습니다.');
+  const uploadUri = copyContentUriToCache(uri);
+  try {
+    const task = createUploadTask(
+      url,
+      uploadUri,
+      {
+        httpMethod: 'PUT',
+        uploadType: FileSystemUploadType.BINARY_CONTENT,
+        headers,
+      },
+      (progress) => onProgress(progress.totalBytesSent, progress.totalBytesExpectedToSend),
+    );
+    const result = await task.uploadAsync();
+    if (!result || result.status < 200 || result.status >= 300) {
+      throw new Error('파일 전송에 실패했습니다.');
+    }
+  } finally {
+    if (uploadUri !== uri) {
+      try {
+        new File(uploadUri).delete();
+      } catch {
+        // 캐시 사본 정리는 업로드 결과보다 뒤다.
+      }
+    }
   }
+}
+
+/** Android 문서 선택기는 content:// 를 준다. 레거시 업로드는 file:// 만 읽는다. */
+function copyContentUriToCache(uri: string) {
+  if (!uri.startsWith('content:')) return uri;
+  const source = new File(uri);
+  const extension = source.extension || '';
+  const destination = new File(Paths.cache, `upload-${Date.now()}${extension}`);
+  source.copy(destination);
+  return destination.uri;
 }
 
 function fileBytes(uri: string) {

@@ -221,20 +221,24 @@ export function EventFinancePane({
   };
 
   const attach = async () => {
-    const picked = await File.pickFileAsync().catch(() => null);
-    if (!picked) return;
-    for (const file of Array.isArray(picked) ? picked : [picked]) {
-      const originalName = fileName(file.uri);
-      const mimeType = allowedReceiptMime(file.type) ?? mimeOf(extensionOf(originalName));
-      const created = await api.createReceiptUploads(groupId, eventId, [
-        { mimeType, sizeBytes: file.size, originalName },
-      ]);
-      const target = created.items[0];
-      if (!target) continue;
-      await putPreparedFile(file.uri, target.uploadUrl, target.headers, () => undefined);
-      await api.completeReceipt(groupId, eventId, target.id, file.size);
+    try {
+      const picked = await File.pickFileAsync().catch(() => null);
+      if (!picked) return;
+      for (const file of Array.isArray(picked) ? picked : [picked]) {
+        const originalName = fileName(file.uri);
+        const mimeType = allowedReceiptMime(file.type) ?? mimeOf(extensionOf(originalName));
+        const created = await api.createReceiptUploads(groupId, eventId, [
+          { mimeType, sizeBytes: file.size, originalName },
+        ]);
+        const target = created.items[0];
+        if (!target) continue;
+        await putPreparedFile(file.uri, target.uploadUrl, target.headers, () => undefined);
+        await api.completeReceipt(groupId, eventId, target.id, file.size);
+      }
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '영수증을 첨부하지 못했습니다.');
     }
-    await load();
   };
 
   if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;

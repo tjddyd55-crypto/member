@@ -10,6 +10,7 @@ import type {
   GatheringGroupDetail,
   GatheringGroupSummary,
   GatheringInviteCreated,
+  GatheringInviteView,
   GatheringInvitePreview,
   GatheringMediaUploadItem,
   GatheringMediaView,
@@ -208,6 +209,15 @@ export const api = {
   },
   createInvite(groupId: string) {
     return request<GatheringInviteCreated>(`/api/gathering/groups/${groupId}/invites`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+  invites(groupId: string) {
+    return request<{ items: GatheringInviteView[] }>(`/api/gathering/groups/${groupId}/invites`);
+  },
+  revokeInvite(groupId: string, inviteId: string) {
+    return request<{ ok: true }>(`/api/gathering/groups/${groupId}/invites/${inviteId}/revoke`, {
       method: 'POST',
       body: JSON.stringify({}),
     });

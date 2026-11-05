@@ -17,16 +17,17 @@ import {
   TextField,
   Title,
 } from '../../../../src/design/ui';
+import { roleLabel } from '../../../../src/copy';
 import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
 
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: 'home', label: '홈' },
-  { id: 'members', label: '회원' },
-  { id: 'schedule', label: '일정' },
-  { id: 'photos', label: '사진' },
-  { id: 'finance', label: '재무' },
+const TABS: Array<{ id: Tab; label: string; icon: string }> = [
+  { id: 'home', label: '홈', icon: '⌂' },
+  { id: 'members', label: '회원', icon: '☺' },
+  { id: 'schedule', label: '일정', icon: '▦' },
+  { id: 'photos', label: '사진', icon: '▣' },
+  { id: 'finance', label: '재무', icon: '₩' },
 ];
 
 export default function GroupDetailScreen() {
@@ -61,28 +62,27 @@ export default function GroupDetailScreen() {
         <>
           <Title>{group.name}</Title>
           <Body>
-            {group.financeYear ? `${group.financeYear.year} 회계연도` : '회계연도 없음'} · 회장{' '}
+            {group.financeYear ? `${group.financeYear.year} 회계연도` : '회계연도 없음'} · 협의회장{' '}
             {group.president?.displayName ?? '미정'}
           </Body>
           <View style={styles.tabs}>
-            {TABS.map((item) => (
-              <Pressable
-                key={item.id}
-                accessibilityRole="tab"
-                onPress={() => setTab(item.id)}
-                style={styles.tab}
-              >
-                <Text
-                  style={{
-                    color: tab === item.id ? theme.colors.accent : theme.colors.text.secondary,
-                  }}
+            {TABS.map((item) => {
+              const selected = tab === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  onPress={() => setTab(item.id)}
+                  style={[styles.tab, selected && styles.tabOn]}
                 >
-                  {item.label}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text style={[styles.tabIcon, selected && styles.tabOnText]}>{item.icon}</Text>
+                  <Text style={[styles.tabLabel, selected && styles.tabOnText]}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
-          {tab === 'home' ? <HomePane group={group} onChanged={() => void load()} /> : null}
+          {tab === 'home' ? <HomePane group={group} /> : null}
           {tab === 'members' ? <MembersPane groupId={group.id} /> : null}
           {tab === 'schedule' ? (
             <EventsPane groupId={group.id} canManage={group.permissions.includes('EVENT_MANAGE')} />
@@ -100,32 +100,25 @@ export default function GroupDetailScreen() {
   );
 }
 
-function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged: () => void }) {
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [subscriptionText, setSubscriptionText] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<GatheringMemberView[]>([]);
+function HomePane({ group }: { group: GatheringGroupDetail }) {
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
   const [handoverPrompt, setHandoverPrompt] = useState<string | null>(null);
-  const canInvite = group.permissions.includes('INVITE_MANAGE');
-  const canSettings = group.permissions.includes('GROUP_SETTINGS');
-  const canManage = group.permissions.includes('MEMBER_MANAGE');
+  const [nextEvent, setNextEvent] = useState('다음 행사 없음');
+  const [recentEvent, setRecentEvent] = useState('최근 행사 없음');
+  const [recentPhotos, setRecentPhotos] = useState('최근 사진 없음');
+  const [money, setMoney] = useState('');
 
   useEffect(() => {
     void api.subscription(group.id).then((result) => {
-      if (result.uploadsAllowed && result.expiresAt) {
-        const until = new Date(result.expiresAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
-        setSubscriptionText(`이용 상태: 사용할 수 있음. ${until}까지입니다.`);
-        return;
-      }
-      setSubscriptionText('이용 기간이 끝났거나 아직 없습니다. 이미 올린 파일은 볼 수 있고, 새 사진·영상은 올릴 수 없습니다.');
-    }).catch(() => setSubscriptionText(null));
+      setUploadNote(result.uploadsAllowed ? null : '새 사진과 영상은 지금 올릴 수 없습니다. 이미 올린 파일은 볼 수 있습니다.');
+    }).catch(() => setUploadNote(null));
   }, [group.id]);
 
   useEffect(() => {
     void api
       .handover(group.id)
       .then((view) => {
-        if (view.actions.accept) setHandoverPrompt('차기 회장으로 지명되었습니다. 인계를 확인해 주세요.');
+        if (view.actions.accept) setHandoverPrompt('차기 협의회장으로 지명되었습니다. 인계를 확인해 주세요.');
         else if (view.actions.confirm || view.actions.finalize || view.actions.cancel || view.actions.nominate) {
           setHandoverPrompt('진행 중인 인계가 있습니다.');
         } else setHandoverPrompt(null);
@@ -134,83 +127,66 @@ function HomePane({ group, onChanged }: { group: GatheringGroupDetail; onChanged
   }, [group.id]);
 
   useEffect(() => {
-    if (!canManage) return;
-    void api
-      .members(group.id, 'PENDING')
-      .then((result) => setPending(result.items))
-      .catch(() => setPending([]));
-  }, [canManage, group.id]);
-
-  const createInvite = async () => {
-    setError(null);
-    try {
-      const created = await api.createInvite(group.id);
-      setInviteLink(created.link);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '초대 링크를 만들지 못했습니다.');
-    }
-  };
-
-  const toggleApproval = async () => {
-    await api.updateGroup(group.id, { inviteRequiresApproval: !group.inviteRequiresApproval });
-    onChanged();
-  };
+    const now = Date.now();
+    const span = 400 * 24 * 60 * 60 * 1000;
+    const from = new Date(now - span).toISOString();
+    const to = new Date(now + span).toISOString();
+    void api.events(group.id, from, to).then((result) => {
+      const upcoming = result.items
+        .filter((item) => item.status !== 'CANCELLED' && new Date(item.startsAt).getTime() >= now)
+        .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+      const past = result.items
+        .filter((item) => new Date(item.startsAt).getTime() < now)
+        .sort((left, right) => right.startsAt.localeCompare(left.startsAt));
+      setNextEvent(upcoming[0] ? upcoming[0].title : '다음 행사 없음');
+      setRecentEvent(past[0] ? past[0].title : '최근 행사 없음');
+    }).catch(() => undefined);
+    void api.albums(group.id).then((result) => {
+      const album = result.events[0];
+      setRecentPhotos(album ? `${album.title} · 사진 ${album.photoCount} · 영상 ${album.videoCount}` : '최근 사진 없음');
+    }).catch(() => undefined);
+    void api.finance(group.id).then((summary) => {
+      setMoney(`기초 ${summary.openingBalanceWon.toLocaleString('ko-KR')}원 · 수입 ${summary.incomeWon.toLocaleString('ko-KR')}원 · 지출 ${summary.expenseWon.toLocaleString('ko-KR')}원 · 잔액 ${summary.balanceWon.toLocaleString('ko-KR')}원`);
+    }).catch(() => undefined);
+  }, [group.id]);
 
   return (
     <View style={styles.stack}>
       {group.description ? <Body>{group.description}</Body> : null}
-      <Notice>
-        {group.financeYear
-          ? `회계 기간 ${formatDate(group.financeYear.startsAt)} ~ ${formatDate(group.financeYear.endsAt)}.`
-          : '열린 회계연도가 없습니다.'}
-      </Notice>
-      {subscriptionText ? <Notice>{subscriptionText}</Notice> : null}
-      <Body>내 역할: {group.roles.join(', ') || '없음'}</Body>
-      <Body>활동 회원 {group.memberCount}명</Body>
+      <View style={styles.card}>
+        <Text style={styles.name}>내 역할</Text>
+        <Body>{group.roles.map((role) => roleLabel(role)).join(', ') || '일반 회원'}</Body>
+        <Body>활동 회원 {group.memberCount}명</Body>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.name}>다음 행사</Text>
+        <Body>{nextEvent}</Body>
+        <Text style={styles.name}>최근 행사</Text>
+        <Body>{recentEvent}</Body>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.name}>최근 사진</Text>
+        <Body>{recentPhotos}</Body>
+      </View>
+      {money ? (
+        <View style={styles.card}>
+          <Text style={styles.name}>재무 요약</Text>
+          <Body>{money}</Body>
+        </View>
+      ) : null}
+      {uploadNote ? <Notice>{uploadNote}</Notice> : null}
       {handoverPrompt ? (
         <Button
           label={handoverPrompt}
           onPress={() => router.push(`/(app)/groups/${group.id}/handover`)}
         />
       ) : null}
-      <Button
-        label="집행부"
-        variant="secondary"
-        onPress={() => router.push(`/(app)/groups/${group.id}/officers`)}
-      />
-      <Button
+<Button
         label="모임 설정"
         variant="secondary"
         onPress={() => router.push(`/(app)/groups/${group.id}/settings`)}
       />
-      {canSettings ? (
-        <Button
-          label={group.inviteRequiresApproval ? '초대 승인 끄기' : '초대 승인 켜기'}
-          variant="secondary"
-          onPress={() => void toggleApproval()}
-        />
-      ) : null}
-      {canInvite ? <Button label="초대 링크 만들기" onPress={() => void createInvite()} /> : null}
-      {inviteLink ? <Notice>{`한 번만 표시됩니다. ${inviteLink}`}</Notice> : null}
-      {error ? <Body>{error}</Body> : null}
-      {pending.map((member) => (
-        <View key={member.membershipId} style={styles.row}>
-          <Text style={styles.name}>{member.displayName}</Text>
-          <Button
-            label="승인"
-            onPress={() =>
-              void api.decideMember(group.id, member.membershipId, 'APPROVE').then(onChanged)
-            }
-          />
-          <Button
-            label="거절"
-            variant="secondary"
-            onPress={() =>
-              void api.decideMember(group.id, member.membershipId, 'REJECT').then(onChanged)
-            }
-          />
-        </View>
-      ))}
+      <Button label="관리" variant="secondary" onPress={() => router.push(`/(app)/groups/${group.id}/manage`)} />
     </View>
   );
 }
@@ -275,7 +251,7 @@ function MembersPane({ groupId }: { groupId: string }) {
           <Text style={styles.name}>{member.displayName}</Text>
           <Text style={styles.meta}>{member.localJcName || '소속 없음'}</Text>
           <Text style={styles.meta}>
-            {member.roles.map((role) => role.title || role.role).join(', ')}
+            {member.roles.map((role) => roleLabel(role.role, role.title)).join(', ')}
           </Text>
           {member.userId === selfId ? null : (
             <Button label="차단" variant="text" onPress={() => void block(member.userId)} />
@@ -300,15 +276,29 @@ function MembersPane({ groupId }: { groupId: string }) {
   );
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
-}
-
 const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space[12] },
-  tab: { minHeight: theme.layout.touchMin, justifyContent: 'center' },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space[8] },
+  tab: {
+    flexGrow: 1,
+    flexBasis: 64,
+    minHeight: 48,
+    paddingHorizontal: theme.space[4],
+    paddingVertical: theme.space[4],
+    borderRadius: theme.radius[12],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabOn: { backgroundColor: '#1B3A6B' },
+  tabIcon: { fontSize: 16, color: theme.colors.text.secondary },
+  tabLabel: { fontSize: 14, lineHeight: 20, textAlign: 'center', color: theme.colors.text.secondary },
+  tabOnText: { color: '#FFFFFF' },
   stack: { gap: theme.space[12] },
-  card: { gap: theme.space[8], paddingVertical: theme.space[8] },
+  card: {
+    gap: theme.space[8],
+    padding: theme.space[16],
+    borderRadius: theme.radius[12],
+    backgroundColor: theme.colors.bg.subtle,
+  },
   row: { flexDirection: 'row', gap: theme.space[8], alignItems: 'center' },
   name: { ...theme.typography.cardTitle, color: theme.colors.text.primary },
   meta: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },

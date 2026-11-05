@@ -43,7 +43,7 @@ export function EventsPane({ groupId, canManage }: { groupId: string; canManage:
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' && items.length === 0 ? (
-        <EmptyState title="이 달의 행사가 없습니다" description="회장이나 총무가 행사를 등록하면 여기에 표시됩니다." />
+        <EmptyState title="이 달의 행사가 없습니다" description="협의회장이나 총무가 행사를 등록하면 여기에 표시됩니다." />
       ) : null}
       {items.map((event) => (
         <Pressable

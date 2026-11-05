@@ -10,9 +10,14 @@ export const DIRECTORY_CONSENT =
   '모임에 참여하면 이름, 소속 로컬, 휴대폰 번호가 그 모임 구성원에게 보이고 전화와 문자로 연결될 수 있습니다.';
 
 export const ROLE_LABEL: Record<string, string> = {
-  PRESIDENT: '회장',
+  PRESIDENT: '협의회장',
   SECRETARY: '총무',
   TREASURER: '재무',
   EXECUTIVE: '집행부',
-  MEMBER: '회원',
+  MEMBER: '일반 회원',
 };
+
+export function roleLabel(role: string, title?: string | null) {
+  if (title && title.trim()) return title.trim();
+  return ROLE_LABEL[role] ?? '일반 회원';
+}

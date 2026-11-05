@@ -37,7 +37,7 @@ export default function AccountDeleteScreen() {
     <Screen>
       <Title>계정 삭제</Title>
       <Notice>이름, 전화번호 연결, 모임 프로필, 로그인 세션을 지웁니다. 모임의 장부, 영수증, 회계 스냅샷 금액은 남고 올린 사람 이름은 끊깁니다.</Notice>
-      <Body>회장으로 있는 모임은 인계한 뒤에 떠날 수 있습니다.</Body>
+      <Body>협의회장으로 있는 모임은 인계한 뒤에 떠날 수 있습니다.</Body>
       <Button
         label={agreed ? '동의함' : '장부 보존에 동의'}
         variant={agreed ? 'primary' : 'secondary'}

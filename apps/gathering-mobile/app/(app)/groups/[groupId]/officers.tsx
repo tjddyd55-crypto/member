@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringMemberView, GatheringOfficerTermView, GatheringOfficerView } from '@member/contracts';
 import { api } from '../../../../src/api/client';
-import { ROLE_LABEL } from '../../../../src/copy';
+import { roleLabel } from '../../../../src/copy';
 import { Body, Button, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../src/design/ui';
 import { theme } from '../../../../src/theme';
 
@@ -80,7 +80,7 @@ export default function OfficersScreen() {
           {current.map((officer) => (
             <View key={officer.assignmentId} style={{ gap: 4 }}>
               <Text style={{ color: theme.colors.text.primary }}>
-                {officer.displayName} · {officer.title || ROLE_LABEL[officer.role] || officer.role}
+                {officer.displayName} · {roleLabel(officer.role, officer.title)}
               </Text>
               {canAssign && officer.role !== 'PRESIDENT' ? (
                 <Button
@@ -93,7 +93,7 @@ export default function OfficersScreen() {
           ))}
           {canAssign ? (
             <>
-              <Body>회원 번호로 역할을 지정합니다. 회장 역할은 인계 절차에서만 바뀝니다.</Body>
+              <Body>회원 이름에서 고릅니다. 협의회장 역할은 인계 절차에서만 바뀝니다.</Body>
               {members.map((member) => (
                 <Button
                   key={member.userId}
@@ -109,15 +109,15 @@ export default function OfficersScreen() {
               {error ? <Body>{error}</Body> : null}
             </>
           ) : (
-            <Body>역할 변경은 회장만 할 수 있습니다.</Body>
+            <Body>역할 변경은 협의회장만 할 수 있습니다.</Body>
           )}
           {canHandover || handoverEntry ? (
-            <Button label="차기 회장 인계" onPress={() => router.push(`/(app)/groups/${groupId}/handover`)} />
+            <Button label="차기 협의회장 인계" onPress={() => router.push(`/(app)/groups/${groupId}/handover`)} />
           ) : null}
           <Body>역대</Body>
           {history.map((term) => (
             <Text key={term.id} style={{ color: theme.colors.text.secondary }}>
-              {term.fiscalYear} · {term.displayName} · {term.title || ROLE_LABEL[term.role] || term.role}
+              {term.fiscalYear} · {term.displayName} · {roleLabel(term.role, term.title)}
               {term.endedAt ? ' · 종료' : ' · 재임'}
             </Text>
           ))}

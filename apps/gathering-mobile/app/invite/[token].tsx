@@ -87,7 +87,7 @@ export default function InviteScreen() {
           <Body>{groupName ?? ''}에 참여합니다.</Body>
           <Notice>{DIRECTORY_CONSENT}</Notice>
           {requiresApproval ? (
-            <Notice>이 모임은 회장 또는 총무의 승인이 있어야 들어갑니다.</Notice>
+            <Notice>이 모임은 협의회장 또는 총무의 승인이 있어야 들어갑니다.</Notice>
           ) : null}
           <Button label="동의하고 참여" onPress={() => void accept()} loading={joining} />
         </>

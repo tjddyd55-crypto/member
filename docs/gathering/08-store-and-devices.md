@@ -32,6 +32,6 @@ npm run start -w @member/gathering-mobile
 4. 전체 일정에 자기 모임 행사만 보이는지 확인한다.
 5. 알림 권한을 거절하면 앱이 계속 동작하는지, 허용하면 토큰 등록이 실패해도 화면이 멈추지 않는지 확인한다.
 6. 푸시가 실제로 도착하는지는 EAS projectId와 실기기 빌드가 있어야 한다. Expo Go만으로는 토큰 발급이 실패할 수 있다.
-7. 사진, 영수증, 장부, 인계 화면은 아직 없다. 그 탭에 미구현 안내가 있는 것은 정상이다.
+7. 사진, 영수증, 장부, 인계, 계정 삭제는 개발 빌드에서 확인한다. 설치 절차는 `11-dev-builds.md`이다.
 
 리마인드 작업은 `POST /api/gathering/jobs/reminders`와 헤더 `x-gathering-job-secret`이다. `GATHERING_JOB_SECRET`이 없으면 이 경로는 404다. 스케줄러는 사람이 Railway에 따로 연결한다. 이번 작업에서 Railway 자원은 만들지 않았다.

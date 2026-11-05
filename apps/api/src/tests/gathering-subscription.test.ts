@@ -78,7 +78,7 @@ async function createEvent(token: string, groupId: string) {
 }
 
 describe('모임 이용권', () => {
-  it('운영자만 수동으로 부여하고, 만료 뒤에는 조회만 되며 파일은 지우지 않는다', async () => {
+  it('운영자만 수동으로 부여하고, 만료 뒤에도 업로드는 되며 파일은 지우지 않는다', async () => {
     const owner = await register('이용회장');
     const group = await createGroup(owner.tokens.accessToken);
     const event = await createEvent(owner.tokens.accessToken, group.id);
@@ -88,7 +88,7 @@ describe('모임 이용권', () => {
       headers: auth(owner.tokens.accessToken),
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 24 }] },
     });
-    expect(blocked.statusCode).toBe(403);
+    expect(blocked.statusCode).toBe(200);
 
     const hidden = await app.inject({
       method: 'POST',
@@ -143,7 +143,7 @@ describe('모임 이용권', () => {
       headers: auth(owner.tokens.accessToken),
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 24 }] },
     });
-    expect(expiredUpload.statusCode).toBe(403);
+    expect(expiredUpload.statusCode).toBe(200);
     const download = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${group.id}/media/${assetId}/download`,

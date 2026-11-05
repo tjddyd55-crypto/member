@@ -67,6 +67,7 @@ export async function readSubscription(userId: string, groupId: string) {
     expiresAt: latest?.expiresAt?.toISOString() ?? null,
     quotaBytes: STORAGE_QUOTA_BYTES,
     usedBytes: billableStorageBytes(usage),
+    // 이용권 상태만 알려 준다. 사진·영상 업로드는 이 값으로 막지 않는다.
     uploadsAllowed: active,
   };
 }

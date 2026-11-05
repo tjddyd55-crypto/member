@@ -28,31 +28,15 @@ describe('저장 용량과 영수증 보존', () => {
         receiptBytes: 1_000_000_000,
         otherBytes: 0,
       },
-      subscriptionActive: true,
       kind: 'RECEIPT',
       additionalBytes: 1,
     });
     expect(decision).toEqual({ allowed: false, reason: 'QUOTA_EXCEEDED' });
   });
 
-  it('이용권이 만료되면 새 미디어는 막고 한도 안의 영수증은 허용한다', () => {
-    expect(
-      evaluateUpload({
-        usage: underQuota,
-        subscriptionActive: false,
-        kind: 'MEDIA',
-        additionalBytes: 1,
-      }),
-    ).toEqual({ allowed: false, reason: 'SUBSCRIPTION_EXPIRED' });
-
-    expect(
-      evaluateUpload({
-        usage: underQuota,
-        subscriptionActive: false,
-        kind: 'RECEIPT',
-        additionalBytes: 1,
-      }),
-    ).toEqual({ allowed: true });
+  it('이용권이 없어도 한도 안의 사진과 영수증은 허용한다', () => {
+    expect(evaluateUpload({ usage: underQuota, kind: 'MEDIA', additionalBytes: 1 })).toEqual({ allowed: true });
+    expect(evaluateUpload({ usage: underQuota, kind: 'RECEIPT', additionalBytes: 1 })).toEqual({ allowed: true });
   });
 
   it('마감된 영수증은 삭제하지 않고, 마감은 미디어 삭제를 잠그지 않는다', () => {

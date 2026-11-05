@@ -15,14 +15,11 @@ export function handoverInProgress(status: string | null | undefined) {
   return status != null && ACTIVE_HANDOVER.has(status);
 }
 
+/** 이용 기간은 올리기 버튼의 이유가 아니다. 목적지와 회원 권한, 50GB만 본다. */
 export function uploadBlockReason(input: {
-  uploadsAllowed: boolean;
   destinationCount?: number;
   destinationChosen?: boolean;
 }) {
-  if (!input.uploadsAllowed) {
-    return '이용 기간이 아니라 새 사진과 영상을 올릴 수 없습니다. 이미 올린 파일은 볼 수 있습니다.';
-  }
   if (input.destinationCount === 0) {
     return '올릴 행사나 폴더가 없습니다. 행사를 만들거나 폴더를 만든 뒤 올리세요.';
   }

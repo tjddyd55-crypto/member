@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tabIconSize, tabLabelSize, tabSlotWidth } from '../../../gathering-mobile/src/features/group/tab-layout';
-import { SUBSCRIPTION_RETRY_HINT, subscriptionUploadState, uploadAlbumFiles } from '../../../gathering-mobile/src/features/media/album-upload';
+import { uploadAlbumFiles } from '../../../gathering-mobile/src/features/media/album-upload';
 import { chunkForReserve, handoverInProgress, uploadBlockReason } from '../../../gathering-mobile/src/features/media/upload-block';
 
 describe('모임 화면 배치', () => {
@@ -22,29 +22,8 @@ describe('모임 화면 배치', () => {
   it('인계 중이면 사진 탭 이유가 인계라고 말한다', () => {
     expect(handoverInProgress('CONFIRMED')).toBe(true);
     expect(handoverInProgress('FINALIZED')).toBe(false);
-    expect(uploadBlockReason({ uploadsAllowed: true, destinationCount: 1, destinationChosen: true })).toBeNull();
-    expect(uploadBlockReason({ uploadsAllowed: false, destinationCount: 1, destinationChosen: true })).toContain(
-      '이용 기간',
-    );
-    expect(uploadBlockReason({ uploadsAllowed: true, destinationCount: 0, destinationChosen: false })).toContain(
-      '행사나 폴더',
-    );
-  });
-
-  it('이용 상태 조회 실패는 이용 종료로 보지 않는다', () => {
-    expect(subscriptionUploadState(null)).toBe('unknown');
-    expect(subscriptionUploadState(undefined)).toBe('unknown');
-    expect(subscriptionUploadState(true)).toBe('allowed');
-    expect(subscriptionUploadState(false)).toBe('inactive');
-    expect(SUBSCRIPTION_RETRY_HINT).toContain('다시 확인');
-    const knownInactive = subscriptionUploadState(false) === 'inactive';
-    const unknown = subscriptionUploadState(null) === 'inactive';
-    expect(
-      uploadBlockReason({ uploadsAllowed: !unknown, destinationCount: 1, destinationChosen: true }),
-    ).toBeNull();
-    expect(
-      uploadBlockReason({ uploadsAllowed: !knownInactive, destinationCount: 1, destinationChosen: true }),
-    ).toContain('이용 기간');
+    expect(uploadBlockReason({ destinationCount: 1, destinationChosen: true })).toBeNull();
+    expect(uploadBlockReason({ destinationCount: 0, destinationChosen: false })).toContain('행사나 폴더');
   });
 
   it('한 파일 실패 뒤 재시도는 같은 예약을 다시 쓰지 새 예약을 만들지 않는다', async () => {

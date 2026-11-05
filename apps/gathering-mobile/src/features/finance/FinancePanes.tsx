@@ -226,6 +226,7 @@ export function EventFinancePane({
       if (!picked) return;
       for (const pickedFile of Array.isArray(picked) ? picked : [picked]) {
         const file = new File(pickedFile.uri);
+        if (!file.size) throw new Error('파일 크기를 확인하지 못했습니다.');
         const originalName = file.name || fileName(file.uri);
         const mimeType = receiptMime(file);
         const created = await api.createReceiptUploads(groupId, eventId, [

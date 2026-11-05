@@ -29,24 +29,35 @@ export async function prepareAsset(asset: ImagePickerAsset): Promise<PreparedUpl
 }
 
 async function preparePhoto(asset: ImagePickerAsset): Promise<PreparedUpload> {
-  const fitted = fittedPhotoSize(asset.width ?? 0, asset.height ?? 0);
-  const actions = fitted ? [{ resize: { width: fitted.width, height: fitted.height } }] : [];
-  const compressed = await ImageManipulator.manipulateAsync(asset.uri, actions, {
-    compress: PHOTO_JPEG_QUALITY,
-    format: ImageManipulator.SaveFormat.JPEG,
-  });
-  const sizeBytes = fileBytes(compressed.uri);
-  const decision = validateMediaUpload({ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes });
-  if (!decision.ok) throw new Error(rejectionMessage(decision.code));
-  return {
-    uri: compressed.uri,
-    kind: 'PHOTO',
-    mimeType: 'image/jpeg',
-    sizeBytes,
-    width: compressed.width,
-    height: compressed.height,
-    originalName: asset.fileName ?? undefined,
-  };
+  const sourceUri = copyContentUriToCache(asset.uri);
+  try {
+    const fitted = fittedPhotoSize(asset.width ?? 0, asset.height ?? 0);
+    const actions = fitted ? [{ resize: { width: fitted.width, height: fitted.height } }] : [];
+    const compressed = await ImageManipulator.manipulateAsync(sourceUri, actions, {
+      compress: PHOTO_JPEG_QUALITY,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    const sizeBytes = fileBytes(compressed.uri);
+    const decision = validateMediaUpload({ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes });
+    if (!decision.ok) throw new Error(rejectionMessage(decision.code));
+    return {
+      uri: compressed.uri,
+      kind: 'PHOTO',
+      mimeType: 'image/jpeg',
+      sizeBytes,
+      width: compressed.width,
+      height: compressed.height,
+      originalName: asset.fileName ?? undefined,
+    };
+  } finally {
+    if (sourceUri !== asset.uri) {
+      try {
+        new File(sourceUri).delete();
+      } catch {
+        // 압축에 쓴 사본이다.
+      }
+    }
+  }
 }
 
 async function prepareVideo(asset: ImagePickerAsset): Promise<PreparedUpload> {
@@ -111,12 +122,23 @@ function copyContentUriToCache(uri: string) {
 }
 
 function fileBytes(uri: string) {
-  const size = new File(uri).size;
-  if (typeof size !== 'number' || size <= 0) throw new Error('파일 크기를 확인하지 못했습니다.');
-  if (size > Math.max(PHOTO_MAX_BYTES, VIDEO_MAX_BYTES)) {
-    throw new Error('파일 크기 제한을 넘었습니다.');
+  const localUri = copyContentUriToCache(uri);
+  try {
+    const size = new File(localUri).size;
+    if (typeof size !== 'number' || size <= 0) throw new Error('파일 크기를 확인하지 못했습니다.');
+    if (size > Math.max(PHOTO_MAX_BYTES, VIDEO_MAX_BYTES)) {
+      throw new Error('파일 크기 제한을 넘었습니다.');
+    }
+    return size;
+  } finally {
+    if (localUri !== uri) {
+      try {
+        new File(localUri).delete();
+      } catch {
+        // 크기 확인용 사본이다.
+      }
+    }
   }
-  return size;
 }
 
 function rejectionMessage(code: string) {

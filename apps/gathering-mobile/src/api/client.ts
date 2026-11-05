@@ -307,6 +307,14 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  folderMedia(groupId: string, folderId: string, cursor?: string) {
+    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    return request<{
+      folder: { id: string; title: string };
+      items: GatheringMediaView[];
+      nextCursor: string | null;
+    }>(`/api/gathering/groups/${groupId}/folders/${folderId}/media${query}`);
+  },
   eventMedia(groupId: string, eventId: string, cursor?: string) {
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
     return request<{ items: GatheringMediaView[]; nextCursor: string | null }>(

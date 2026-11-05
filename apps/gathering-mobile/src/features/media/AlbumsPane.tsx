@@ -14,6 +14,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [year, setYear] = useState<number | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [folderError, setFolderError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -55,19 +56,28 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           void api
             .createFolder(groupId, folderTitle)
             .then(() => {
+              setFolderError(null);
               setFolderTitle('');
               return load();
             })
-            .catch((error: unknown) => setMessage(error instanceof Error ? error.message : '폴더를 만들지 못했습니다.'))
+            .catch((error: unknown) => {
+              setFolderError(error instanceof Error ? error.message : '폴더를 만들지 못했습니다.');
+            })
         }
       />
+      {folderError ? <Body>{folderError}</Body> : null}
       {folders.map((folder) => (
-        <View key={folder.folderId} style={styles.card}>
+        <Pressable
+          key={folder.folderId}
+          accessibilityRole="button"
+          onPress={() => router.push(`/(app)/groups/${groupId}/folders/${folder.folderId}`)}
+          style={styles.card}
+        >
           <Text style={styles.title}>{folder.title}</Text>
           <Body>
             사진 {folder.photoCount} · 영상 {folder.videoCount}
           </Body>
-        </View>
+        </Pressable>
       ))}
       {status === 'ready' && events.length === 0 ? (
         <EmptyState title="앨범이 비어 있습니다" description="행사를 만들면 앨범이 생기고, 사진이나 영상을 올리면 여기에 모입니다." />

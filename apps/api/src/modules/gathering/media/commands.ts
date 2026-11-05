@@ -48,10 +48,11 @@ export async function createMediaUploads(
   groupId: string,
   eventId: string,
   items: UploadItem[],
+  options?: { limitKey?: string },
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_UPLOAD');
-  gatheringUploadLimiter.assert(`${userId}:media-upload`);
+  gatheringUploadLimiter.assert(options?.limitKey ?? `${userId}:media-upload`);
   await requireEvent(groupId, eventId);
   const prepared = items.map(prepareItem);
   const storage = currentObjectStorage();
@@ -64,10 +65,11 @@ export async function createFolderMediaUploads(
   groupId: string,
   folderId: string,
   items: UploadItem[],
+  options?: { limitKey?: string },
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_UPLOAD');
-  gatheringUploadLimiter.assert(`${userId}:folder-upload`);
+  gatheringUploadLimiter.assert(options?.limitKey ?? `${userId}:folder-upload`);
   const folder = await prisma.gatheringMediaFolder.findFirst({
     where: { id: folderId, groupId, deletedAt: null },
   });

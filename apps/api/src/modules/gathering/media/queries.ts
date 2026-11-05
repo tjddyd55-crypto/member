@@ -38,6 +38,43 @@ export async function listEventMedia(
   };
 }
 
+export async function listFolderMedia(
+  userId: string,
+  groupId: string,
+  folderId: string,
+  cursor: string | undefined,
+  limit = MEDIA_PAGE_LIMIT,
+) {
+  await requireGroupMember(userId, groupId);
+  const folder = await prisma.gatheringMediaFolder.findFirst({
+    where: { id: folderId, groupId, deletedAt: null },
+    select: { id: true, title: true },
+  });
+  if (!folder) throw new AppError(404, 'FOLDER_NOT_FOUND', '사진 폴더를 찾을 수 없습니다.');
+  const hidden = await blockedUserIds(groupId, userId);
+  const decoded = cursor ? decodeMediaCursor(cursor) : null;
+  if (cursor && !decoded) throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
+  const rows = await prisma.gatheringMediaAsset.findMany({
+    where: {
+      groupId,
+      folderId,
+      status: 'READY',
+      deletedAt: null,
+      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
+      ...cursorFilter(decoded),
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
+  });
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  return {
+    folder,
+    items: page.map((row) => presentMedia(row, userId)),
+    nextCursor: rows.length > limit && last ? encodeMediaCursor(last.createdAt, last.id) : null,
+  };
+}
+
 export async function downloadMedia(userId: string, groupId: string, assetId: string) {
   await requireGroupMember(userId, groupId);
   const asset = await prisma.gatheringMediaAsset.findFirst({

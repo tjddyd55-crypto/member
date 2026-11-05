@@ -2,7 +2,6 @@ import { createHash, randomBytes } from 'node:crypto';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
-import { gatheringUploadLimiter } from '../rate-limit.js';
 import {
   completeFolderMediaUpload,
   completeMediaUpload,
@@ -136,10 +135,12 @@ export async function publicUploadInfo(token: string) {
 
 export async function publicReserve(token: string, items: UploadItem[]) {
   const link = await loadUsableLink(token);
-  gatheringUploadLimiter.assert(`public-upload:${link.id}`);
-  if (link.eventId) return createMediaUploads(link.createdByUserId, link.groupId, link.eventId, items);
+  const limitKey = `public-upload:${link.id}`;
+  if (link.eventId) {
+    return createMediaUploads(link.createdByUserId, link.groupId, link.eventId, items, { limitKey });
+  }
   if (!link.folderId) throw new AppError(404, 'LINK_NOT_FOUND', '업로드 링크를 찾을 수 없습니다.');
-  return createFolderMediaUploads(link.createdByUserId, link.groupId, link.folderId, items);
+  return createFolderMediaUploads(link.createdByUserId, link.groupId, link.folderId, items, { limitKey });
 }
 
 export async function publicComplete(token: string, assetId: string, sizeBytes: number) {

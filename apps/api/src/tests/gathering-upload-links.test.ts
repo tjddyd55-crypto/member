@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { currentOperatorSecret } from '../modules/gathering/subscription/service.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
+import { gatheringUploadLimiter } from '../modules/gathering/rate-limit.js';
 
 let app: FastifyInstance;
 let storage: MemoryObjectStorage;
@@ -20,6 +21,7 @@ beforeAll(async () => {
 beforeEach(() => {
   storage = new MemoryObjectStorage();
   useObjectStorage(storage);
+  gatheringUploadLimiter.reset();
 });
 
 afterAll(async () => {
@@ -143,6 +145,21 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     const page = await app.inject({ method: 'GET', url: `/api/gathering/public/uploads/${token}` });
     expect(page.statusCode).toBe(200);
     expect(page.body).toContain('정기모임');
+    expect(page.body).toContain('onloadedmetadata');
+    expect(page.body).toContain('durationMs');
+    const videoMissing = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${token}/reserve`,
+      payload: { items: [{ kind: 'VIDEO', mimeType: 'video/mp4', sizeBytes: 32 }] },
+    });
+    expect(videoMissing.statusCode).toBe(400);
+    expect(videoMissing.json().error.code).toBe('DURATION_REQUIRED');
+    const videoReady = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${token}/reserve`,
+      payload: { items: [{ kind: 'VIDEO', mimeType: 'video/mp4', sizeBytes: 32, durationMs: 1000 }] },
+    });
+    expect(videoReady.statusCode).toBe(200);
     const bad = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${token}/reserve`,
@@ -230,5 +247,98 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       headers: auth(member.tokens.accessToken),
     });
     expect(shown.json().folders.some((item: { title: string }) => item.title === '해외 방문')).toBe(true);
+    const liveFolderLink = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/upload-links`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { folderId: folder.json().id },
+    });
+    const folderReserved = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${liveFolderLink.json().token}/reserve`,
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(folderReserved.statusCode).toBe(200);
+    const folderAssetId = folderReserved.json().items[0].id as string;
+    const folderRow = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: folderAssetId } });
+    storage.put(`${folderRow.storageKey}-pending`, jpeg(32));
+    const folderDone = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${liveFolderLink.json().token}/complete`,
+      payload: { assetId: folderAssetId, sizeBytes: 32 },
+    });
+    expect(folderDone.statusCode).toBe(200);
+    const folderMedia = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/folders/${folder.json().id}/media`,
+      headers: auth(member.tokens.accessToken),
+    });
+    expect(folderMedia.statusCode).toBe(200);
+    expect(folderMedia.json().items).toHaveLength(1);
+    const outsider = await register('다른모임');
+    const otherGroup = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/groups',
+      headers: auth(outsider.tokens.accessToken),
+      payload: { name: '다른 모임' },
+    });
+    groupIds.push(otherGroup.json().id as string);
+    const hiddenFolder = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${otherGroup.json().id}/folders/${folder.json().id}/media`,
+      headers: auth(outsider.tokens.accessToken),
+    });
+    expect(hiddenFolder.statusCode).toBe(404);
+  });
+
+  it('손님 업로드는 만든 사람의 업로드 횟수를 쓰지 않는다', async () => {
+    const owner = await register('제한회장');
+    const groupRes = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/groups',
+      headers: auth(owner.tokens.accessToken),
+      payload: { name: '제한 모임' },
+    });
+    const groupId = groupRes.json().id as string;
+    groupIds.push(groupId);
+    await app.inject({
+      method: 'POST',
+      url: `/api/gathering/admin/groups/${groupId}/subscription`,
+      headers: { ...auth(owner.tokens.accessToken), 'x-gathering-operator-secret': currentOperatorSecret() },
+      payload: { source: 'COMPLIMENTARY', idempotencyKey: `limit-${groupId}` },
+    });
+    const event = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/events`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { title: '제한 행사', startsAt: '2026-06-01T03:00:00.000Z' },
+    });
+    const link = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/upload-links`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { eventId: event.json().id },
+    });
+    for (let index = 0; index < 30; index += 1) {
+      const reserved = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/public/uploads/${link.json().token}/reserve`,
+        payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+      });
+      expect(reserved.statusCode).toBe(200);
+    }
+    const memberUpload = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/events/${event.json().id}/media/uploads`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(memberUpload.statusCode).toBe(200);
+    const blocked = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${link.json().token}/reserve`,
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(blocked.statusCode).toBe(429);
   });
 });

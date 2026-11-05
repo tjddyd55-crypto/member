@@ -138,6 +138,8 @@ model User {
   gatheringEventsCreated         GatheringEvent[]                @relation("GatheringEventCreator")
   gatheringAttendances           GatheringEventAttendance[]
   gatheringMediaUploaded         GatheringMediaAsset[]           @relation("GatheringMediaUploader")
+  gatheringMediaFoldersCreated   GatheringMediaFolder[]          @relation("GatheringFolderCreator")
+  gatheringUploadLinksCreated    GatheringUploadLink[]           @relation("GatheringUploadLinkCreator")
   gatheringMediaReports          GatheringMediaReport[]          @relation("GatheringMediaReporter")
   gatheringBlocksMade            GatheringMemberBlock[]          @relation("GatheringBlocker")
   gatheringBlocksReceived        GatheringMemberBlock[]          @relation("GatheringBlocked")
@@ -671,6 +673,8 @@ model GatheringGroup {
   executiveTerms     GatheringExecutiveTerm[]
   events             GatheringEvent[]
   mediaAssets        GatheringMediaAsset[]
+  mediaFolders       GatheringMediaFolder[]
+  uploadLinks        GatheringUploadLink[]
   mediaReports       GatheringMediaReport[]
   memberBlocks       GatheringMemberBlock[]
   financeYears       GatheringFinanceYear[]
@@ -791,6 +795,7 @@ model GatheringEvent {
   createdBy    User                       @relation("GatheringEventCreator", fields: [createdByUserId], references: [id])
   attendances  GatheringEventAttendance[]
   mediaAssets  GatheringMediaAsset[]
+  uploadLinks  GatheringUploadLink[]
   transactions GatheringFinanceTransaction[]
   receipts     GatheringReceiptAsset[]
 
@@ -816,10 +821,51 @@ model GatheringEventAttendance {
   @@map("gathering_event_attendances")
 }
 
+model GatheringMediaFolder {
+  id              String    @id @default(cuid())
+  groupId         String
+  title           String
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  deletedAt       DateTime?
+
+  group     GatheringGroup      @relation(fields: [groupId], references: [id])
+  createdBy User                @relation("GatheringFolderCreator", fields: [createdByUserId], references: [id])
+  assets    GatheringMediaAsset[]
+  links     GatheringUploadLink[]
+
+  @@index([groupId, deletedAt])
+  @@map("gathering_media_folders")
+}
+
+/// 비회원 업로드 전용. 원문은 한 번만 돌려주고 해시만 저장한다.
+model GatheringUploadLink {
+  id              String    @id @default(cuid())
+  groupId         String
+  eventId         String?
+  folderId        String?
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  pausedAt        DateTime?
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+
+  group     GatheringGroup       @relation(fields: [groupId], references: [id])
+  event     GatheringEvent?      @relation(fields: [eventId], references: [id])
+  folder    GatheringMediaFolder? @relation(fields: [folderId], references: [id])
+  createdBy User                 @relation("GatheringUploadLinkCreator", fields: [createdByUserId], references: [id])
+
+  @@index([groupId, eventId])
+  @@index([groupId, folderId])
+  @@map("gathering_upload_links")
+}
+
 model GatheringMediaAsset {
   id             String                 @id @default(cuid())
   groupId        String
-  eventId        String
+  eventId        String?
+  folderId       String?
   uploaderUserId String
   kind           GatheringMediaKind
   storageKey     String                 @unique
@@ -835,12 +881,14 @@ model GatheringMediaAsset {
   createdAt      DateTime               @default(now())
   deletedAt      DateTime?
 
-  group    GatheringGroup        @relation(fields: [groupId], references: [id])
-  event    GatheringEvent        @relation(fields: [eventId], references: [id])
-  uploader User                  @relation("GatheringMediaUploader", fields: [uploaderUserId], references: [id])
+  group    GatheringGroup         @relation(fields: [groupId], references: [id])
+  event    GatheringEvent?        @relation(fields: [eventId], references: [id])
+  folder   GatheringMediaFolder?  @relation(fields: [folderId], references: [id])
+  uploader User                   @relation("GatheringMediaUploader", fields: [uploaderUserId], references: [id])
   reports  GatheringMediaReport[]
 
   @@index([groupId, eventId])
+  @@index([groupId, folderId])
   @@index([uploaderUserId])
   @@map("gathering_media_assets")
 }

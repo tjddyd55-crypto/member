@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringEventView } from '@member/contracts';
-import { Pressable, Text, View } from 'react-native';
-import { api } from '../../../../../src/api/client';
+import { Pressable, Share, Text, View } from 'react-native';
+import { API_BASE, api } from '../../../../../src/api/client';
 import { EventFinancePane } from '../../../../../src/features/finance/FinancePanes';
 import { MediaPane } from '../../../../../src/features/media/MediaPane';
 import { Body, Button, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../../src/design/ui';
@@ -56,6 +56,12 @@ export default function EventDetailScreen() {
     setEvent(updated);
   };
 
+  const shareUpload = async () => {
+    const created = await api.createUploadLink(groupId, { eventId });
+    const url = `${API_BASE}/api/gathering/public/uploads/${created.token}`;
+    await Share.share({ message: url });
+  };
+
   const save = async () => {
     const startsAt = event?.startsAt;
     if (!startsAt) return;
@@ -85,7 +91,12 @@ export default function EventDetailScreen() {
               </Pressable>
             ))}
           </View>
-          {tab === 'media' ? <MediaPane eventId={eventId} groupId={groupId} /> : null}
+          {tab === 'media' ? (
+            <>
+              {canManage ? <Button label="업로드 링크 만들기" onPress={() => void shareUpload()} /> : null}
+              <MediaPane eventId={eventId} groupId={groupId} />
+            </>
+          ) : null}
           {tab === 'finance' ? (
             <EventFinancePane
               canAttach={canReceipt}

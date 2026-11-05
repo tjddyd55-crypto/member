@@ -287,9 +287,33 @@ export const api = {
   },
   albums(groupId: string, year?: number) {
     const query = year ? `?year=${year}` : '';
-    return request<{ years: GatheringAlbumYear[]; events: GatheringAlbumEvent[] }>(
+    return request<{
+      years: GatheringAlbumYear[];
+      events: GatheringAlbumEvent[];
+      folders?: Array<{ folderId: string; title: string; photoCount: number; videoCount: number }>;
+    }>(
       `/api/gathering/groups/${groupId}/albums${query}`,
     );
+  },
+  createFolder(groupId: string, title: string) {
+    return request<{ id: string; title: string }>(`/api/gathering/groups/${groupId}/folders`, {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    });
+  },
+  createUploadLink(groupId: string, body: { eventId?: string; folderId?: string }) {
+    return request<{ id: string; token: string; expiresAt: string }>(`/api/gathering/groups/${groupId}/upload-links`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  folderMedia(groupId: string, folderId: string, cursor?: string) {
+    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    return request<{
+      folder: { id: string; title: string };
+      items: GatheringMediaView[];
+      nextCursor: string | null;
+    }>(`/api/gathering/groups/${groupId}/folders/${folderId}/media${query}`);
   },
   eventMedia(groupId: string, eventId: string, cursor?: string) {
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';

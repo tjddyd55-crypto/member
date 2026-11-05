@@ -38,6 +38,43 @@ export async function listEventMedia(
   };
 }
 
+export async function listFolderMedia(
+  userId: string,
+  groupId: string,
+  folderId: string,
+  cursor: string | undefined,
+  limit = MEDIA_PAGE_LIMIT,
+) {
+  await requireGroupMember(userId, groupId);
+  const folder = await prisma.gatheringMediaFolder.findFirst({
+    where: { id: folderId, groupId, deletedAt: null },
+    select: { id: true, title: true },
+  });
+  if (!folder) throw new AppError(404, 'FOLDER_NOT_FOUND', '사진 폴더를 찾을 수 없습니다.');
+  const hidden = await blockedUserIds(groupId, userId);
+  const decoded = cursor ? decodeMediaCursor(cursor) : null;
+  if (cursor && !decoded) throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
+  const rows = await prisma.gatheringMediaAsset.findMany({
+    where: {
+      groupId,
+      folderId,
+      status: 'READY',
+      deletedAt: null,
+      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
+      ...cursorFilter(decoded),
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
+  });
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  return {
+    folder,
+    items: page.map((row) => presentMedia(row, userId)),
+    nextCursor: rows.length > limit && last ? encodeMediaCursor(last.createdAt, last.id) : null,
+  };
+}
+
 export async function downloadMedia(userId: string, groupId: string, assetId: string) {
   await requireGroupMember(userId, groupId);
   const asset = await prisma.gatheringMediaAsset.findFirst({
@@ -64,6 +101,7 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     by: ['eventId', 'kind'],
     where: {
       groupId,
+      eventId: { not: null },
       status: 'READY',
       deletedAt: null,
       ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
@@ -71,18 +109,53 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     _count: { _all: true },
   });
   const events = await prisma.gatheringEvent.findMany({
-    where: { id: { in: counts.map((row) => row.eventId) }, groupId, deletedAt: null },
+    where: { groupId, deletedAt: null },
     select: { id: true, title: true, startsAt: true },
   });
   const byEvent = new Map(events.map((event) => [event.id, event]));
   const cards = counts.flatMap((row) => {
+    if (!row.eventId) return [];
     const event = byEvent.get(row.eventId);
     if (!event) return [];
     return [{ event, kind: row.kind, count: row._count._all }];
   });
+  const eventList = eventCards(cards);
+  for (const event of events) {
+    if (eventList.some((card) => card.eventId === event.id)) continue;
+    eventList.push({
+      eventId: event.id,
+      title: event.title,
+      startsAt: event.startsAt.toISOString(),
+      year: calendarYearKst(event.startsAt),
+      photoCount: 0,
+      videoCount: 0,
+    });
+  }
+  eventList.sort((left, right) => right.startsAt.localeCompare(left.startsAt));
+  const folders = await prisma.gatheringMediaFolder.findMany({
+    where: { groupId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+  const folderCounts = await prisma.gatheringMediaAsset.groupBy({
+    by: ['folderId', 'kind'],
+    where: {
+      groupId,
+      folderId: { not: null },
+      status: 'READY',
+      deletedAt: null,
+      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
+    },
+    _count: { _all: true },
+  });
   return {
     years: yearTotals(cards),
-    events: eventCards(cards).filter((card) => (year == null ? true : card.year === year)),
+    events: eventList.filter((card) => (year == null ? true : card.year === year)),
+    folders: folders.map((folder) => ({
+      folderId: folder.id,
+      title: folder.title,
+      photoCount: folderCounts.filter((row) => row.folderId === folder.id && row.kind === 'PHOTO').reduce((sum, row) => sum + row._count._all, 0),
+      videoCount: folderCounts.filter((row) => row.folderId === folder.id && row.kind === 'VIDEO').reduce((sum, row) => sum + row._count._all, 0),
+    })),
   };
 }
 

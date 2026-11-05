@@ -8,6 +8,7 @@
  *   API_BASE_URL=http://127.0.0.1:3099 GATHERING_OPERATOR_SECRET=... npm run gathering:e2e -- --cleanup
  */
 import { PrismaClient } from '@prisma/client';
+import { instantInsideOpenYear } from '../../apps/api/src/modules/gathering/finance/open-year-instant.ts';
 
 const PREFIX = 'e2e-gathering';
 const PASSWORD = 'Passw0rd!';
@@ -48,7 +49,10 @@ async function runFlow(base: string, operatorSecret: string) {
     method: 'POST',
     body: { directoryConsent: true },
   });
-  const startsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  if (!group.financeYear?.startsAt || !group.financeYear?.endsAt) {
+    throw new Error('열린 회계연도를 찾지 못했습니다.');
+  }
+  const startsAt = instantInsideOpenYear(group.financeYear);
   const event = await send(base, `/api/gathering/groups/${group.id}/events`, {
     token: owner.token,
     method: 'POST',
@@ -75,7 +79,7 @@ async function runFlow(base: string, operatorSecret: string) {
     durationMs: 5_000,
   });
   await uploadReceipt(base, owner.token, group.id, event.id, receipt);
-  const paidAt = new Date().toISOString();
+  const paidAt = startsAt;
   await send(base, `/api/gathering/groups/${group.id}/events/${event.id}/transactions`, {
     token: owner.token,
     method: 'POST',

@@ -26,6 +26,13 @@ export async function startDevStorageIfEnabled() {
   sink = next;
 }
 
+export async function stopDevStorage() {
+  const current = sink;
+  sink = null;
+  if (!current) return;
+  await current.stop();
+}
+
 export function devObjectStorage(): ObjectStorage {
   if (!sink) {
     throw new AppError(503, 'STORAGE_UNCONFIGURED', '개발용 파일 저장소가 시작되지 않았습니다.');
@@ -58,6 +65,16 @@ class FileSinkStorage implements ObjectStorage {
       throw new AppError(503, 'STORAGE_UNCONFIGURED', '개발용 파일 저장소 주소를 만들지 못했습니다.');
     }
     this.baseUrl = `http://127.0.0.1:${address.port}`;
+  }
+
+  stop() {
+    return new Promise<void>((resolve, reject) => {
+      if (!this.server.listening) {
+        resolve();
+        return;
+      }
+      this.server.close((error) => (error ? reject(error) : resolve()));
+    });
   }
 
   async presignPut(input: { key: string; contentType: string; expiresInSeconds: number }): Promise<SignedTarget> {

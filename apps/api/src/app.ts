@@ -8,7 +8,7 @@ import { authRoutes } from './routes/auth.js';
 import { localRoutes } from './routes/local.js';
 import { memberRoutes } from './routes/members.js';
 import { gatheringRoutes } from './modules/gathering/routes/index.js';
-import { startDevStorageIfEnabled } from './modules/gathering/storage/file-sink.js';
+import { startDevStorageIfEnabled, stopDevStorage } from './modules/gathering/storage/file-sink.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: env.NODE_ENV !== 'test' });
@@ -45,6 +45,9 @@ export async function buildApp() {
   await app.register(memberRoutes);
   await app.register(gatheringRoutes);
   await startDevStorageIfEnabled();
+  app.addHook('onClose', async () => {
+    await stopDevStorage();
+  });
 
   app.get('/health', async () => ({ ok: true }));
 

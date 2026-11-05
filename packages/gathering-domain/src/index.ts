@@ -30,7 +30,7 @@ export { dueStanding, summarizeFinance, summarizeLedger } from './ledger.js';
 export type { LedgerDirection, LedgerEntry, LedgerTotals } from './ledger.js';
 export { RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES, validateReceiptUpload } from './receipt-policy.js';
 export type { ReceiptValidation } from './receipt-policy.js';
-export { buildGatheringObjectKey, buildMemberBookProfileKey, ObjectKeyError } from './object-key.js';
+export { buildGatheringFolderObjectKey, buildGatheringObjectKey, buildMemberBookProfileKey, ObjectKeyError } from './object-key.js';
 export type { GatheringObjectFolder } from './object-key.js';
 export {
   MEDIA_PAGE_LIMIT,

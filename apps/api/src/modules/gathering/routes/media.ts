@@ -15,6 +15,7 @@ import {
   resumeMediaUpload,
   storageSummary,
 } from '../media/commands.js';
+import { createMediaFolder, createUploadLink, publicComplete, publicReserve, publicUploadInfo, renameMediaFolder, setUploadLinkState } from '../media/links.js';
 import { downloadMedia, listAlbums, listEventMedia } from '../media/queries.js';
 import { listMediaReports, reportMedia, resolveMediaReport } from '../media/reports.js';
 import { requireGatheringUserId } from '../http.js';
@@ -100,4 +101,72 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     const params = groupParams.parse(request.params);
     return storageSummary(requireGatheringUserId(request), params.groupId);
   });
+
+  app.post('/api/gathering/groups/:groupId/folders', auth, async (request) => {
+    const params = groupParams.parse(request.params);
+    const body = z.object({ title: z.string() }).parse(request.body);
+    return createMediaFolder(requireGatheringUserId(request), params.groupId, body.title);
+  });
+
+  app.post('/api/gathering/groups/:groupId/folders/:folderId', auth, async (request) => {
+    const params = groupParams.extend({ folderId: z.string().min(1) }).parse(request.params);
+    const body = z.object({ title: z.string() }).parse(request.body);
+    return renameMediaFolder(requireGatheringUserId(request), params.groupId, params.folderId, body.title);
+  });
+
+  const linkBody = z.object({ eventId: z.string().min(1).optional(), folderId: z.string().min(1).optional() });
+  app.post('/api/gathering/groups/:groupId/upload-links', auth, async (request) => {
+    const params = groupParams.parse(request.params);
+    const body = linkBody.parse(request.body);
+    return createUploadLink(requireGatheringUserId(request), params.groupId, body);
+  });
+
+  app.post('/api/gathering/groups/:groupId/upload-links/:linkId/:action', auth, async (request) => {
+    const params = groupParams
+      .extend({ linkId: z.string().min(1), action: z.enum(['revoke', 'pause', 'resume']) })
+      .parse(request.params);
+    return setUploadLinkState(requireGatheringUserId(request), params.groupId, params.linkId, params.action);
+  });
+
+  app.get('/api/gathering/public/uploads/:token', async (request, reply) => {
+    const params = z.object({ token: z.string().min(1) }).parse(request.params);
+    const info = await publicUploadInfo(params.token);
+    reply.type('text/html; charset=utf-8');
+    return uploadPage(info.title, info.notice, params.token);
+  });
+
+  app.post('/api/gathering/public/uploads/:token/reserve', async (request) => {
+    const params = z.object({ token: z.string().min(1) }).parse(request.params);
+    const body = gatheringMediaUploadSchema.parse(request.body);
+    return publicReserve(params.token, body.items);
+  });
+
+  app.post('/api/gathering/public/uploads/:token/complete', async (request) => {
+    const params = z.object({ token: z.string().min(1) }).parse(request.params);
+    const body = gatheringMediaCompleteSchema.extend({ assetId: z.string().min(1) }).parse(request.body);
+    return publicComplete(params.token, body.assetId, body.sizeBytes);
+  });
 };
+
+function uploadPage(title: string, notice: string, token: string) {
+  const safeTitle = title.replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[char] ?? char);
+  return `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><body style="font-family:sans-serif;padding:24px"><h1>${safeTitle}</h1><p>${notice}</p><input id="files" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple><button id="go">올리기</button><pre id="log"></pre><script>
+const token=${JSON.stringify(token)};
+const log=document.getElementById('log');
+document.getElementById('go').onclick=async()=>{
+  const files=[...document.getElementById('files').files];
+  const items=files.map(file=>({kind:file.type.startsWith('video/')?'VIDEO':'PHOTO',mimeType:file.type,sizeBytes:file.size,originalName:file.name}));
+  const reserved=await fetch('/api/gathering/public/uploads/'+token+'/reserve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items})});
+  const body=await reserved.json();
+  if(!reserved.ok){log.textContent=body.error?.message||'실패';return;}
+  for(let i=0;i<files.length;i++){
+    const item=body.items[i];
+    const put=await fetch(item.uploadUrl,{method:'PUT',headers:item.headers,body:files[i]});
+    if(!put.ok){log.textContent='전송 실패';return;}
+    const done=await fetch('/api/gathering/public/uploads/'+token+'/complete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({assetId:item.id,sizeBytes:files[i].size})});
+    if(!done.ok){log.textContent='확인 실패';return;}
+  }
+  log.textContent='올렸습니다. 모임 앨범에 바로 보입니다.';
+};
+</script></body></html>`;
+}

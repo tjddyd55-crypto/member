@@ -5,6 +5,7 @@ import {
   SIGNED_URL_TTL_SECONDS,
   STORAGE_QUOTA_BYTES,
   billableStorageBytes,
+  buildGatheringFolderObjectKey,
   canDeleteStoredObject,
   evaluateUpload,
   isPendingUploadLive,
@@ -58,6 +59,67 @@ export async function createMediaUploads(
   return signUploads(reserved, storage);
 }
 
+export async function createFolderMediaUploads(
+  userId: string,
+  groupId: string,
+  folderId: string,
+  items: UploadItem[],
+) {
+  const access = await requireGroupMember(userId, groupId);
+  assertPermission(access, 'MEDIA_UPLOAD');
+  gatheringUploadLimiter.assert(`${userId}:folder-upload`);
+  const folder = await prisma.gatheringMediaFolder.findFirst({
+    where: { id: folderId, groupId, deletedAt: null },
+  });
+  if (!folder) throw new AppError(404, 'FOLDER_NOT_FOUND', '사진 폴더를 찾을 수 없습니다.');
+  const prepared = items.map(prepareItem);
+  const storage = currentObjectStorage();
+  const reserved = await prisma.$transaction(async (tx) => {
+    await lockGroup(tx, groupId);
+    const now = new Date();
+    const usage = await loadBillableUsage(tx, groupId, now);
+    const subscriptionActive = await isSubscriptionActive(tx, groupId, now);
+    const additionalBytes = prepared.reduce((sum, item) => sum + item.sizeBytes, 0);
+    const decision = evaluateUpload({ usage, subscriptionActive, kind: 'MEDIA', additionalBytes });
+    if (!decision.allowed) rejectUploadDecision(decision);
+    const rows: ReservedUpload[] = [];
+    for (const item of prepared) {
+      rows.push(await insertPending(tx, userId, groupId, { eventId: null, folderId }, storage.prefixEnv, item));
+    }
+    return rows;
+  });
+  return signUploads(reserved, storage);
+}
+
+export async function completeFolderMediaUpload(
+  userId: string,
+  groupId: string,
+  folderId: string,
+  assetId: string,
+  sizeBytes: number,
+) {
+  const access = await requireGroupMember(userId, groupId);
+  assertPermission(access, 'MEDIA_UPLOAD');
+  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { folderId });
+  if (asset.status === 'READY') return revalidateReady(asset, userId);
+  await assertPendingStillValid(asset.storageKey, asset.createdAt, asset.sizeBytes, sizeBytes);
+  if (await recoverPromotedObject(asset, sizeBytes)) {
+    return { media: presentMedia(await markReady(asset.id), userId) };
+  }
+  await confirmStoredObject(pendingObjectKey(asset.storageKey), asset.mimeType, sizeBytes);
+  await promotePendingObject(asset.storageKey, sizeBytes);
+  const ready = await markReady(asset.id);
+  await writeGatheringAudit(prisma, {
+    groupId,
+    actorUserId: access.userId,
+    action: GatheringAuditAction.MEDIA_UPLOAD,
+    targetType: 'GatheringMediaAsset',
+    targetId: asset.id,
+    meta: { bytes: sizeBytes, folderId },
+  });
+  return { media: presentMedia(ready, userId) };
+}
+
 export async function completeMediaUpload(
   userId: string,
   groupId: string,
@@ -67,7 +129,7 @@ export async function completeMediaUpload(
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_UPLOAD');
-  const asset = await requireOwnedPendingOrReady(userId, groupId, eventId, assetId);
+  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { eventId });
   if (asset.status === 'READY') return revalidateReady(asset, userId);
   await assertPendingStillValid(asset.storageKey, asset.createdAt, asset.sizeBytes, sizeBytes);
   if (await recoverPromotedObject(asset, sizeBytes)) {
@@ -89,7 +151,7 @@ export async function completeMediaUpload(
 
 export async function resumeMediaUpload(userId: string, groupId: string, eventId: string, assetId: string) {
   await requireGroupMember(userId, groupId);
-  const asset = await requireOwnedPendingOrReady(userId, groupId, eventId, assetId);
+  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { eventId });
   if (asset.status === 'READY') {
     const checked = await revalidateReady(asset, userId);
     return { status: 'READY' as const, media: checked.media };
@@ -151,7 +213,7 @@ async function reserveUploads(
     if (!decision.allowed) rejectUploadDecision(decision);
     const reserved: ReservedUpload[] = [];
     for (const item of items) {
-      reserved.push(await insertPending(tx, userId, groupId, eventId, prefixEnv, item));
+      reserved.push(await insertPending(tx, userId, groupId, { eventId, folderId: null }, prefixEnv, item));
     }
     return reserved;
   });
@@ -161,22 +223,31 @@ async function insertPending(
   tx: Prisma.TransactionClient,
   userId: string,
   groupId: string,
-  eventId: string,
+  target: { eventId: string | null; folderId: string | null },
   prefixEnv: string,
   item: UploadItem & { folder: 'photos' | 'videos' },
 ) {
   const objectId = randomBytes(16).toString('hex');
-  const storageKey = buildGatheringObjectKey({
-    prefixEnv,
-    groupId,
-    eventId,
-    folder: item.folder,
-    objectId,
-  });
+  const storageKey = target.folderId
+    ? buildGatheringFolderObjectKey({
+        prefixEnv,
+        groupId,
+        folderId: target.folderId,
+        folder: item.folder,
+        objectId,
+      })
+    : buildGatheringObjectKey({
+        prefixEnv,
+        groupId,
+        eventId: target.eventId ?? '',
+        folder: item.folder,
+        objectId,
+      });
   const created = await tx.gatheringMediaAsset.create({
     data: {
       groupId,
-      eventId,
+      eventId: target.eventId,
+      folderId: target.folderId,
       uploaderUserId: userId,
       kind: item.kind,
       storageKey,
@@ -229,9 +300,14 @@ async function signUploads(
   }
 }
 
-async function requireOwnedPendingOrReady(userId: string, groupId: string, eventId: string, assetId: string) {
+async function requireOwnedPendingOrReady(
+  userId: string,
+  groupId: string,
+  assetId: string,
+  scope: { eventId?: string; folderId?: string },
+) {
   const asset = await prisma.gatheringMediaAsset.findFirst({
-    where: { id: assetId, groupId, eventId, deletedAt: null },
+    where: { id: assetId, groupId, deletedAt: null, ...scope },
   });
   if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
   if (asset.uploaderUserId !== userId) {

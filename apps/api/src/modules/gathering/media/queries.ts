@@ -64,6 +64,7 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     by: ['eventId', 'kind'],
     where: {
       groupId,
+      eventId: { not: null },
       status: 'READY',
       deletedAt: null,
       ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
@@ -71,18 +72,53 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     _count: { _all: true },
   });
   const events = await prisma.gatheringEvent.findMany({
-    where: { id: { in: counts.map((row) => row.eventId) }, groupId, deletedAt: null },
+    where: { groupId, deletedAt: null },
     select: { id: true, title: true, startsAt: true },
   });
   const byEvent = new Map(events.map((event) => [event.id, event]));
   const cards = counts.flatMap((row) => {
+    if (!row.eventId) return [];
     const event = byEvent.get(row.eventId);
     if (!event) return [];
     return [{ event, kind: row.kind, count: row._count._all }];
   });
+  const eventList = eventCards(cards);
+  for (const event of events) {
+    if (eventList.some((card) => card.eventId === event.id)) continue;
+    eventList.push({
+      eventId: event.id,
+      title: event.title,
+      startsAt: event.startsAt.toISOString(),
+      year: calendarYearKst(event.startsAt),
+      photoCount: 0,
+      videoCount: 0,
+    });
+  }
+  eventList.sort((left, right) => right.startsAt.localeCompare(left.startsAt));
+  const folders = await prisma.gatheringMediaFolder.findMany({
+    where: { groupId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+  const folderCounts = await prisma.gatheringMediaAsset.groupBy({
+    by: ['folderId', 'kind'],
+    where: {
+      groupId,
+      folderId: { not: null },
+      status: 'READY',
+      deletedAt: null,
+      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
+    },
+    _count: { _all: true },
+  });
   return {
     years: yearTotals(cards),
-    events: eventCards(cards).filter((card) => (year == null ? true : card.year === year)),
+    events: eventList.filter((card) => (year == null ? true : card.year === year)),
+    folders: folders.map((folder) => ({
+      folderId: folder.id,
+      title: folder.title,
+      photoCount: folderCounts.filter((row) => row.folderId === folder.id && row.kind === 'PHOTO').reduce((sum, row) => sum + row._count._all, 0),
+      videoCount: folderCounts.filter((row) => row.folderId === folder.id && row.kind === 'VIDEO').reduce((sum, row) => sum + row._count._all, 0),
+    })),
   };
 }
 

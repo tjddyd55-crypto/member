@@ -3,12 +3,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import type { GatheringAlbumEvent, GatheringAlbumYear } from '@member/contracts';
 import { api } from '../../api/client';
-import { Body, EmptyState, ErrorState } from '../../design/ui';
+import { Body, Button, EmptyState, ErrorState, TextField } from '../../design/ui';
 import { theme } from '../../theme';
 
 export function AlbumsPane({ groupId }: { groupId: string }) {
   const [years, setYears] = useState<GatheringAlbumYear[]>([]);
   const [events, setEvents] = useState<GatheringAlbumEvent[]>([]);
+  const [folders, setFolders] = useState<Array<{ folderId: string; title: string; photoCount: number; videoCount: number }>>([]);
+  const [folderTitle, setFolderTitle] = useState('');
   const [year, setYear] = useState<number | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
@@ -19,6 +21,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
       const result = await api.albums(groupId, year ?? undefined);
       setYears(result.years);
       setEvents(result.events);
+      setFolders(result.folders ?? []);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '앨범을 불러오지 못했습니다.');
@@ -44,8 +47,30 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           />
         ))}
       </View>
+      <TextField label="새 폴더 이름" value={folderTitle} onChangeText={setFolderTitle} />
+      <Button
+        label="폴더 만들기"
+        variant="secondary"
+        onPress={() =>
+          void api
+            .createFolder(groupId, folderTitle)
+            .then(() => {
+              setFolderTitle('');
+              return load();
+            })
+            .catch((error: unknown) => setMessage(error instanceof Error ? error.message : '폴더를 만들지 못했습니다.'))
+        }
+      />
+      {folders.map((folder) => (
+        <View key={folder.folderId} style={styles.card}>
+          <Text style={styles.title}>{folder.title}</Text>
+          <Body>
+            사진 {folder.photoCount} · 영상 {folder.videoCount}
+          </Body>
+        </View>
+      ))}
       {status === 'ready' && events.length === 0 ? (
-        <EmptyState title="앨범이 비어 있습니다" description="행사에 사진이나 영상을 올리면 여기에 모입니다." />
+        <EmptyState title="앨범이 비어 있습니다" description="행사를 만들면 앨범이 생기고, 사진이나 영상을 올리면 여기에 모입니다." />
       ) : null}
       {events.map((event) => (
         <Pressable

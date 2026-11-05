@@ -36,6 +36,20 @@ export function buildGatheringObjectKey(input: {
   return `${input.prefixEnv}/gatherings/${input.groupId}/events/${input.eventId}/${input.folder}/${input.objectId}`;
 }
 
+export function buildGatheringFolderObjectKey(input: {
+  prefixEnv: string;
+  groupId: string;
+  folderId: string;
+  folder: GatheringObjectFolder;
+  objectId: string;
+}) {
+  requirePrefix(input.prefixEnv);
+  requirePart(input.groupId);
+  requirePart(input.folderId);
+  requirePart(input.objectId);
+  return `${input.prefixEnv}/gatherings/${input.groupId}/folders/${input.folderId}/${input.folder}/${input.objectId}`;
+}
+
 export function buildMemberBookProfileKey(input: {
   prefixEnv: string;
   userId: string;

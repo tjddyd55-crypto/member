@@ -44,5 +44,5 @@ export {
   validateMediaUpload,
 } from './media-policy.js';
 export type { MediaFolder, MediaKind, MediaRejectionCode, MediaValidation } from './media-policy.js';
-export { canRetryTransfer, summarizeTransfer } from './transfer.js';
+export { canRetryTransfer, signedUrlStillFresh, summarizeTransfer } from './transfer.js';
 export type { TransferItem, TransferState } from './transfer.js';

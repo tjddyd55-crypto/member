@@ -49,13 +49,11 @@ export class R2ObjectStorage implements ObjectStorage {
   }
 
   async relocate(fromKey: string, toKey: string) {
-    const source = await this.signedFetch('GET', fromKey);
-    if (source.status === 404) {
+    const copySource = `/${encodePath(this.config.bucket)}/${encodePath(fromKey)}`;
+    const saved = await this.signedFetch('PUT', toKey, { 'x-amz-copy-source': copySource });
+    if (saved.status === 404) {
       throw new AppError(409, 'OBJECT_MISSING', '업로드된 파일을 찾지 못했습니다.');
     }
-    if (!source.ok) throw storageFailure();
-    const body = Buffer.from(await source.arrayBuffer());
-    const saved = await this.signedFetch('PUT', toKey, {}, body);
     if (!saved.ok) throw storageFailure();
     await this.remove(fromKey);
   }

@@ -198,6 +198,25 @@ describe('행사 사진·영상', () => {
     });
     expect(download.statusCode).toBe(200);
     expect(download.json().url).toContain('https://storage.test/get/');
+
+    const recoveredUpload = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/media/uploads`,
+      headers: auth(member.tokens.accessToken),
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    const recoveredId = recoveredUpload.json().items[0].id as string;
+    const recoveredRow = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: recoveredId } });
+    storage.put(recoveredRow.storageKey, jpeg(32));
+    const recovered = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${recoveredId}/complete`,
+      headers: auth(member.tokens.accessToken),
+      payload: { sizeBytes: 32 },
+    });
+    expect(recovered.statusCode).toBe(200);
+    const recoveredAsset = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: recoveredId } });
+    expect(recoveredAsset.status).toBe('READY');
     const hidden = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${group.id}/media/${item.id}/download`,
@@ -319,6 +338,7 @@ describe('행사 사진·영상', () => {
       where: { id: assetId },
       data: { createdAt: new Date(Date.now() - UPLOAD_INTENT_TTL_MS - 1000), status: 'PENDING' },
     });
+    storage.put(`${row.storageKey}-pending`, jpeg(32));
     const expired = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/media/${assetId}/complete`,
@@ -327,6 +347,7 @@ describe('행사 사진·영상', () => {
     });
     expect(expired.statusCode).toBe(409);
     expect(expired.json().error.code).toBe('UPLOAD_EXPIRED');
+    expect(storage.objects.has(`${row.storageKey}-pending`)).toBe(false);
   });
 
   it('신고는 회원이 하고 총무가 처리한다. 저장소가 없으면 503이다', async () => {

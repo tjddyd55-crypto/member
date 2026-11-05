@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { GatheringMediaView } from '@member/contracts';
-import { canRetryTransfer, summarizeTransfer, type TransferState } from '@member/gathering-domain';
+import { canRetryTransfer, signedUrlStillFresh, summarizeTransfer, type TransferState } from '@member/gathering-domain';
 import { api, ApiError } from '../../api/client';
 import { Body, Button, EmptyState, ErrorState, Notice } from '../../design/ui';
 import { theme } from '../../theme';
@@ -20,6 +20,7 @@ type Job = {
   assetId?: string;
   uploadUrl?: string;
   headers?: Record<string, string>;
+  expiresAt?: string;
 };
 
 export function MediaPane({ groupId, eventId }: { groupId: string; eventId: string }) {
@@ -63,10 +64,7 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
       chunk.forEach((job, offset) => {
         const target = created.items[offset];
         if (!target) return;
-        job.assetId = target.id;
-        job.uploadUrl = target.uploadUrl;
-        job.headers = target.headers;
-        updateJob(job.id, { assetId: target.id, uploadUrl: target.uploadUrl, headers: target.headers });
+        assignUpload(job, target);
       });
     }
   };
@@ -78,14 +76,14 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
       if (!job.assetId) throw new Error('업로드 주소를 받지 못했습니다.');
       let uploadUrl = job.uploadUrl;
       let headers = job.headers;
-      if (!uploadUrl || !headers) {
-        const resumed = await api.resumeMedia(groupId, eventId, job.assetId);
-        if (resumed.status === 'READY') {
+      if (!uploadUrl || !headers || !signedUrlStillFresh(job.expiresAt)) {
+        const fresh = await refreshUpload(job);
+        if (fresh === 'ready') {
           updateJob(job.id, { state: 'done', loaded: job.file.sizeBytes, total: job.file.sizeBytes });
           return;
         }
-        uploadUrl = resumed.uploadUrl;
-        headers = resumed.headers;
+        uploadUrl = fresh.uploadUrl;
+        headers = fresh.headers;
       }
       await putPreparedFile(job.file.uri, uploadUrl, headers, (loaded, total) => {
         updateJob(job.id, { loaded, total, state: 'uploading' });
@@ -134,9 +132,18 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
       }
     }
     setJobs((current) => [...next, ...current]);
-    const fresh = next.filter((job) => !job.assetId);
-    await reserveBatch(fresh);
-    for (const job of next) await transfer(job);
+    try {
+      await reserveBatch(next.filter((job) => !job.assetId));
+    } catch (error) {
+      const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : '예약을 만들지 못했습니다.';
+      setMessage(text);
+      for (const job of next) {
+        if (!job.assetId) updateJob(job.id, { state: 'failed', message: text });
+      }
+    }
+    for (const job of next) {
+      if (job.assetId) await transfer(job);
+    }
     await load();
   };
 
@@ -193,6 +200,44 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
 
   function updateJob(id: string, patch: Partial<Job>) {
     setJobs((current) => current.map((job) => (job.id === id ? { ...job, ...patch } : job)));
+  }
+
+  function assignUpload(
+    job: Job,
+    target: { id: string; uploadUrl: string; headers: Record<string, string>; expiresAt: string },
+  ) {
+    job.assetId = target.id;
+    job.uploadUrl = target.uploadUrl;
+    job.headers = target.headers;
+    job.expiresAt = target.expiresAt;
+    updateJob(job.id, {
+      assetId: target.id,
+      uploadUrl: target.uploadUrl,
+      headers: target.headers,
+      expiresAt: target.expiresAt,
+    });
+  }
+
+  async function refreshUpload(job: Job): Promise<'ready' | { uploadUrl: string; headers: Record<string, string> }> {
+    if (!job.assetId) throw new Error('업로드 주소를 받지 못했습니다.');
+    try {
+      const resumed = await api.resumeMedia(groupId, eventId, job.assetId);
+      if (resumed.status === 'READY') return 'ready';
+      assignUpload(job, resumed);
+      return { uploadUrl: resumed.uploadUrl, headers: resumed.headers };
+    } catch (error) {
+      if (error instanceof ApiError && (error.code === 'UPLOAD_FAILED' || error.code === 'UPLOAD_EXPIRED')) {
+        job.assetId = undefined;
+        job.uploadUrl = undefined;
+        job.headers = undefined;
+        job.expiresAt = undefined;
+        updateJob(job.id, { assetId: undefined, uploadUrl: undefined, headers: undefined, expiresAt: undefined });
+        await reserveBatch([job]);
+        if (!job.uploadUrl || !job.headers) throw new Error('업로드 주소를 받지 못했습니다.');
+        return { uploadUrl: job.uploadUrl, headers: job.headers };
+      }
+      throw error;
+    }
   }
 }
 

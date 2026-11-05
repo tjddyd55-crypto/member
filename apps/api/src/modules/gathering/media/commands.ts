@@ -69,7 +69,10 @@ export async function completeMediaUpload(
   assertPermission(access, 'MEDIA_UPLOAD');
   const asset = await requireOwnedPendingOrReady(userId, groupId, eventId, assetId);
   if (asset.status === 'READY') return revalidateReady(asset, userId);
-  await assertPendingStillValid(asset.id, asset.createdAt, asset.sizeBytes, sizeBytes);
+  await assertPendingStillValid(asset.storageKey, asset.createdAt, asset.sizeBytes, sizeBytes);
+  if (await recoverPromotedObject(asset, sizeBytes)) {
+    return { media: presentMedia(await markReady(asset.id), userId) };
+  }
   await confirmStoredObject(pendingObjectKey(asset.storageKey), asset.mimeType, sizeBytes);
   await promotePendingObject(asset.storageKey, sizeBytes);
   const ready = await markReady(asset.id);
@@ -240,12 +243,9 @@ async function requireOwnedPendingOrReady(userId: string, groupId: string, event
   return asset;
 }
 
-async function assertPendingStillValid(assetId: string, createdAt: Date, reserved: bigint, sizeBytes: number) {
+async function assertPendingStillValid(storageKey: string, createdAt: Date, reserved: bigint, sizeBytes: number) {
   if (!isPendingUploadLive(createdAt, new Date())) {
-    await prisma.gatheringMediaAsset.updateMany({
-      where: { id: assetId, status: 'PENDING' },
-      data: { status: 'FAILED' },
-    });
+    await discardPending(storageKey);
     throw new AppError(409, 'UPLOAD_EXPIRED', '업로드 확인 시간이 지났습니다. 다시 시도하세요.');
   }
   if (Number(reserved) !== sizeBytes) {
@@ -263,6 +263,18 @@ async function revalidateReady(asset: GatheringMediaAsset, userId: string) {
     throw new AppError(409, 'SIZE_MISMATCH', '저장된 파일이 확인된 크기와 다릅니다.');
   }
   return { media: presentMedia(asset, userId) };
+}
+
+async function recoverPromotedObject(asset: GatheringMediaAsset, sizeBytes: number) {
+  const storage = currentObjectStorage();
+  const pending = await storage.head(pendingObjectKey(asset.storageKey));
+  if (pending) return false;
+  const finalObject = await storage.head(asset.storageKey);
+  if (!finalObject) return false;
+  if (finalObject.sizeBytes !== sizeBytes) {
+    throw new AppError(409, 'SIZE_MISMATCH', '저장된 파일이 확인된 크기와 다릅니다.');
+  }
+  return true;
 }
 
 async function confirmStoredObject(storageKey: string, mimeType: string, sizeBytes: number) {

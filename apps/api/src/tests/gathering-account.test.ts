@@ -128,6 +128,20 @@ describe('계정 삭제와 콘텐츠 처리', () => {
     expect(profile).toBeNull();
     const ledger = await prisma.gatheringFinanceTransaction.findUniqueOrThrow({ where: { id: kept.json().id } });
     expect(ledger.amountWon).toBe(1000);
+    const reused = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/groups',
+      headers: auth(member.tokens.accessToken),
+      payload: { name: '탈퇴 후 모임' },
+    });
+    expect(reused.statusCode).toBe(401);
+    const recreated = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/auth/profile',
+      headers: auth(member.tokens.accessToken),
+      payload: { name: '다시', localJcName: '서울테스트', directoryConsent: true },
+    });
+    expect(recreated.statusCode).toBe(401);
   });
 
   it('회원수첩 자격이 있으면 전화번호는 남긴다', async () => {
@@ -196,6 +210,27 @@ describe('계정 삭제와 콘텐츠 처리', () => {
     });
     expect(queue.statusCode).toBe(200);
     expect(queue.json().items.some((item: { id: string }) => item.id === report.json().id)).toBe(true);
+    const reviewing = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/admin/reports/${report.json().id}/resolve`,
+      headers: { ...auth(owner.tokens.accessToken), 'x-gathering-operator-secret': currentOperatorSecret() },
+      payload: { status: 'REVIEWING' },
+    });
+    expect(reviewing.statusCode).toBe(200);
+    const stillQueued = await app.inject({
+      method: 'GET',
+      url: '/api/gathering/admin/reports',
+      headers: { ...auth(owner.tokens.accessToken), 'x-gathering-operator-secret': currentOperatorSecret() },
+    });
+    expect(
+      stillQueued.json().items.some((item: { id: string; status: string }) => item.id === report.json().id && item.status === 'REVIEWING'),
+    ).toBe(true);
+    const groupQueue = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/media/reports`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(groupQueue.json().items.some((item: { id: string }) => item.id === report.json().id)).toBe(true);
     const hidden = await app.inject({
       method: 'GET',
       url: '/api/gathering/admin/reports',

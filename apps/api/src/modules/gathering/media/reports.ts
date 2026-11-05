@@ -4,6 +4,8 @@ import { assertPermission, requireGroupMember } from '../access.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 
+export const queuedReportStatuses = ['OPEN', 'REVIEWING'] as const;
+
 export async function reportMedia(userId: string, groupId: string, assetId: string, reason: string) {
   await requireGroupMember(userId, groupId);
   const asset = await prisma.gatheringMediaAsset.findFirst({
@@ -28,7 +30,7 @@ export async function listMediaReports(userId: string, groupId: string) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_MODERATE');
   const items = await prisma.gatheringMediaReport.findMany({
-    where: { groupId, status: 'OPEN' },
+    where: { groupId, status: { in: [...queuedReportStatuses] } },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
@@ -52,7 +54,7 @@ export async function resolveMediaReport(
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_MODERATE');
   const updated = await prisma.gatheringMediaReport.updateMany({
-    where: { id: reportId, groupId, status: 'OPEN' },
+    where: { id: reportId, groupId, status: { in: [...queuedReportStatuses] } },
     data: { status, resolvedAt: new Date() },
   });
   if (updated.count !== 1) throw new AppError(404, 'REPORT_NOT_FOUND', '신고를 찾을 수 없습니다.');

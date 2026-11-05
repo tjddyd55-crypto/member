@@ -1,6 +1,7 @@
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
+import { queuedReportStatuses } from '../media/reports.js';
 import { assertOperatorSecret } from '../subscription/service.js';
 
 export async function blockedUserIds(groupId: string, blockerUserId: string) {
@@ -40,7 +41,7 @@ export async function listOpenReports(actorId: string, header: string | string[]
   assertOperatorSecret(header);
   await requireOperatorUser(actorId);
   const items = await prisma.gatheringMediaReport.findMany({
-    where: { status: 'OPEN' },
+    where: { status: { in: [...queuedReportStatuses] } },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
@@ -50,6 +51,7 @@ export async function listOpenReports(actorId: string, header: string | string[]
       groupId: item.groupId,
       mediaAssetId: item.mediaAssetId,
       reason: item.reason,
+      status: item.status,
       createdAt: item.createdAt.toISOString(),
     })),
   };

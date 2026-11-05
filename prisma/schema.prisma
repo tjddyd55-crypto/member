@@ -772,6 +772,7 @@ model GatheringEvent {
   groupId         String
   title           String
   startsAt        DateTime
+  endsAt          DateTime?
   place           String?
   description     String?
   status          GatheringEventStatus  @default(SCHEDULED)

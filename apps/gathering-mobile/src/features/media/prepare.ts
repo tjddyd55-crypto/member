@@ -1,4 +1,5 @@
-import { File, UploadType } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
+import { createUploadTask, FileSystemUploadType } from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import {
@@ -28,24 +29,35 @@ export async function prepareAsset(asset: ImagePickerAsset): Promise<PreparedUpl
 }
 
 async function preparePhoto(asset: ImagePickerAsset): Promise<PreparedUpload> {
-  const fitted = fittedPhotoSize(asset.width ?? 0, asset.height ?? 0);
-  const actions = fitted ? [{ resize: { width: fitted.width, height: fitted.height } }] : [];
-  const compressed = await ImageManipulator.manipulateAsync(asset.uri, actions, {
-    compress: PHOTO_JPEG_QUALITY,
-    format: ImageManipulator.SaveFormat.JPEG,
-  });
-  const sizeBytes = fileBytes(compressed.uri);
-  const decision = validateMediaUpload({ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes });
-  if (!decision.ok) throw new Error(rejectionMessage(decision.code));
-  return {
-    uri: compressed.uri,
-    kind: 'PHOTO',
-    mimeType: 'image/jpeg',
-    sizeBytes,
-    width: compressed.width,
-    height: compressed.height,
-    originalName: asset.fileName ?? undefined,
-  };
+  const sourceUri = copyContentUriToCache(asset.uri);
+  try {
+    const fitted = fittedPhotoSize(asset.width ?? 0, asset.height ?? 0);
+    const actions = fitted ? [{ resize: { width: fitted.width, height: fitted.height } }] : [];
+    const compressed = await ImageManipulator.manipulateAsync(sourceUri, actions, {
+      compress: PHOTO_JPEG_QUALITY,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    const sizeBytes = fileBytes(compressed.uri);
+    const decision = validateMediaUpload({ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes });
+    if (!decision.ok) throw new Error(rejectionMessage(decision.code));
+    return {
+      uri: compressed.uri,
+      kind: 'PHOTO',
+      mimeType: 'image/jpeg',
+      sizeBytes,
+      width: compressed.width,
+      height: compressed.height,
+      originalName: asset.fileName ?? undefined,
+    };
+  } finally {
+    if (sourceUri !== asset.uri) {
+      try {
+        new File(sourceUri).delete();
+      } catch {
+        // 압축에 쓴 사본이다.
+      }
+    }
+  }
 }
 
 async function prepareVideo(asset: ImagePickerAsset): Promise<PreparedUpload> {
@@ -72,26 +84,61 @@ export async function putPreparedFile(
   headers: Record<string, string>,
   onProgress: (loaded: number, total: number) => void,
 ) {
-  const file = new File(uri);
-  const task = file.createUploadTask(url, {
-    httpMethod: 'PUT',
-    uploadType: UploadType.BINARY_CONTENT,
-    headers,
-    onProgress: (progress) => onProgress(progress.bytesSent, progress.totalBytes),
-  });
-  const result = await task.uploadAsync();
-  if (!result || result.status < 200 || result.status >= 300) {
-    throw new Error('파일 전송에 실패했습니다.');
+  const uploadUri = copyContentUriToCache(uri);
+  try {
+    const task = createUploadTask(
+      url,
+      uploadUri,
+      {
+        httpMethod: 'PUT',
+        uploadType: FileSystemUploadType.BINARY_CONTENT,
+        headers,
+      },
+      (progress) => onProgress(progress.totalBytesSent, progress.totalBytesExpectedToSend),
+    );
+    const result = await task.uploadAsync();
+    if (!result || result.status < 200 || result.status >= 300) {
+      throw new Error('파일 전송에 실패했습니다.');
+    }
+  } finally {
+    if (uploadUri !== uri) {
+      try {
+        new File(uploadUri).delete();
+      } catch {
+        // 캐시 사본 정리는 업로드 결과보다 뒤다.
+      }
+    }
   }
 }
 
+/** Android 문서 선택기는 content:// 를 준다. 레거시 업로드는 file:// 만 읽는다. */
+function copyContentUriToCache(uri: string) {
+  if (!uri.startsWith('content:')) return uri;
+  const source = new File(uri);
+  const extension = source.extension || '';
+  const destination = new File(Paths.cache, `upload-${Date.now()}${extension}`);
+  source.copy(destination);
+  return destination.uri;
+}
+
 function fileBytes(uri: string) {
-  const size = new File(uri).size;
-  if (typeof size !== 'number' || size <= 0) throw new Error('파일 크기를 확인하지 못했습니다.');
-  if (size > Math.max(PHOTO_MAX_BYTES, VIDEO_MAX_BYTES)) {
-    throw new Error('파일 크기 제한을 넘었습니다.');
+  const localUri = copyContentUriToCache(uri);
+  try {
+    const size = new File(localUri).size;
+    if (typeof size !== 'number' || size <= 0) throw new Error('파일 크기를 확인하지 못했습니다.');
+    if (size > Math.max(PHOTO_MAX_BYTES, VIDEO_MAX_BYTES)) {
+      throw new Error('파일 크기 제한을 넘었습니다.');
+    }
+    return size;
+  } finally {
+    if (localUri !== uri) {
+      try {
+        new File(localUri).delete();
+      } catch {
+        // 크기 확인용 사본이다.
+      }
+    }
   }
-  return size;
 }
 
 function rejectionMessage(code: string) {

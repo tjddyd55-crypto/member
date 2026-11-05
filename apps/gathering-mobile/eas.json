@@ -14,7 +14,8 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "http://127.0.0.1:3001"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-development-46a6.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "f5a017a3-82f8-4d73-bc8a-ecd249e994f3"
       }
     },
     "development-device": {
@@ -27,7 +28,21 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "http://127.0.0.1:3001"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-development-46a6.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "f5a017a3-82f8-4d73-bc8a-ecd249e994f3"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-development-46a6.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "f5a017a3-82f8-4d73-bc8a-ecd249e994f3"
       }
     }
   }

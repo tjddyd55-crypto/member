@@ -24,7 +24,18 @@ type Job = {
   expiresAt?: string;
 };
 
-export function MediaPane({ groupId, eventId }: { groupId: string; eventId: string }) {
+export function MediaPane({
+  groupId,
+  eventId,
+  folderId,
+  onTitle,
+}: {
+  groupId: string;
+  eventId?: string;
+  folderId?: string;
+  onTitle?: (title: string) => void;
+}) {
+  const target = eventId ? { kind: 'event' as const, id: eventId } : { kind: 'folder' as const, id: folderId ?? '' };
   const [items, setItems] = useState<GatheringMediaView[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -36,20 +47,31 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
   const load = useCallback(async () => {
     setStatus('loading');
     try {
-      const [media, usage] = await Promise.all([api.eventMedia(groupId, eventId), api.storage(groupId)]);
-      setItems(media.items);
-      setNextCursor(media.nextCursor);
+      const usage = await api.storage(groupId);
+      if (target.kind === 'folder') {
+        const media = await api.folderMedia(groupId, target.id);
+        onTitle?.(media.folder.title);
+        setItems(media.items);
+        setNextCursor(media.nextCursor);
+      } else {
+        const media = await api.eventMedia(groupId, target.id);
+        setItems(media.items);
+        setNextCursor(media.nextCursor);
+      }
       setUploadsAllowed(usage.subscriptionActive);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '사진·영상을 불러오지 못했습니다.');
       setStatus('error');
     }
-  }, [eventId, groupId]);
+  }, [groupId, onTitle, target.id, target.kind]);
 
   const loadMore = async () => {
     if (!nextCursor) return;
-    const media = await api.eventMedia(groupId, eventId, nextCursor);
+    const media =
+      target.kind === 'event'
+        ? await api.eventMedia(groupId, target.id, nextCursor)
+        : await api.folderMedia(groupId, target.id, nextCursor);
     setItems((current) => [...current, ...media.items]);
     setNextCursor(media.nextCursor);
   };
@@ -61,7 +83,11 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
   const reserveBatch = async (pending: Job[]) => {
     for (let index = 0; index < pending.length; index += 20) {
       const chunk = pending.slice(index, index + 20);
-      const created = await api.createMediaUploads(groupId, eventId, chunk.map((job) => toIntent(job.file)));
+      const items = chunk.map((job) => toIntent(job.file));
+      const created =
+        target.kind === 'event'
+          ? await api.createMediaUploads(groupId, target.id, items)
+          : await api.createFolderUploads(groupId, target.id, items);
       chunk.forEach((job, offset) => {
         const target = created.items[offset];
         if (!target) return;
@@ -90,7 +116,8 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
         updateJob(job.id, { loaded, total, state: 'uploading' });
       });
       updateJob(job.id, { state: 'confirming' });
-      await api.completeMedia(groupId, eventId, job.assetId, job.file.sizeBytes);
+      if (target.kind === 'event') await api.completeMedia(groupId, target.id, job.assetId, job.file.sizeBytes);
+      else await api.completeFolderMedia(groupId, target.id, job.assetId, job.file.sizeBytes);
       job.uploadUrl = undefined;
       updateJob(job.id, { state: 'done', loaded: job.file.sizeBytes, total: job.file.sizeBytes, uploadUrl: undefined });
     } catch (error) {
@@ -182,7 +209,14 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
         </View>
       ))}
       {status === 'ready' && items.length === 0 ? (
-        <EmptyState title="아직 올린 사진·영상이 없습니다" description="모임 회원이면 이 행사에 여러 장을 올릴 수 있습니다." />
+        <EmptyState
+          title="아직 올린 사진·영상이 없습니다"
+          description={
+            target.kind === 'folder'
+              ? '사진 올리기나 영상 올리기로 이 폴더에 바로 넣을 수 있습니다.'
+              : '모임 회원이면 이 행사에 여러 장을 올릴 수 있습니다.'
+          }
+        />
       ) : null}
       <View style={styles.grid}>
         {items.map((item) => (
@@ -226,7 +260,10 @@ export function MediaPane({ groupId, eventId }: { groupId: string; eventId: stri
   async function refreshUpload(job: Job): Promise<'ready' | { uploadUrl: string; headers: Record<string, string> }> {
     if (!job.assetId) throw new Error('업로드 주소를 받지 못했습니다.');
     try {
-      const resumed = await api.resumeMedia(groupId, eventId, job.assetId);
+      const resumed =
+        target.kind === 'event'
+          ? await api.resumeMedia(groupId, target.id, job.assetId)
+          : await api.resumeFolderMedia(groupId, target.id, job.assetId);
       if (resumed.status === 'READY') return 'ready';
       assignUpload(job, resumed);
       return { uploadUrl: resumed.uploadUrl, headers: resumed.headers };

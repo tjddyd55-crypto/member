@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { createContext, useContext, useRef } from 'react';
 import {
   ActivityIndicator,
+  findNodeHandle,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,18 +14,26 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DISCLAIMER } from '../copy';
+import { focusedFieldScrollY, keyboardAvoidingBehavior } from '../features/forms/values';
 import { theme } from '../theme';
 
+const FormScrollContext = createContext<React.RefObject<ScrollView | null> | null>(null);
+
 export function Screen({ children }: { children: React.ReactNode }) {
+  const scrollRef = useRef<ScrollView>(null);
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}
-      >
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-          {children}
-        </ScrollView>
+      <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
+        <FormScrollContext.Provider value={scrollRef}>
+          <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            contentContainerStyle={styles.content}
+          >
+            {children}
+          </ScrollView>
+        </FormScrollContext.Provider>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -87,14 +96,29 @@ export function Button({
 export function TextField({
   label,
   error,
+  onFocus,
   ...props
 }: TextInputProps & { label: string; error?: string }) {
+  const scrollRef = useContext(FormScrollContext);
+  const fieldRef = useRef<View>(null);
   return (
-    <View style={styles.field}>
+    <View ref={fieldRef} style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         placeholderTextColor={theme.colors.text.disabled}
         style={[styles.input, error ? styles.inputError : null]}
+        onFocus={(event) => {
+          onFocus?.(event);
+          const field = fieldRef.current;
+          const scroll = scrollRef?.current;
+          const relative = scroll ? findNodeHandle(scroll) : null;
+          if (!field || !scroll || relative == null) return;
+          field.measureLayout(
+            relative,
+            (_x, y) => scroll.scrollTo({ y: focusedFieldScrollY(y), animated: true }),
+            () => undefined,
+          );
+        }}
         {...props}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -145,7 +169,7 @@ const styles = StyleSheet.create({
   content: {
     padding: theme.layout.horizontalGutter,
     gap: theme.space[16],
-    paddingBottom: theme.space[32],
+    paddingBottom: 120,
   },
   title: { ...theme.typography.display, color: theme.colors.text.primary },
   section: { ...theme.typography.sectionTitle, color: theme.colors.text.primary },

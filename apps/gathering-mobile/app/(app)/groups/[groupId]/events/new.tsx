@@ -2,15 +2,22 @@ import { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { gatheringEventWriteSchema } from '@member/contracts';
 import { api } from '../../../../../src/api/client';
+import { AddressField, DateTimeField } from '../../../../../src/design/pickers';
 import { Body, Button, Screen, TextField, Title } from '../../../../../src/design/ui';
-import { toIsoFromLocal } from '../../../../../src/features/schedule/range';
+import { eventStartsAt } from '../../../../../src/features/forms/values';
+
+function evening() {
+  const time = new Date();
+  time.setHours(19, 0, 0, 0);
+  return time;
+}
 
 export default function NewEventScreen() {
   const params = useLocalSearchParams<{ groupId: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('19:00');
+  const [date, setDate] = useState(() => new Date());
+  const [time, setTime] = useState(evening);
   const [place, setPlace] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -18,9 +25,13 @@ export default function NewEventScreen() {
 
   const onSubmit = async () => {
     setError(null);
-    const startsAt = toIsoFromLocal(date, time);
+    const startsAt = eventStartsAt(date, time);
     if (!startsAt) {
-      setError('날짜는 YYYY-MM-DD, 시간은 HH:mm 형식입니다.');
+      setError('날짜와 시간을 다시 고르세요.');
+      return;
+    }
+    if (place.length > 120) {
+      setError('장소는 120자 안으로 줄여 주세요.');
       return;
     }
     const parsed = gatheringEventWriteSchema.safeParse({
@@ -49,9 +60,9 @@ export default function NewEventScreen() {
       <Title>행사 만들기</Title>
       <Body>협의회장과 총무만 등록할 수 있습니다. 저장하면 다른 회원에게 알림을 보냅니다.</Body>
       <TextField label="행사명" value={title} onChangeText={setTitle} />
-      <TextField label="날짜" value={date} onChangeText={setDate} placeholder="2026-11-20" />
-      <TextField label="시작 시간" value={time} onChangeText={setTime} placeholder="19:00" />
-      <TextField label="장소" value={place} onChangeText={setPlace} />
+      <DateTimeField label="날짜" mode="date" value={date} onChange={setDate} />
+      <DateTimeField label="시작 시간" mode="time" value={time} onChange={setTime} />
+      <AddressField label="장소" value={place} onChange={setPlace} />
       <TextField label="설명" value={description} onChangeText={setDescription} />
       {error ? <Body>{error}</Body> : null}
       <Button label="저장" onPress={() => void onSubmit()} loading={loading} />

@@ -4,7 +4,9 @@ import { File } from 'expo-file-system';
 import type { GatheringFinanceSummary, GatheringMemberView, GatheringReceiptView, GatheringTransactionView } from '@member/contracts';
 import { summarizeLedger } from '@member/gathering-domain';
 import { api } from '../../api/client';
+import { DateTimeField } from '../../design/pickers';
 import { Body, Button, EmptyState, ErrorState, Notice, TextField } from '../../design/ui';
+import { paidAtFromCalendarDate } from '../forms/values';
 import { theme } from '../../theme';
 import { MediaViewer } from '../media/MediaViewer';
 import { putPreparedFile } from '../media/prepare';
@@ -21,7 +23,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   const [picked, setPicked] = useState<GatheringMemberView | null>(null);
   const [amount, setAmount] = useState('');
   const [paid, setPaid] = useState('0');
-  const [paidOn, setPaidOn] = useState('');
+  const [paidOn, setPaidOn] = useState<Date | null>(null);
 
   const load = useCallback(async (year?: number) => {
     setStatus('loading');
@@ -124,7 +126,11 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
               ))}
               <TextField label="청구액(원)" value={amount} onChangeText={setAmount} keyboardType="number-pad" />
               <TextField label="납부액(원)" value={paid} onChangeText={setPaid} keyboardType="number-pad" />
-              <TextField label="납부일 YYYY-MM-DD" value={paidOn} onChangeText={setPaidOn} autoCapitalize="none" />
+              {paidOn ? (
+                <DateTimeField label="납부일" mode="date" value={paidOn} onChange={setPaidOn} />
+              ) : (
+                <Button label="납부일 고르기" variant="secondary" onPress={() => setPaidOn(new Date())} />
+              )}
               <Button
                 label="회비 저장"
                 onPress={() => {
@@ -138,7 +144,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
                       year: summary.year,
                       amountWon: Number(amount),
                       paidAmountWon: Number(paid),
-                      paidAt: paidOn ? new Date(`${paidOn}T12:00:00+09:00`).toISOString() : null,
+                      paidAt: paidOn ? paidAtFromCalendarDate(paidOn) : null,
                     })
                     .then(() => load(summary.year))
                     .catch((error: unknown) => setMessage(error instanceof Error ? error.message : '회비를 저장하지 못했습니다.'));
@@ -192,7 +198,7 @@ export function EventFinancePane({
   const [message, setMessage] = useState('');
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
-  const [paidOn, setPaidOn] = useState('');
+  const [paidOn, setPaidOn] = useState(() => new Date());
   const [note, setNote] = useState('');
   const [direction, setDirection] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [yearOpen, setYearOpen] = useState(true);
@@ -240,7 +246,7 @@ export function EventFinancePane({
         direction,
         label: label.trim(),
         amountWon: Number(amount),
-        paidAt: new Date(`${paidOn}T12:00:00+09:00`).toISOString(),
+        paidAt: paidAtFromCalendarDate(paidOn),
         note: note.trim() || null,
       });
       setLabel('');
@@ -295,7 +301,7 @@ export function EventFinancePane({
           </View>
           <TextField label="항목" value={label} onChangeText={setLabel} />
           <TextField label="금액(원)" value={amount} onChangeText={setAmount} keyboardType="number-pad" />
-          <TextField label="결제일 YYYY-MM-DD" value={paidOn} onChangeText={setPaidOn} autoCapitalize="none" />
+          <DateTimeField label="결제일" mode="date" value={paidOn} onChange={setPaidOn} />
           <TextField label="비고" value={note} onChangeText={setNote} />
           <Button label="항목 저장" onPress={() => void save()} />
         </>

@@ -114,7 +114,7 @@ export type UploadLinkState = {
 
 export function uploadLinkStatus(link: UploadLinkState, now = Date.now()) {
   if (link.revokedAt) return '폐기됨';
-  if (link.pausedAt) return '일시중지';
   if (new Date(link.expiresAt).getTime() <= now) return '만료됨';
+  if (link.pausedAt) return '일시중지';
   return '사용 중';
 }

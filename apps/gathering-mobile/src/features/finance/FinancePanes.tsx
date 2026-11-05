@@ -26,6 +26,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   const [paidOn, setPaidOn] = useState<Date | null>(null);
 
   const load = useCallback(async (year?: number) => {
+    setPaidOn(null);
     setStatus('loading');
     try {
       setSummary(await api.finance(groupId, year));
@@ -48,6 +49,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
     const found = await api.members(groupId, 'ACTIVE', memberName.trim());
     setMatches(found.items);
     setPicked(found.items.length === 1 ? found.items[0] : null);
+    setPaidOn(null);
   };
   return (
     <View style={styles.stack}>
@@ -121,7 +123,10 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
                   key={member.userId}
                   label={picked?.userId === member.userId ? `${member.displayName} 선택됨` : member.displayName}
                   variant={picked?.userId === member.userId ? 'primary' : 'secondary'}
-                  onPress={() => setPicked(member)}
+                  onPress={() => {
+                  setPicked(member);
+                  setPaidOn(null);
+                }}
                 />
               ))}
               <TextField label="청구액(원)" value={amount} onChangeText={setAmount} keyboardType="number-pad" />

@@ -49,6 +49,7 @@ describe('모임 입력', () => {
     expect(uploadLinkStatus({ expiresAt: future })).toBe('사용 중');
     expect(uploadLinkStatus({ expiresAt: future, pausedAt: past })).toBe('일시중지');
     expect(uploadLinkStatus({ expiresAt: past })).toBe('만료됨');
+    expect(uploadLinkStatus({ expiresAt: past, pausedAt: past })).toBe('만료됨');
     expect(uploadLinkStatus({ expiresAt: future, revokedAt: past })).toBe('폐기됨');
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { API_BASE, api, type UploadLinkView } from '../../api/client';
@@ -15,6 +15,8 @@ export function UploadLinkPanel(props: Target) {
   const scope = eventId ? { eventId } : { folderId: folderId ?? '' };
   const [items, setItems] = useState<UploadLinkView[]>([]);
   const [fresh, setFresh] = useState<{ id: string; url: string } | null>(null);
+  const freshRef = useRef(fresh);
+  freshRef.current = fresh;
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -58,7 +60,7 @@ export function UploadLinkPanel(props: Target) {
     setMessage('');
     try {
       await api.setUploadLinkState(groupId, linkId, action);
-      if (action === 'revoke' && linkId === fresh?.id) {
+      if (action === 'revoke' && freshRef.current?.id === linkId) {
         setFresh(null);
         setCopied(false);
       }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
+import { shouldKeepPendingInvite } from '@member/gathering-domain';
 import { ApiError, api } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { DIRECTORY_CONSENT } from '../../src/copy';
@@ -34,12 +35,17 @@ export default function InviteScreen() {
         setStatus('ready');
       })
       .catch((error: unknown) => {
+        void forgetPendingInvite('preview-failed');
         setMessage(error instanceof Error ? error.message : '초대를 확인하지 못했습니다.');
         setStatus('error');
       });
   }, [token, user]);
 
   if (!user) return <Redirect href="/(auth)/login" />;
+
+  async function forgetPendingInvite(outcome: Parameters<typeof shouldKeepPendingInvite>[0]) {
+    if (!shouldKeepPendingInvite(outcome)) await inviteStorage.clear();
+  }
 
   const accept = async () => {
     if (!profile) {
@@ -49,7 +55,7 @@ export default function InviteScreen() {
     setJoining(true);
     try {
       const result = await api.acceptInvite(token);
-      await inviteStorage.clear();
+      await forgetPendingInvite('accepted');
       if (result.status === 'PENDING') {
         router.replace('/(app)/groups');
         return;
@@ -57,9 +63,11 @@ export default function InviteScreen() {
       router.replace(`/(app)/groups/${result.groupId}`);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'PROFILE_REQUIRED') {
+        await forgetPendingInvite('profile-required');
         router.push('/(app)/profile');
         return;
       }
+      await forgetPendingInvite('accept-failed');
       setMessage(error instanceof Error ? error.message : '참여하지 못했습니다.');
       setStatus('error');
     } finally {
@@ -84,7 +92,13 @@ export default function InviteScreen() {
           <Button label="동의하고 참여" onPress={() => void accept()} loading={joining} />
         </>
       ) : null}
-      <Button label="내 모임으로" variant="text" onPress={() => router.replace('/(app)/groups')} />
+      <Button
+        label="내 모임으로"
+        variant="text"
+        onPress={() => {
+          void forgetPendingInvite('dismissed').then(() => router.replace('/(app)/groups'));
+        }}
+      />
     </Screen>
   );
 }

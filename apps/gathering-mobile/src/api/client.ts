@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { SharedRefreshGate } from '@member/gathering-domain';
 import type {
   GatheringEventView,
   GatheringGroupDetail,
@@ -51,21 +52,39 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   return response.json() as Promise<T>;
 }
 
-async function refreshTokens() {
+async function performRefresh() {
   const refreshToken = await tokenStorage.getRefreshToken();
-  if (!refreshToken) return false;
+  if (!refreshToken) {
+    await clearStoredSession();
+    return false;
+  }
   const response = await fetch(`${API_BASE}/api/gathering/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
   });
   if (!response.ok) {
-    await tokenStorage.clear();
+    await clearStoredSession();
     return false;
   }
   const data = (await response.json()) as { tokens: { accessToken: string; refreshToken: string } };
   await tokenStorage.save(data.tokens);
   return true;
+}
+
+const refreshGate = new SharedRefreshGate(performRefresh);
+
+export function onSessionCleared(listener: () => void) {
+  return refreshGate.subscribe(listener);
+}
+
+function refreshTokens() {
+  return refreshGate.run();
+}
+
+async function clearStoredSession() {
+  await tokenStorage.clear();
+  refreshGate.notifyCleared();
 }
 
 export const api = {

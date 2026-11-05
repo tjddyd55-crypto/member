@@ -39,6 +39,9 @@ async function rejectDuplicateJoin(tx: Prisma.TransactionClient, groupId: string
   const existing = await tx.gatheringMembership.findUnique({
     where: { groupId_userId: { groupId, userId } },
   });
+  if (existing?.status === 'SUSPENDED') {
+    throw new AppError(403, 'MEMBERSHIP_SUSPENDED', '정지된 상태에서는 초대로 다시 들어갈 수 없습니다.');
+  }
   if (existing && (existing.status === 'ACTIVE' || existing.status === 'PENDING')) {
     throw new AppError(409, 'ALREADY_MEMBER', '이미 참여 중이거나 승인 대기 중입니다.');
   }

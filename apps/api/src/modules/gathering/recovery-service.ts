@@ -45,9 +45,14 @@ async function burnRecoveryCode(userId: string, codeId: string, passwordHash: st
     });
     if (burned.count !== 1) throw new AppError(401, 'INVALID_RECOVERY', INVALID_RECOVERY);
     await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    const revokedAt = new Date();
     await tx.gatheringSession.updateMany({
       where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+      data: { revokedAt },
+    });
+    await tx.refreshSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt },
     });
     await writeGatheringAudit(tx, {
       actorUserId: userId,

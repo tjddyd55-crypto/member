@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { GatheringAuthProfile, GatheringAuthUser } from '@member/contracts';
-import { api } from '../api/client';
+import { api, onSessionCleared } from '../api/client';
 import { syncPushRegistration } from '../push/sync';
 import { recoveryReveal } from '../session/recovery-reveal';
 import { tokenStorage } from '../storage/secure';
@@ -54,6 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(me.user);
     setProfile(me.profile);
   }, []);
+
+  useEffect(() => onSessionCleared(() => {
+    setUser(null);
+    setProfile(null);
+  }), []);
 
   useEffect(() => {
     (async () => {

@@ -18,7 +18,10 @@ export {
   evaluateUpload,
 } from './storage-policy.js';
 export type { DeleteActor, StorageUsage, UploadDecision, UploadKind } from './storage-policy.js';
+export { shouldKeepPendingInvite } from './invite-retention.js';
+export type { PendingInviteOutcome } from './invite-retention.js';
 export { isInsideReminderWindow, notificationDedupeKey, REMINDER_WINDOW_MS } from './notices.js';
+export { SharedRefreshGate } from './session-gate.js';
 export type { NoticeKind } from './notices.js';
 export { parseWon } from './money.js';
 export type { WonParse } from './money.js';

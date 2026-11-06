@@ -407,6 +407,42 @@ describe('관리자 운영 API', () => {
     expect(cancelled.statusCode).toBe(200);
     expect(cancelled.json().id).toBe(covering.id);
     expect((await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: scheduled.id } })).status).toBe('ACTIVE');
+    const futureQuota = Number((await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: scheduled.id } })).storageQuotaBytes);
+    const missed = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/subscription/cancel`, {
+      reason: '미래 행은 취소하지 않음',
+      idempotencyKey: `cancel-future-${group.id}`,
+    });
+    expect(missed.statusCode).toBe(409);
+    const missedQuota = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/quota`, {
+      quotaBytes: 50,
+      reason: '미래 용량은 바꾸지 않음',
+      idempotencyKey: `quota-future-${group.id}`,
+    });
+    expect(missedQuota.statusCode).toBe(409);
+    expect(Number((await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: scheduled.id } })).storageQuotaBytes)).toBe(futureQuota);
+
+    const waiting = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/deposits`, {
+      payerName: '먼저',
+      amountWon: 60000,
+      paidOn: '2026-11-01T00:00:00.000Z',
+      idempotencyKey: `old-wait-${group.id}`,
+    });
+    for (let index = 0; index < 21; index += 1) {
+      const row = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/deposits`, {
+        payerName: `확인${index}`,
+        amountWon: 60000,
+        paidOn: '2026-11-02T00:00:00.000Z',
+        idempotencyKey: `old-done-${group.id}-${index}`,
+      });
+      await prisma.gatheringDeposit.update({ where: { id: row.json().id as string }, data: { status: 'CONFIRMED' } });
+    }
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/api/gathering-admin/groups/${group.id}/deposits`,
+      headers: { cookie: session.cookie },
+    });
+    expect(listed.json().items.some((item: { id: string }) => item.id === waiting.json().id)).toBe(true);
+    expect(listed.json().items.every((item: { status: string }) => item.status === 'PENDING')).toBe(true);
   });
 });
 

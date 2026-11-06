@@ -192,7 +192,7 @@ export async function cancelSubscription(adminId: string, groupId: string, input
     assertCapability(account, 'SUBSCRIPTION_WRITE', groupId);
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     const current = await currentTerm(tx, groupId, new Date());
-    if (!current) throw new AppError(409, 'NO_ACTIVE_SUBSCRIPTION', '취소할 이용권이 없습니다.');
+    if (!current) throw new AppError(409, 'NO_ACTIVE_SUBSCRIPTION', '지금 적용 중인 이용권이 없습니다.');
     await tx.gatheringSubscription.update({ where: { id: current.id }, data: { status: 'REVOKED' } });
     await writeAdminAudit(tx, {
       actorAdminId: adminId,
@@ -295,7 +295,7 @@ export async function setGroupQuota(adminId: string, groupId: string, input: { i
       throw new AppError(400, 'INVALID_QUOTA', '용량은 0 이상의 정수 바이트입니다.');
     }
     const current = await currentTerm(tx, groupId, new Date());
-    if (!current) throw new AppError(409, 'NO_ACTIVE_SUBSCRIPTION', '용량을 바꿀 이용권이 없습니다.');
+    if (!current) throw new AppError(409, 'NO_ACTIVE_SUBSCRIPTION', '지금 적용 중인 이용권이 없습니다.');
     const before = Number(current.storageQuotaBytes);
     await tx.gatheringSubscription.update({
       where: { id: current.id },
@@ -434,14 +434,9 @@ function replay<T>(
 }
 
 async function currentTerm(tx: Prisma.TransactionClient, groupId: string, now: Date) {
-  const covering = await tx.gatheringSubscription.findFirst({
+  return tx.gatheringSubscription.findFirst({
     where: { groupId, status: 'ACTIVE', startsAt: { lte: now }, expiresAt: { gt: now } },
     orderBy: { expiresAt: 'desc' },
-  });
-  if (covering) return covering;
-  return tx.gatheringSubscription.findFirst({
-    where: { groupId, status: 'ACTIVE' },
-    orderBy: { startsAt: 'asc' },
   });
 }
 
@@ -457,8 +452,8 @@ export async function listGroupDeposits(adminId: string, groupId: string) {
   const account = await loadAccount(adminId);
   assertCapability(account, 'PAYMENT_WRITE', groupId);
   const rows = await prisma.gatheringDeposit.findMany({
-    where: { groupId },
-    orderBy: { createdAt: 'desc' },
+    where: { groupId, status: 'PENDING' },
+    orderBy: { createdAt: 'asc' },
     take: 20,
   });
   return rows.map((row) => ({

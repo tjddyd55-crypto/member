@@ -129,8 +129,10 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
       setNotice('서버가 반영했습니다.');
       setMemberRefresh((value) => value + 1);
       reload();
+      return true;
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : '저장하지 못했습니다.');
+      return false;
     }
   }
   if (!group) return <ErrorText error={error || '불러오는 중'} />;
@@ -160,7 +162,7 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
   );
 }
 
-function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: string; subscriptionId: string | null; onSubmit: (path: string, body: unknown) => Promise<void> }) {
+function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: string; subscriptionId: string | null; onSubmit: (path: string, body: unknown) => Promise<boolean> }) {
   const [source, setSource] = useState<'PAID' | 'COMPLIMENTARY'>('PAID');
   const [startsAt, setStartsAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
@@ -189,7 +191,7 @@ function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: stri
   );
 }
 
-function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onSubmit }: { groupId: string; subscriptionId: string | null; role: 'SUPER_ADMIN' | 'ADMIN'; onSubmit: (path: string, body: unknown) => Promise<void> }) {
+function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onSubmit }: { groupId: string; subscriptionId: string | null; role: 'SUPER_ADMIN' | 'ADMIN'; onSubmit: (path: string, body: unknown) => Promise<boolean> }) {
   const [payerName, setPayerName] = useState('');
   const [amountWon, setAmountWon] = useState('60000');
   const [paidOn, setPaidOn] = useState('');
@@ -247,12 +249,16 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
         idempotencyKey: `confirm-${depositId}`,
         subscriptionId: subscriptionId || undefined,
         allowMismatch,
+      }).then((saved) => {
+        if (!saved) return;
+        setDepositId('');
+        loadPending();
       })}>확인{subscriptionId ? ' 후 연결' : ''}</button>
     </form>
   );
 }
 
-function QuotaForm({ groupId, onSubmit }: { groupId: string; onSubmit: (path: string, body: unknown) => Promise<void> }) {
+function QuotaForm({ groupId, onSubmit }: { groupId: string; onSubmit: (path: string, body: unknown) => Promise<boolean> }) {
   const [quotaBytes, setQuotaBytes] = useState('50000000000');
   const [reason, setReason] = useState('');
   return (
@@ -272,7 +278,7 @@ function QuotaForm({ groupId, onSubmit }: { groupId: string; onSubmit: (path: st
   );
 }
 
-function GroupMembers({ groupId, refresh, onSubmit }: { groupId: string; refresh: number; onSubmit: (path: string, body: unknown) => Promise<void> }) {
+function GroupMembers({ groupId, refresh, onSubmit }: { groupId: string; refresh: number; onSubmit: (path: string, body: unknown) => Promise<boolean> }) {
   const [items, setItems] = useState<MemberItem[]>([]);
   useEffect(() => {
     api<{ items: MemberItem[] }>(`/api/gathering-admin/members?groupId=${encodeURIComponent(groupId)}`)

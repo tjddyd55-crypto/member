@@ -20,7 +20,7 @@ export async function loadGroupQuotaBytes(db: UsageDb, groupId: string, now = ne
   });
   if (covering) return Number(covering.storageQuotaBytes);
   const latest = await db.gatheringSubscription.findFirst({
-    where: { groupId },
+    where: { groupId, startsAt: { lte: now } },
     orderBy: { createdAt: 'desc' },
     select: { storageQuotaBytes: true },
   });

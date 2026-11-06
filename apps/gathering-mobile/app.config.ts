@@ -46,6 +46,7 @@ const config: ExpoConfig = {
       backgroundColor: '#1B3A6B',
     },
     package: PROVISIONAL_ANDROID_PACKAGE,
+    softwareKeyboardLayoutMode: 'resize',
   },
 };
 

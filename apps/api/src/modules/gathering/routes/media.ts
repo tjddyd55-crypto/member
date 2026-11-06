@@ -18,7 +18,7 @@ import {
   resumeMediaUpload,
   storageSummary,
 } from '../media/commands.js';
-import { createMediaFolder, createUploadLink, publicComplete, publicReserve, publicUploadInfo, renameMediaFolder, setUploadLinkState } from '../media/links.js';
+import { createMediaFolder, createUploadLink, listUploadLinks, publicComplete, publicReserve, publicUploadInfo, renameMediaFolder, setUploadLinkState } from '../media/links.js';
 import { downloadMedia, listAlbums,
   listFolderMedia, listEventMedia } from '../media/queries.js';
 import { listMediaReports, reportMedia, resolveMediaReport } from '../media/reports.js';
@@ -152,6 +152,12 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     const params = groupParams.parse(request.params);
     const body = linkBody.parse(request.body);
     return createUploadLink(requireGatheringUserId(request), params.groupId, body);
+  });
+
+  app.get('/api/gathering/groups/:groupId/upload-links', auth, async (request) => {
+    const params = groupParams.parse(request.params);
+    const query = linkBody.parse(request.query);
+    return listUploadLinks(requireGatheringUserId(request), params.groupId, query);
   });
 
   app.post('/api/gathering/groups/:groupId/upload-links/:linkId/:action', auth, async (request) => {

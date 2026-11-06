@@ -72,6 +72,37 @@ export async function createUploadLink(
   };
 }
 
+export async function listUploadLinks(
+  userId: string,
+  groupId: string,
+  filter: { eventId?: string; folderId?: string },
+) {
+  await assertLinkManager(userId, groupId);
+  if (!filter.eventId === !filter.folderId) {
+    throw new AppError(400, 'LINK_TARGET', '행사 또는 폴더 중 하나만 지정하세요.');
+  }
+  const now = new Date();
+  // 아직 쓸 수 있는 링크는 개수와 상관없이 모두 돌려준다. 폐기·만료된 링크가 목록 자리를 차지하지 않는다.
+  const rows = await prisma.gatheringUploadLink.findMany({
+    where: {
+      groupId,
+      revokedAt: null,
+      expiresAt: { gt: now },
+      ...(filter.folderId ? { folderId: filter.folderId } : { eventId: filter.eventId }),
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  return {
+    items: rows.map((row) => ({
+      id: row.id,
+      expiresAt: row.expiresAt.toISOString(),
+      pausedAt: row.pausedAt?.toISOString() ?? null,
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+    })),
+  };
+}
+
 export async function setUploadLinkState(
   userId: string,
   groupId: string,

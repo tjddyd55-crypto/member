@@ -341,4 +341,95 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     });
     expect(blocked.statusCode).toBe(429);
   });
+
+  it('폴더 링크 목록은 그 폴더만 보여 주고 회원은 볼 수 없다', async () => {
+    const owner = await register('목록회장');
+    const member = await register('목록회원');
+    const groupRes = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/groups',
+      headers: auth(owner.tokens.accessToken),
+      payload: { name: '목록 모임' },
+    });
+    const groupId = groupRes.json().id as string;
+    groupIds.push(groupId);
+    const invite = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/invites`,
+      headers: auth(owner.tokens.accessToken),
+      payload: {},
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/gathering/invites/${invite.json().token}/accept`,
+      headers: auth(member.tokens.accessToken),
+      payload: { directoryConsent: true },
+    });
+    const folder = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/folders`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { title: '행사 뒤풀이' },
+    });
+    const other = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/folders`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { title: '다른 폴더' },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/upload-links`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { folderId: folder.json().id },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/upload-links`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { folderId: other.json().id },
+    });
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/upload-links?folderId=${folder.json().id}`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().items).toHaveLength(1);
+    expect(listed.json().items[0].id).toBe(created.json().id);
+    expect(listed.json().items[0].token).toBeUndefined();
+    expect(listed.json().items[0].expiresAt).toEqual(expect.any(String));
+    const hidden = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/upload-links?folderId=${folder.json().id}`,
+      headers: auth(member.tokens.accessToken),
+    });
+    expect(hidden.statusCode).toBe(403);
+    for (let index = 0; index < 20; index += 1) {
+      const extra = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${groupId}/upload-links`,
+        headers: auth(owner.tokens.accessToken),
+        payload: { folderId: folder.json().id },
+      });
+      expect(extra.statusCode).toBe(200);
+    }
+    const many = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/upload-links?folderId=${folder.json().id}`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(many.json().items).toHaveLength(21);
+    await prisma.gatheringUploadLink.update({
+      where: { id: created.json().id },
+      data: { revokedAt: new Date() },
+    });
+    const afterRevoke = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/upload-links?folderId=${folder.json().id}`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(afterRevoke.json().items).toHaveLength(20);
+    expect(afterRevoke.json().items.some((item: { id: string }) => item.id === created.json().id)).toBe(false);
+  });
 });

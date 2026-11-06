@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext, useContext, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,18 +13,41 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DISCLAIMER } from '../copy';
+import { focusedFieldScrollY, keyboardAvoidingBehavior } from '../features/forms/values';
 import { theme } from '../theme';
 
+type FormScroll = {
+  contentRef: React.RefObject<View | null>;
+  scrollTo: (y: number) => void;
+};
+
+const FormScrollContext = createContext<FormScroll | null>(null);
+
 export function Screen({ children }: { children: React.ReactNode }) {
+  const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
+  const formScroll = useMemo<FormScroll>(
+    () => ({
+      contentRef,
+      scrollTo: (y) => scrollRef.current?.scrollTo({ y, animated: true }),
+    }),
+    [],
+  );
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}
-      >
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-          {children}
-        </ScrollView>
+      <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
+        <FormScrollContext.Provider value={formScroll}>
+          <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            contentContainerStyle={styles.flexGrow}
+          >
+            <View ref={contentRef} collapsable={false} style={styles.content}>
+              {children}
+            </View>
+          </ScrollView>
+        </FormScrollContext.Provider>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -87,14 +110,28 @@ export function Button({
 export function TextField({
   label,
   error,
+  onFocus,
   ...props
 }: TextInputProps & { label: string; error?: string }) {
+  const formScroll = useContext(FormScrollContext);
+  const fieldRef = useRef<View>(null);
   return (
-    <View style={styles.field}>
+    <View ref={fieldRef} style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         placeholderTextColor={theme.colors.text.disabled}
         style={[styles.input, error ? styles.inputError : null]}
+        onFocus={(event) => {
+          onFocus?.(event);
+          const field = fieldRef.current;
+          const content = formScroll?.contentRef.current;
+          if (!field || !content || !formScroll) return;
+          field.measureLayout(
+            content,
+            (_x, y) => formScroll.scrollTo(focusedFieldScrollY(y)),
+            () => undefined,
+          );
+        }}
         {...props}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -142,10 +179,11 @@ export function LoadingState() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg.default },
   flex: { flex: 1 },
+  flexGrow: { flexGrow: 1 },
   content: {
     padding: theme.layout.horizontalGutter,
     gap: theme.space[16],
-    paddingBottom: theme.space[32],
+    paddingBottom: 120,
   },
   title: { ...theme.typography.display, color: theme.colors.text.primary },
   section: { ...theme.typography.sectionTitle, color: theme.colors.text.primary },

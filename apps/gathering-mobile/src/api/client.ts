@@ -25,6 +25,14 @@ import { tokenStorage } from '../storage/secure';
 const extra = Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined;
 export const API_BASE = extra?.apiBaseUrl || 'http://localhost:3001';
 
+export type UploadLinkView = {
+  id: string;
+  expiresAt: string;
+  pausedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -322,6 +330,18 @@ export const api = {
     return request<{ id: string; token: string; expiresAt: string }>(`/api/gathering/groups/${groupId}/upload-links`, {
       method: 'POST',
       body: JSON.stringify(body),
+    });
+  },
+  uploadLinks(groupId: string, query: { eventId?: string; folderId?: string }) {
+    const params = new URLSearchParams();
+    if (query.eventId) params.set('eventId', query.eventId);
+    if (query.folderId) params.set('folderId', query.folderId);
+    return request<{ items: UploadLinkView[] }>(`/api/gathering/groups/${groupId}/upload-links?${params}`);
+  },
+  setUploadLinkState(groupId: string, linkId: string, action: 'pause' | 'resume' | 'revoke') {
+    return request<{ ok: true }>(`/api/gathering/groups/${groupId}/upload-links/${linkId}/${action}`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
   folderMedia(groupId: string, folderId: string, cursor?: string) {

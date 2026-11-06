@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringFinanceSummary, GatheringGroupDetail } from '@member/contracts';
 import { api } from '../../../../src/api/client';
-import { Body, Button, ErrorState, LoadingState, Notice, Screen, TextField, Title } from '../../../../src/design/ui';
+import { DateTimeField } from '../../../../src/design/pickers';
+import { Body, Button, ErrorState, LoadingState, Notice, Screen, Title } from '../../../../src/design/ui';
+import { dateForMonthDay, fiscalMonthDay, formatKoreanDate } from '../../../../src/features/forms/values';
 
 function formatRange(startsAt: string, endsAt: string) {
   const options: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Seoul', dateStyle: 'long' };
@@ -14,8 +16,7 @@ export default function GroupSettingsScreen() {
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
   const [group, setGroup] = useState<GatheringGroupDetail | null>(null);
   const [summary, setSummary] = useState<GatheringFinanceSummary | null>(null);
-  const [month, setMonth] = useState('');
-  const [day, setDay] = useState('');
+  const [start, setStart] = useState(() => dateForMonthDay(1, 1));
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
@@ -25,8 +26,7 @@ export default function GroupSettingsScreen() {
       const [nextGroup, nextSummary] = await Promise.all([api.group(groupId), api.finance(groupId, year)]);
       setGroup(nextGroup);
       setSummary(nextSummary);
-      setMonth(String(nextGroup.fiscalStartMonth));
-      setDay(String(nextGroup.fiscalStartDay));
+      setStart(dateForMonthDay(nextGroup.fiscalStartMonth, nextGroup.fiscalStartDay));
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '설정을 불러오지 못했습니다.');
@@ -41,10 +41,8 @@ export default function GroupSettingsScreen() {
   const savePeriod = async () => {
     setMessage('');
     try {
-      const next = await api.updateGroup(groupId, {
-        fiscalStartMonth: Number(month),
-        fiscalStartDay: Number(day),
-      });
+      const period = fiscalMonthDay(start);
+      const next = await api.updateGroup(groupId, period);
       setGroup(next);
       await load(summary?.year);
     } catch (error) {
@@ -77,8 +75,8 @@ export default function GroupSettingsScreen() {
           ))}
           {canSettings && summary.status === 'OPEN' ? (
             <>
-              <TextField label="시작 월" value={month} onChangeText={setMonth} keyboardType="number-pad" />
-              <TextField label="시작 일" value={day} onChangeText={setDay} keyboardType="number-pad" />
+              <DateTimeField label="회계 시작일" mode="date" value={start} onChange={setStart} />
+              <Body>{`고른 ${formatKoreanDate(start)}에서 월과 일만 회계 시작으로 저장합니다.`}</Body>
               <Button label="회계 시작일 저장" onPress={() => void savePeriod()} />
               <Body>거래, 회비, 영수증이 있으면 이 해의 기간은 바뀌지 않습니다. 지난 해 기록은 그대로 둡니다.</Body>
             </>

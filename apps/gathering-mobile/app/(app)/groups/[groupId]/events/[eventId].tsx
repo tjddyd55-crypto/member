@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringEventView } from '@member/contracts';
-import { Pressable, Share, Text, View } from 'react-native';
-import { API_BASE, api } from '../../../../../src/api/client';
+import { Pressable, Text, View } from 'react-native';
+import { api } from '../../../../../src/api/client';
 import { EventFinancePane } from '../../../../../src/features/finance/FinancePanes';
 import { MediaPane } from '../../../../../src/features/media/MediaPane';
+import { AddressField, DateTimeField } from '../../../../../src/design/pickers';
 import { Body, Button, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../../src/design/ui';
+import { UploadLinkPanel } from '../../../../../src/features/media/UploadLinkPanel';
+import { eventStartsAt } from '../../../../../src/features/forms/values';
 import { theme } from '../../../../../src/theme';
 
 const ATTENDANCE = [
@@ -24,8 +27,11 @@ export default function EventDetailScreen() {
   const [event, setEvent] = useState<GatheringEventView | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [formError, setFormError] = useState('');
   const [place, setPlace] = useState('');
   const [title, setTitle] = useState('');
+  const [date, setDate] = useState(() => new Date());
+  const [time, setTime] = useState(() => new Date());
   const [canManage, setCanManage] = useState(false);
   const [canFinance, setCanFinance] = useState(false);
   const [canReceipt, setCanReceipt] = useState(false);
@@ -37,6 +43,11 @@ export default function EventDetailScreen() {
       setEvent(next);
       setTitle(next.title);
       setPlace(next.place ?? '');
+      const starts = new Date(next.startsAt);
+      if (!Number.isNaN(starts.getTime())) {
+        setDate(starts);
+        setTime(starts);
+      }
       setCanManage(group.permissions.includes('EVENT_MANAGE'));
       setCanFinance(group.permissions.includes('FINANCE_WRITE'));
       setCanReceipt(group.permissions.includes('RECEIPT_WRITE'));
@@ -56,17 +67,23 @@ export default function EventDetailScreen() {
     setEvent(updated);
   };
 
-  const shareUpload = async () => {
-    const created = await api.createUploadLink(groupId, { eventId });
-    const url = `${API_BASE}/api/gathering/public/uploads/${created.token}`;
-    await Share.share({ message: url });
-  };
-
   const save = async () => {
-    const startsAt = event?.startsAt;
-    if (!startsAt) return;
-    const updated = await api.updateEvent(groupId, eventId, { title, place });
-    setEvent(updated);
+    setFormError('');
+    const startsAt = eventStartsAt(date, time);
+    if (!startsAt) {
+      setFormError('날짜와 시간을 다시 고르세요.');
+      return;
+    }
+    if (place.length > 120) {
+      setFormError('장소는 120자 안으로 줄여 주세요.');
+      return;
+    }
+    try {
+      const updated = await api.updateEvent(groupId, eventId, { title, startsAt, place });
+      setEvent(updated);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : '행사를 바꾸지 못했습니다.');
+    }
   };
 
   return (
@@ -93,7 +110,7 @@ export default function EventDetailScreen() {
           </View>
           {tab === 'media' ? (
             <>
-              {canManage ? <Button label="업로드 링크 만들기" onPress={() => void shareUpload()} /> : null}
+              {canManage ? <UploadLinkPanel groupId={groupId} eventId={eventId} /> : null}
               <MediaPane eventId={eventId} groupId={groupId} />
             </>
           ) : null}
@@ -124,7 +141,10 @@ export default function EventDetailScreen() {
           {canManage && event.status === 'SCHEDULED' ? (
             <>
               <TextField label="행사명" value={title} onChangeText={setTitle} />
-              <TextField label="장소" value={place} onChangeText={setPlace} />
+              <DateTimeField label="날짜" mode="date" value={date} onChange={setDate} />
+              <DateTimeField label="시작 시간" mode="time" value={time} onChange={setTime} />
+              <AddressField label="장소" value={place} onChange={setPlace} />
+              {formError ? <Body>{formError}</Body> : null}
               <Button label="변경 저장" onPress={() => void save()} />
               <Button
                 label="행사 취소"

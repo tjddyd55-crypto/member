@@ -9,9 +9,14 @@ export type GroupAccess = {
   groupId: string;
   roles: GatheringRole[];
   permissions: GatheringPermission[];
+  restricted: boolean;
 };
 
-export async function requireGroupMember(userId: string, groupId: string): Promise<GroupAccess> {
+export async function requireGroupMember(
+  userId: string,
+  groupId: string,
+  mode: 'read' | 'write' = 'write',
+): Promise<GroupAccess> {
   const membership = await prisma.gatheringMembership.findUnique({
     where: { groupId_userId: { groupId, userId } },
     include: { roles: { where: { revokedAt: null } } },
@@ -33,6 +38,7 @@ export async function requireGroupMember(userId: string, groupId: string): Promi
     groupId,
     roles,
     permissions: permissionsForRoles(roles),
+    restricted: false,
   };
 }
 

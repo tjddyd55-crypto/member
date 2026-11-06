@@ -606,6 +606,7 @@ enum GatheringSubscriptionStatus {
 enum GatheringSubscriptionSource {
   PAID
   COMPLIMENTARY
+  TRIAL
 }
 
 enum GatheringRecoveryStatus {
@@ -663,6 +664,8 @@ model GatheringGroup {
   fiscalStartMonth       Int      @default(12)
   fiscalStartDay         Int      @default(24)
   createdByUserId        String
+  /// 운영 정지. 이용권 갱신으로 풀리지 않는다. null 이면 정지되지 않음.
+  suspendedAt            DateTime?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -688,6 +691,8 @@ model GatheringGroup {
   notifications      GatheringNotification[]
   auditLogs          GatheringAuditLog[]
   attendances        GatheringEventAttendance[]
+  adminScopes        GatheringAdminScope[]
+  deposits           GatheringDeposit[]
 
   @@index([createdByUserId])
   @@map("gathering_groups")
@@ -1071,6 +1076,7 @@ model GatheringSubscription {
   status           GatheringSubscriptionStatus
   source           GatheringSubscriptionSource
   approvedByUserId String?
+  approvedByAdminId String?
   approvedAt       DateTime?
   startsAt         DateTime?
   expiresAt        DateTime?
@@ -1082,10 +1088,188 @@ model GatheringSubscription {
 
   group    GatheringGroup               @relation(fields: [groupId], references: [id])
   approver User?                        @relation("GatheringSubscriptionApprover", fields: [approvedByUserId], references: [id])
+  approvedByAdmin GatheringAdminAccount? @relation("GatheringSubscriptionAdmin", fields: [approvedByAdminId], references: [id])
   audits   GatheringSubscriptionAudit[]
+  depositLinks GatheringDepositLink[]
 
   @@index([groupId, status])
   @@map("gathering_subscriptions")
+}
+
+/// 이 모임 행이 체험을 받았다는 표시. 다른 모임을 막지 않는다.
+model GatheringTrialClaim {
+  id        String   @id @default(cuid())
+  userId    String
+  groupId   String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("gathering_trial_claims")
+}
+
+enum GatheringAdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+/// 모임 회원 계정과 분리된 관리자. 비밀번호 해시만 저장한다.
+model GatheringAdminAccount {
+  id                String             @id @default(cuid())
+  loginId           String             @unique
+  passwordHash      String
+  role              GatheringAdminRole
+  disabledAt        DateTime?
+  failedAttempts    Int                @default(0)
+  lockedUntil       DateTime?
+  totpSecretCipher  String?
+  totpConfirmedAt   DateTime?
+  passwordChangedAt DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  sessions    GatheringAdminSession[]
+  enrollments GatheringAdminEnrollment[]
+  scopes      GatheringAdminScope[]
+  audits      GatheringAdminAudit[]      @relation("GatheringAdminAuditActor")
+  approvedSubscriptions GatheringSubscription[] @relation("GatheringSubscriptionAdmin")
+  operations  GatheringAdminOperation[]
+  deposits    GatheringDeposit[]
+
+  @@map("gathering_admin_accounts")
+}
+
+model GatheringAdminSession {
+  id        String    @id @default(cuid())
+  adminId   String
+  tokenHash String    @unique
+  csrfHash  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@map("gathering_admin_sessions")
+}
+
+model GatheringAdminEnrollment {
+  id                  String    @id @default(cuid())
+  adminId             String
+  tokenHash           String    @unique
+  pendingSecretCipher String?
+  expiresAt           DateTime
+  usedAt              DateTime?
+  createdAt           DateTime  @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@map("gathering_admin_enrollments")
+}
+
+model GatheringAdminScope {
+  id         String   @id @default(cuid())
+  adminId    String
+  groupId    String
+  capability String
+  createdAt  DateTime @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+  group GatheringGroup        @relation(fields: [groupId], references: [id])
+
+  @@unique([adminId, groupId, capability])
+  @@index([groupId])
+  @@map("gathering_admin_scopes")
+}
+
+/// 덧붙이기만 한다. 애플리케이션은 이 테이블을 수정하거나 지우지 않는다.
+model GatheringAdminAudit {
+  id           String   @id @default(cuid())
+  actorAdminId String?
+  action       String
+  targetType   String?
+  targetId     String?
+  /// 이 기록이 속한 모임. 대상 ID가 이용권·입금·회원 행이어도 담당 범위로 거른다.
+  groupId      String?
+  beforeJson   String?
+  afterJson    String?
+  reason       String?
+  createdAt    DateTime @default(now())
+
+  actor GatheringAdminAccount? @relation("GatheringAdminAuditActor", fields: [actorAdminId], references: [id])
+
+  @@index([createdAt])
+  @@index([actorAdminId, createdAt])
+  @@index([groupId, createdAt])
+  @@map("gathering_admin_audits")
+}
+
+model GatheringAdminOperation {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique
+  adminId        String
+  action         String
+  groupId        String?
+  targetId       String?
+  resultJson     String
+  createdAt      DateTime @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+
+  @@map("gathering_admin_operations")
+}
+
+enum GatheringDepositStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+model GatheringDeposit {
+  id                 String                 @id @default(cuid())
+  groupId            String
+  payerName          String
+  amountWon          Int
+  paidOn             DateTime
+  status             GatheringDepositStatus @default(PENDING)
+  memo               String?
+  confirmedByAdminId String?
+  confirmedAt        DateTime?
+  idempotencyKey     String                 @unique
+  createdAt          DateTime               @default(now())
+
+  group       GatheringGroup         @relation(fields: [groupId], references: [id])
+  confirmedBy GatheringAdminAccount? @relation(fields: [confirmedByAdminId], references: [id])
+  link        GatheringDepositLink?
+
+  @@index([groupId, status])
+  @@map("gathering_deposits")
+}
+
+model GatheringDepositLink {
+  id             String   @id @default(cuid())
+  depositId      String   @unique
+  subscriptionId String
+  createdAt      DateTime @default(now())
+
+  deposit      GatheringDeposit      @relation(fields: [depositId], references: [id])
+  subscription GatheringSubscription @relation(fields: [subscriptionId], references: [id])
+
+  @@map("gathering_deposit_links")
+}
+
+/// 회원 앱에 내려가지 않는 내부 계좌 메모.
+model GatheringAdminBankSetting {
+  id               String   @id @default("bank")
+  bankName         String
+  accountNumber    String
+  holder           String
+  memo             String?
+  updatedByAdminId String?
+  updatedAt        DateTime @updatedAt
+
+  @@map("gathering_admin_bank_settings")
 }
 
 model GatheringSubscriptionAudit {

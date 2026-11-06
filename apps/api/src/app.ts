@@ -7,6 +7,7 @@ import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { localRoutes } from './routes/local.js';
 import { memberRoutes } from './routes/members.js';
+import { gatheringAdminRoutes } from './modules/gathering/admin/routes.js';
 import { gatheringRoutes } from './modules/gathering/routes/index.js';
 import { startDevStorageIfEnabled, stopDevStorage } from './modules/gathering/storage/file-sink.js';
 
@@ -38,12 +39,18 @@ export async function buildApp() {
     });
   });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: env.NODE_ENV === 'production' ? false : true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['content-type', 'authorization', 'x-gathering-admin-csrf'],
+  });
   await app.register(authPlugin);
   await app.register(authRoutes);
   await app.register(localRoutes);
   await app.register(memberRoutes);
   await app.register(gatheringRoutes);
+  await app.register(gatheringAdminRoutes);
   await startDevStorageIfEnabled();
   app.addHook('onClose', async () => {
     await stopDevStorage();

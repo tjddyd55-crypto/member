@@ -90,7 +90,7 @@
 
 ## 이용권
 
-앱은 상태만 조회한다. 부여는 `x-gathering-operator-secret`이 있는 운영자 경로다. 비밀이 없으면 404다. 금액, 계좌, 결제 링크는 응답에 없다.
+새 모임은 만든 직후 30일 `TRIAL`이다. 같은 회원의 다른 모임도 각각 체험이 있다. 같은 모임 행에는 체험을 두 번 열지 않는다. 기존 모임에는 체험을 소급하지 않는다. 앱은 상태만 조회한다. 정식 부여는 `x-gathering-operator-secret`이 있는 운영자 경로다. 비밀이 없으면 404다. 금액, 계좌, 결제 링크는 응답에 없다. 기간이 끝났거나 `suspendedAt`이 있으면 새 행사·장부·업로드는 409다. 조회와 다운로드는 된다. 갱신은 정지를 풀지 않는다.
 
 | 메서드 | 경로 | 권한 |
 |---|---|---|
@@ -113,8 +113,40 @@
 | POST | `.../handover/:id/finalize` | 현 회장. 확인 뒤 장부가 바뀌면 `HANDOVER_STALE` |
 | POST | `.../handover/:id/cancel` | 현 회장. 최종 승인 전 |
 
+## 관리자
+
+`/api/gathering-admin`은 모임 회원 토큰으로 열리지 않는다. 로그인 뒤 TOTP를 확인해야 서버 세션 쿠키가 생긴다. 쿠키를 쓰는 변경 요청은 `x-gathering-admin-csrf`가 필요하다. 비밀번호, TOTP 비밀, 운영자 비밀은 응답과 감사 로그에 넣지 않는다.
+
+| 메서드 | 경로 | 권한 |
+| --- | --- | --- |
+| POST | `/auth/login` | 공개. 비밀번호 뒤 TOTP. 미등록이면 등록 토큰만 |
+| POST | `/auth/totp/start` | 등록 토큰. 비밀은 이 응답 한 번 |
+| POST | `/auth/totp/confirm` | 등록 토큰과 코드. 세션 쿠키 |
+| POST | `/auth/logout` | 세션과 CSRF |
+| POST | `/auth/password` | 세션과 CSRF. 기존 세션을 모두 폐기 |
+| GET | `/me` | 세션 |
+| GET | `/groups` | `GROUP_READ`. 슈퍼관리자는 전체 |
+| GET | `/groups/:groupId` | 담당 모임. 아니면 404 |
+| GET | `/audits` | 슈퍼관리자 또는 `AUDIT_READ` |
+| POST | `/admins` | 슈퍼관리자. 담당 관리자는 모임 범위가 필요 |
+| POST | `/admins/:adminId/disable` | 슈퍼관리자. 자기 자신과 마지막 슈퍼관리자는 거부 |
+| GET | `/dashboard` | 세션. 담당 모임만 집계 |
+| GET | `/members` | `MEMBER_READ`. 전화는 `CONTACT_READ`일 때만, 조회는 감사 |
+| POST | `/groups/:groupId/suspension` | `SUBSCRIPTION_WRITE`. 이용권과 별개 |
+| POST | `/groups/:groupId/subscription` | `SUBSCRIPTION_WRITE`. 멱등. 정지를 풀지 않음 |
+| POST | `/groups/:groupId/subscription/cancel` | `SUBSCRIPTION_WRITE` |
+| GET | `/groups/:groupId/deposits` | `PAYMENT_WRITE`. 대기 입금을 다시 고를 수 있음 |
+| POST | `/groups/:groupId/deposits` | `PAYMENT_WRITE`. 승인만으로 이용권이 늘지 않음 |
+| POST | `/deposits/:depositId/confirm` | 확인만 하거나, 이때 이용권을 함께 연결. 금액이 6만 원이 아니면 연결을 거절 |
+| POST | `/deposits/:depositId/link` | 이미 확인했고 아직 연결하지 않은 입금을 이용권에 연결. 기간은 바꾸지 않음 |
+| POST | `/groups/:groupId/quota` | `QUOTA_WRITE`. 파일을 지우지 않음 |
+| PUT | `/admins/:adminId/scopes` | 슈퍼관리자만 |
+| GET, PUT | `/settings/bank` | 슈퍼관리자. 회원 API에 없음 |
+
+최초 계정은 `GATHERING_ADMIN_BOOTSTRAP_LOGIN`과 `GATHERING_ADMIN_BOOTSTRAP_PASSWORD`로 `npx tsx scripts/gathering-admin-bootstrap.ts`를 실행한다. 값은 로그에 남기지 않는다.
+
 ## 아직 API가 없음
 
-계정 삭제, 관리자 대시보드.
+대시보드 집계, 입금 원장, 용량 변경, 이용권 승인 화면.
 
 이 경로를 404가 아닌 성공으로 흉내 내는 스텁은 두지 않았다.

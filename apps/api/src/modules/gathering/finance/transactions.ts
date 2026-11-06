@@ -5,6 +5,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
+import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
 import { lockGroupOpenYear, readFiscalPeriod } from './years.js';
 
@@ -24,6 +25,7 @@ export async function createTransaction(userId: string, groupId: string, eventId
   await requireEvent(groupId, eventId);
   const created = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
+    await assertGatheringWritable(tx, groupId);
     const period = await readFiscalPeriod(tx, groupId);
     const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt, period));
     const row = await tx.gatheringFinanceTransaction.create({
@@ -63,6 +65,7 @@ export async function updateTransaction(
   const parsed = parseTransaction(input);
   const updated = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
+    await assertGatheringWritable(tx, groupId);
     const period = await readFiscalPeriod(tx, groupId);
     const current = await requireMutable(tx, groupId, transactionId);
     assertYearOpen(current.financeYear.status);
@@ -96,6 +99,7 @@ export async function deleteTransaction(userId: string, groupId: string, transac
   assertPermission(access, 'FINANCE_WRITE');
   await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
+    await assertGatheringWritable(tx, groupId);
     const current = await requireMutable(tx, groupId, transactionId);
     assertYearOpen(current.financeYear.status);
     await lockGroupOpenYear(tx, groupId, current.financeYear.year);
@@ -112,7 +116,7 @@ export async function deleteTransaction(userId: string, groupId: string, transac
 }
 
 export async function listEventTransactions(userId: string, groupId: string, eventId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   await requireEvent(groupId, eventId);
   const rows = await prisma.gatheringFinanceTransaction.findMany({
     where: { groupId, eventId },

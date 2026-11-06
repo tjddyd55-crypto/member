@@ -3,7 +3,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
 
 export async function listGatheringOfficers(userId: string, groupId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const [currentRows, historyRows] = await Promise.all([
     prisma.gatheringRoleAssignment.findMany({
       where: { groupId, revokedAt: null, role: { not: 'MEMBER' } },

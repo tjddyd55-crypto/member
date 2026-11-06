@@ -17,6 +17,5 @@ export function rejectUploadDecision(decision: UploadDecision): never {
   if (decision.allowed) {
     throw new AppError(500, 'INTERNAL', '업로드 판정이 올바르지 않습니다.');
   }
-  // 이용 기간은 업로드 거절 사유가 아니다. 한도를 넘을 때만 거절한다.
   throw new AppError(409, decision.reason, '모임 저장 공간 50GB를 초과해 올릴 수 없습니다.');
 }

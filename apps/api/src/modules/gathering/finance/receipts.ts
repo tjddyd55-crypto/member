@@ -14,7 +14,8 @@ import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { assertStoredObject } from '../storage/confirm.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
-import { loadBillableUsage } from '../storage/usage.js';
+import { loadBillableUsage, loadGroupQuotaBytes } from '../storage/usage.js';
+import { assertGatheringWritable } from '../entitlement.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
 import { lockGroupOpenYear, lockOpenYearById, readFiscalPeriod } from './years.js';
 
@@ -41,6 +42,7 @@ export async function completeReceiptUpload(
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'RECEIPT_WRITE');
+  await assertGatheringWritable(prisma, groupId);
   const receipt = await requireOwnReceipt(userId, groupId, eventId, receiptId);
   if (receipt.status === 'READY') return presentReceipt(receipt);
   await assertPending(receipt.id, receipt.createdAt, receipt.sizeBytes, sizeBytes);
@@ -68,7 +70,7 @@ export async function completeReceiptUpload(
 }
 
 export async function listReceipts(userId: string, groupId: string, eventId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   await requireEvent(groupId, eventId);
   const rows = await prisma.gatheringReceiptAsset.findMany({
     where: { groupId, eventId, status: 'READY', deletedAt: null },
@@ -78,7 +80,7 @@ export async function listReceipts(userId: string, groupId: string, eventId: str
 }
 
 export async function downloadReceipt(userId: string, groupId: string, receiptId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const receipt = await prisma.gatheringReceiptAsset.findFirst({
     where: { id: receiptId, groupId, status: 'READY', deletedAt: null },
   });
@@ -151,6 +153,7 @@ async function reserveReceipts(
   prefixEnv: string,
 ) {
   await lockGroup(tx, groupId);
+  await assertGatheringWritable(tx, groupId);
   const period = await readFiscalPeriod(tx, groupId);
   const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(event.startsAt, period));
   const usage = await loadBillableUsage(tx, groupId, new Date());
@@ -158,6 +161,7 @@ async function reserveReceipts(
     usage,
     kind: 'RECEIPT',
     additionalBytes: items.reduce((sum, item) => sum + item.sizeBytes, 0),
+    quotaBytes: await loadGroupQuotaBytes(tx, groupId),
   });
   if (!decision.allowed) {
     throw new AppError(409, 'QUOTA_EXCEEDED', '모임 저장 공간 50GB를 초과해 올릴 수 없습니다.');

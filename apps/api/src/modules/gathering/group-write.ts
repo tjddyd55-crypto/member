@@ -1,5 +1,14 @@
 import type { Prisma } from '@prisma/client';
-import { fiscalWindowsCovering, fiscalYearOf, fiscalYearRange, isValidFiscalPeriod, type FiscalPeriod } from '@member/gathering-domain';
+import {
+  STORAGE_QUOTA_BYTES,
+  canOpenTrial,
+  fiscalWindowsCovering,
+  fiscalYearOf,
+  fiscalYearRange,
+  isValidFiscalPeriod,
+  trialWindow,
+  type FiscalPeriod,
+} from '@member/gathering-domain';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
@@ -73,7 +82,34 @@ async function insertGroup(
     targetType: 'GatheringGroup',
     targetId: group.id,
   });
+  await openTrialIfUnclaimed(tx, userId, group.id, now);
   return group.id;
+}
+
+export async function openTrialIfUnclaimed(tx: Prisma.TransactionClient, userId: string, groupId: string, now: Date) {
+  const existing = await tx.gatheringTrialClaim.findUnique({ where: { groupId }, select: { id: true } });
+  if (!canOpenTrial(existing != null)) return;
+  await tx.gatheringTrialClaim.create({ data: { userId, groupId } });
+  const window = trialWindow(now);
+  const subscription = await tx.gatheringSubscription.create({
+    data: {
+      groupId,
+      status: 'ACTIVE',
+      source: 'TRIAL',
+      startsAt: window.startsAt,
+      expiresAt: window.expiresAt,
+      storageQuotaBytes: BigInt(STORAGE_QUOTA_BYTES),
+    },
+  });
+  await tx.gatheringSubscriptionAudit.create({
+    data: {
+      groupId,
+      subscriptionId: subscription.id,
+      action: 'TRIAL',
+      actorUserId: userId,
+      metaJson: JSON.stringify({ expiresAt: window.expiresAt.toISOString() }),
+    },
+  });
 }
 
 type GroupPatch = {

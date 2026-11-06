@@ -443,7 +443,7 @@ describe('행사 사진·영상', () => {
     expect(unconfigured.json().error.code).toBe('STORAGE_UNCONFIGURED');
   });
 
-  it('인계 전과 중과 후에도 사진 업로드는 되고, 만료된 이용권은 막지 않으며 용량·비회원은 막힌다', async () => {
+  it('인계 전과 중과 후에도 이용 기간이 있으면 올리고, 만료되면 새 업로드만 막으며 용량·비회원도 막힌다', async () => {
     const owner = await register('사진인계회장');
     const next = await register('사진차기회장');
     const outsider = await register('사진외부');
@@ -551,14 +551,16 @@ describe('행사 사진·영상', () => {
       data: { expiresAt: new Date(Date.now() - 60_000) },
     });
     const expired = await reserve();
-    expect(expired.statusCode).toBe(200);
-    expect((await reserveFolder()).statusCode).toBe(200);
+    expect(expired.statusCode).toBe(409);
+    expect(expired.json().error.code).toBe('ENTITLEMENT_REQUIRED');
+    expect((await reserveFolder()).statusCode).toBe(409);
     const expiredGuest = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${link.json().token}/reserve`,
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
     });
-    expect(expiredGuest.statusCode).toBe(200);
+    expect(expiredGuest.statusCode).toBe(409);
+    expect(expiredGuest.json().error.code).toBe('ENTITLEMENT_REQUIRED');
 
     await prisma.gatheringSubscription.updateMany({
       where: { groupId: group.id },

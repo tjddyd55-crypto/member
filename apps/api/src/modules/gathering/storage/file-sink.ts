@@ -142,6 +142,13 @@ class FileSinkStorage implements ObjectStorage {
 
   private async handle(request: IncomingMessage, response: ServerResponse) {
     try {
+      response.setHeader('Access-Control-Allow-Origin', '*');
+      response.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+      response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      if (request.method === 'OPTIONS') {
+        response.writeHead(204).end();
+        return;
+      }
       const url = new URL(request.url ?? '/', this.baseUrl);
       if (url.pathname !== '/object') {
         response.writeHead(404).end();

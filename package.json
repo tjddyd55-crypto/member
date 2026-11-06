@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "lint": "npm run lint -w @member/api && npm run lint -w @member/mobile && npm run lint -w @member/gathering-mobile",
-    "typecheck": "npm run typecheck -w @member/shared && npm run typecheck -w @member/contracts && npm run typecheck -w @member/gathering-domain && npm run typecheck -w @member/api && npm run typecheck -w @member/mobile && npm run typecheck -w @member/gathering-mobile",
+    "typecheck": "npm run typecheck -w @member/shared && npm run typecheck -w @member/contracts && npm run typecheck -w @member/gathering-domain && npm run typecheck -w @member/api && npm run typecheck -w @member/mobile && npm run typecheck -w @member/gathering-mobile && npm run typecheck -w @member/gathering-admin",
     "test": "npm run test -w @member/gathering-domain && npm run test -w @member/api",
     "build": "npm run build -w @member/shared && npm run build -w @member/contracts && npm run build -w @member/gathering-domain && npm run build -w @member/api",
     "db:generate": "prisma generate --schema prisma/schema.prisma",

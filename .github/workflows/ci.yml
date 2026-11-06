@@ -50,4 +50,5 @@ jobs:
       - run: npm test
       - run: npm run typecheck -w @member/api
       - run: npm run typecheck -w @member/gathering-mobile
+      - run: npm run typecheck -w @member/gathering-admin
       - run: npm run typecheck -w @member/mobile

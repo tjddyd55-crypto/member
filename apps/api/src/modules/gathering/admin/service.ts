@@ -112,8 +112,8 @@ export async function confirmAdminTotp(
     throw new AppError(401, 'TOTP_INVALID', '인증 코드가 올바르지 않습니다.');
   }
   await prisma.$transaction(async (tx) => {
-    await tx.gatheringAdminEnrollment.update({
-      where: { id: row.id },
+    await tx.gatheringAdminEnrollment.updateMany({
+      where: { adminId: row.adminId, usedAt: null },
       data: { usedAt: now, pendingSecretCipher: null },
     });
     await tx.gatheringAdminAccount.update({
@@ -250,13 +250,18 @@ export async function disableManagedAdmin(actorId: string, targetId: string, rea
   }
   const target = await prisma.gatheringAdminAccount.findUnique({ where: { id: targetId } });
   if (!target) throw new AppError(404, 'ADMIN_NOT_FOUND', '관리자 계정을 찾을 수 없습니다.');
-  if (target.role === 'SUPER_ADMIN' && target.disabledAt == null) {
-    const others = await prisma.gatheringAdminAccount.count({
-      where: { role: 'SUPER_ADMIN', disabledAt: null, id: { not: targetId } },
-    });
-    if (others < 1) throw new AppError(409, 'LAST_SUPER_ADMIN', '마지막 슈퍼관리자는 끌 수 없습니다.');
-  }
   await prisma.$transaction(async (tx) => {
+    if (target.role === 'SUPER_ADMIN' && target.disabledAt == null) {
+      await tx.$queryRaw`
+        SELECT id FROM gathering_admin_accounts
+        WHERE role = 'SUPER_ADMIN' AND "disabledAt" IS NULL
+        FOR UPDATE
+      `;
+      const others = await tx.gatheringAdminAccount.count({
+        where: { role: 'SUPER_ADMIN', disabledAt: null, id: { not: targetId } },
+      });
+      if (others < 1) throw new AppError(409, 'LAST_SUPER_ADMIN', '마지막 슈퍼관리자는 끌 수 없습니다.');
+    }
     await tx.gatheringAdminAccount.update({ where: { id: targetId }, data: { disabledAt: new Date() } });
     await tx.gatheringAdminSession.updateMany({
       where: { adminId: targetId, revokedAt: null },
@@ -272,6 +277,34 @@ export async function disableManagedAdmin(actorId: string, targetId: string, rea
       reason: reason.trim(),
     });
   });
+}
+
+export async function rotateAdminCsrf(sessionId: string) {
+  const csrfToken = randomToken(32);
+  await prisma.gatheringAdminSession.update({
+    where: { id: sessionId },
+    data: { csrfHash: sha256(csrfToken) },
+  });
+  return csrfToken;
+}
+
+export async function listAdminAccounts(actorId: string) {
+  const actor = await prisma.gatheringAdminAccount.findUnique({ where: { id: actorId } });
+  if (!actor || !canManageAdminAccounts(actor.role, actor.disabledAt != null)) {
+    throw new AppError(403, 'FORBIDDEN', '관리자 계정은 슈퍼관리자만 봅니다.');
+  }
+  const rows = await prisma.gatheringAdminAccount.findMany({
+    orderBy: { createdAt: 'asc' },
+    include: { scopes: true },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    loginId: row.loginId,
+    role: row.role,
+    disabledAt: row.disabledAt?.toISOString() ?? null,
+    totpReady: row.totpConfirmedAt != null,
+    scopes: row.scopes.map((scope) => ({ groupId: scope.groupId, capability: scope.capability })),
+  }));
 }
 
 export async function requireAdminSession(token: string | null, now = new Date()) {

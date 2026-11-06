@@ -131,7 +131,7 @@ export async function setGroupSuspension(adminId: string, groupId: string, suspe
 export async function approveSubscription(
   adminId: string,
   groupId: string,
-  input: { idempotencyKey: string; reason: string; source?: 'PAID' | 'COMPLIMENTARY' },
+  input: { idempotencyKey: string; reason: string; source?: 'PAID' | 'COMPLIMENTARY'; startsAt?: string; expiresAt?: string },
 ) {
   return withOperation(adminId, input.idempotencyKey, 'SUBSCRIPTION_APPROVE', groupId, async (tx, account) => {
     assertCapability(account, 'SUBSCRIPTION_WRITE', groupId);
@@ -145,6 +145,7 @@ export async function approveSubscription(
       await tx.gatheringSubscription.update({ where: { id: previous.id }, data: { status: 'EXPIRED' } });
     }
     const source = input.source ?? 'PAID';
+    const window = termWindow(input.startsAt, input.expiresAt, now, previous?.expiresAt ?? null);
     const created = await tx.gatheringSubscription.create({
       data: {
         groupId,
@@ -152,8 +153,8 @@ export async function approveSubscription(
         source,
         approvedByAdminId: adminId,
         approvedAt: now,
-        startsAt: now,
-        expiresAt: formalTermExpiry(now, previous?.expiresAt ?? null, now),
+        startsAt: window.startsAt,
+        expiresAt: window.expiresAt,
         storageQuotaBytes: previous?.storageQuotaBytes ?? BigInt(STORAGE_QUOTA_BYTES),
         note: input.reason.trim(),
         idempotencyKey: `admin-sub:${input.idempotencyKey}`,
@@ -232,7 +233,7 @@ export async function recordDeposit(
 export async function confirmDeposit(
   adminId: string,
   depositId: string,
-  input: { idempotencyKey: string; subscriptionId?: string; reason: string },
+  input: { idempotencyKey: string; subscriptionId?: string; reason: string; allowMismatch?: boolean },
 ) {
   const deposit = await prisma.gatheringDeposit.findUnique({ where: { id: depositId } });
   if (!deposit) throw new AppError(404, 'DEPOSIT_NOT_FOUND', '입금 기록을 찾을 수 없습니다.');
@@ -241,8 +242,11 @@ export async function confirmDeposit(
     const current = await tx.gatheringDeposit.findUnique({ where: { id: depositId } });
     if (!current) throw new AppError(404, 'DEPOSIT_NOT_FOUND', '입금 기록을 찾을 수 없습니다.');
     assertCapability(account, 'PAYMENT_WRITE', current.groupId);
-    if (current.amountWon !== FORMAL_ANNUAL_FEE_WON && input.subscriptionId) {
-      throw new AppError(409, 'AMOUNT_MISMATCH', '금액이 정식 연회비와 달라 이용권에 연결하지 않습니다.');
+    if (current.amountWon !== FORMAL_ANNUAL_FEE_WON && input.subscriptionId && !input.allowMismatch) {
+      throw new AppError(409, 'AMOUNT_MISMATCH', '금액이 정식 연회비와 다릅니다. 자동으로 연결하지 않습니다.');
+    }
+    if (input.allowMismatch && account.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'FORBIDDEN', '금액이 다른 입금 연결은 슈퍼관리자만 할 수 있습니다.');
     }
     const updated = await tx.gatheringDeposit.update({
       where: { id: current.id },
@@ -439,6 +443,54 @@ function assertCapability(account: AccountWithScopes, capability: AdminCapabilit
   if (!adminAllows({ role: account.role, disabled: false, scopes: account.scopes, capability, groupId })) {
     throw new AppError(404, 'GROUP_NOT_FOUND', '모임을 찾을 수 없습니다.');
   }
+}
+
+function termWindow(startsAt: string | undefined, expiresAt: string | undefined, now: Date, currentExpiresAt: Date | null) {
+  if (!startsAt && !expiresAt) {
+    return { startsAt: now, expiresAt: formalTermExpiry(now, currentExpiresAt, now) };
+  }
+  if (!startsAt || !expiresAt) throw new AppError(400, 'INVALID_DATE', '시작과 종료를 함께 입력하세요.');
+  const start = new Date(startsAt);
+  const end = new Date(expiresAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+    throw new AppError(400, 'INVALID_DATE', '종료는 시작보다 뒤여야 합니다.');
+  }
+  return { startsAt: start, expiresAt: end };
+}
+
+export async function setMemberRestriction(
+  adminId: string,
+  groupId: string,
+  membershipId: string,
+  input: { suspended: boolean; reason: string; idempotencyKey: string },
+) {
+  return withOperation(adminId, input.idempotencyKey, 'MEMBER_RESTRICTION', groupId, async (tx, account) => {
+    assertCapability(account, 'MEMBER_RESTRICT', groupId);
+    if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
+    const membership = await tx.gatheringMembership.findFirst({ where: { id: membershipId, groupId } });
+    if (!membership) throw new AppError(404, 'MEMBER_NOT_FOUND', '회원을 찾을 수 없습니다.');
+    const president = await tx.gatheringRoleAssignment.findFirst({
+      where: { membershipId, role: 'PRESIDENT', revokedAt: null },
+    });
+    if (president) throw new AppError(403, 'PRESIDENT_LOCKED', '회장은 인계 뒤에만 이용을 막을 수 있습니다.');
+    const beforeStatus = membership.status;
+    const status = input.suspended ? 'SUSPENDED' : 'ACTIVE';
+    await tx.gatheringMembership.update({ where: { id: membership.id }, data: { status } });
+    const [financeCount, handoverCount] = await Promise.all([
+      tx.gatheringFinanceTransaction.count({ where: { groupId } }),
+      tx.gatheringHandover.count({ where: { groupId } }),
+    ]);
+    await writeAdminAudit(tx, {
+      actorAdminId: adminId,
+      action: input.suspended ? 'ADMIN_MEMBER_RESTRICT' : 'ADMIN_MEMBER_RELEASE',
+      targetType: 'GatheringMembership',
+      targetId: membership.id,
+      before: { status: beforeStatus },
+      after: { status, financeCount, handoverCount },
+      reason: input.reason.trim(),
+    });
+    return { membershipId: membership.id, status, financeCount, handoverCount };
+  });
 }
 
 function isUnique(error: unknown) {

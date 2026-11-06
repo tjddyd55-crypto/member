@@ -106,7 +106,7 @@ async function presentGroup(groupId: string, showContact: boolean) {
       orderBy: { assignedAt: 'desc' },
     }),
     prisma.gatheringMembership.count({ where: { groupId, status: 'ACTIVE' } }),
-    prisma.gatheringSubscription.findFirst({ where: { groupId }, orderBy: { createdAt: 'desc' } }),
+    coveringSubscription(groupId, now),
     loadBillableUsage(prisma, groupId, now),
     prisma.gatheringAuditLog.findFirst({ where: { groupId }, orderBy: { createdAt: 'desc' } }),
   ]);
@@ -172,6 +172,15 @@ async function loadAccount(adminId: string) {
   });
   if (!account || account.disabledAt) throw new AppError(401, 'UNAUTHORIZED', '인증이 필요합니다.');
   return account;
+}
+
+async function coveringSubscription(groupId: string, now: Date) {
+  const covering = await prisma.gatheringSubscription.findFirst({
+    where: { groupId, status: 'ACTIVE', startsAt: { lte: now }, expiresAt: { gt: now } },
+    orderBy: { expiresAt: 'desc' },
+  });
+  if (covering) return covering;
+  return prisma.gatheringSubscription.findFirst({ where: { groupId }, orderBy: { createdAt: 'desc' } });
 }
 
 function canSeeContact(account: { role: string; scopes: { groupId: string; capability: string }[] }, groupId: string) {

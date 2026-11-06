@@ -38,7 +38,7 @@ export async function requireGroupMember(
     groupId,
     roles,
     permissions: permissionsForRoles(roles),
-    restricted: membership.status === 'SUSPENDED',
+    restricted: false,
   };
 }
 

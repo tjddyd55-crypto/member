@@ -70,7 +70,7 @@ describe('슈퍼관리자 세션', () => {
     const scoped = await app.inject({
       method: 'POST',
       url: '/api/gathering-admin/admins',
-      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': me.json().csrfToken as string },
+      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': enrolled.csrf },
       payload: {
         loginId: 'local.admin',
         password,
@@ -119,7 +119,7 @@ describe('슈퍼관리자 세션', () => {
     const disabled = await app.inject({
       method: 'POST',
       url: `/api/gathering-admin/admins/${local.id}/disable`,
-      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': me.json().csrfToken as string },
+      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': enrolled.csrf },
       payload: { reason: '담당 종료' },
     });
     expect(disabled.statusCode).toBe(200);
@@ -132,7 +132,7 @@ describe('슈퍼관리자 세션', () => {
     const last = await app.inject({
       method: 'POST',
       url: `/api/gathering-admin/admins/${root.id}/disable`,
-      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': me.json().csrfToken as string },
+      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': enrolled.csrf },
       payload: { reason: '마지막 계정' },
     });
     expect(last.statusCode).toBe(409);

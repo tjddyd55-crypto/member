@@ -114,6 +114,7 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
   const [tab, setTab] = useState('기본');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [memberRefresh, setMemberRefresh] = useState(0);
   function reload() {
     api<GroupItem>(`/api/gathering-admin/groups/${groupId}`)
       .then(setGroup)
@@ -126,6 +127,7 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
     try {
       await api(path, { method: 'POST', body: JSON.stringify(body) });
       setNotice('서버가 반영했습니다.');
+      setMemberRefresh((value) => value + 1);
       reload();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : '저장하지 못했습니다.');
@@ -152,7 +154,7 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
       {tab === '이용권' ? <SubscriptionForm groupId={groupId} onSubmit={run} /> : null}
       {tab === '입금' ? <DepositForm groupId={groupId} role={role} onSubmit={run} /> : null}
       {tab === '용량' ? <QuotaForm groupId={groupId} onSubmit={run} /> : null}
-      {tab === '회원' ? <GroupMembers groupId={groupId} onSubmit={run} /> : null}
+      {tab === '회원' ? <GroupMembers groupId={groupId} refresh={memberRefresh} onSubmit={run} /> : null}
       {tab === '감사' ? <AuditsPage /> : null}
     </section>
   );
@@ -243,13 +245,13 @@ function QuotaForm({ groupId, onSubmit }: { groupId: string; onSubmit: (path: st
   );
 }
 
-function GroupMembers({ groupId, onSubmit }: { groupId: string; onSubmit: (path: string, body: unknown) => Promise<void> }) {
+function GroupMembers({ groupId, refresh, onSubmit }: { groupId: string; refresh: number; onSubmit: (path: string, body: unknown) => Promise<void> }) {
   const [items, setItems] = useState<MemberItem[]>([]);
   useEffect(() => {
-    api<{ items: MemberItem[] }>('/api/gathering-admin/members')
-      .then((row) => setItems(row.items.filter((item) => item.group.id === groupId)))
+    api<{ items: MemberItem[] }>(`/api/gathering-admin/members?groupId=${encodeURIComponent(groupId)}`)
+      .then((row) => setItems(row.items))
       .catch(() => setItems([]));
-  }, [groupId]);
+  }, [groupId, refresh]);
   return (
     <table>
       <tbody>

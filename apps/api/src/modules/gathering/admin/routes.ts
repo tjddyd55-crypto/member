@@ -27,7 +27,6 @@ import {
   listAdminAccounts,
   logoutAdmin,
   requireAdminSession,
-  rotateAdminCsrf,
   startAdminTotp,
 } from './service.js';
 
@@ -57,7 +56,7 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
     if (result.kind === 'enrollment') {
       return { status: 'ENROLLMENT_REQUIRED', enrollmentToken: result.enrollmentToken, expiresAt: result.expiresAt };
     }
-    setSessionCookie(reply, result.token, result.expiresAt);
+    setSessionCookie(reply, result.token, result.expiresAt, result.csrfToken);
     return { status: 'AUTHENTICATED', admin: result.admin, csrfToken: result.csrfToken, expiresAt: result.expiresAt };
   });
 
@@ -69,7 +68,7 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
   app.post('/api/gathering-admin/auth/totp/confirm', async (request, reply) => {
     const body = confirmBody.parse(request.body);
     const result = await confirmAdminTotp(body.enrollmentToken, body.code, request.headers['user-agent']);
-    setSessionCookie(reply, result.token, result.expiresAt);
+    setSessionCookie(reply, result.token, result.expiresAt, result.csrfToken);
     return { status: 'AUTHENTICATED', admin: result.admin, csrfToken: result.csrfToken, expiresAt: result.expiresAt };
   });
 
@@ -92,10 +91,8 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/gathering-admin/me', async (request) => {
     const session = await requireAdminSession(readCookie(request));
-    const csrfToken = await rotateAdminCsrf(session.id);
     return {
       admin: { id: session.admin.id, loginId: session.admin.loginId, role: session.admin.role },
-      csrfToken,
       expiresAt: session.expiresAt.toISOString(),
     };
   });
@@ -112,8 +109,8 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/gathering-admin/members', async (request) => {
     const session = await requireAdminSession(readCookie(request));
-    const query = z.object({ q: z.string().optional() }).parse(request.query);
-    return { items: await listScopedMembers(session.adminId, query.q) };
+    const query = z.object({ q: z.string().optional(), groupId: z.string().optional() }).parse(request.query);
+    return { items: await listScopedMembers(session.adminId, query.q, query.groupId) };
   });
 
   app.get('/api/gathering-admin/groups', async (request) => {
@@ -283,9 +280,13 @@ function readCookie(request: FastifyRequest) {
   return null;
 }
 
-function setSessionCookie(reply: FastifyReply, token: string, expiresAt: string) {
+function setSessionCookie(reply: FastifyReply, token: string, expiresAt: string, csrfToken?: string) {
   const maxAge = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
-  reply.header('set-cookie', `${COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/api/gathering-admin; SameSite=Lax; Max-Age=${maxAge}${secure()}`);
+  const cookies = [`${COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/api/gathering-admin; SameSite=Lax; Max-Age=${maxAge}${secure()}`];
+  if (csrfToken) {
+    cookies.push(`gathering_admin_csrf=${encodeURIComponent(csrfToken)}; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure()}`);
+  }
+  reply.header('set-cookie', cookies);
 }
 
 function clearCookie() {

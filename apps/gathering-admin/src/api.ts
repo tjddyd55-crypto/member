@@ -10,11 +10,18 @@ export function rememberCsrf(token: string | undefined) {
   if (token) csrf = token;
 }
 
+function csrfFromCookie() {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/(?:^|; )gathering_admin_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body) headers.set('content-type', 'application/json');
   const method = (options.method ?? 'GET').toUpperCase();
-  if (method !== 'GET' && csrf) headers.set('x-gathering-admin-csrf', csrf);
+  const token = csrf || csrfFromCookie();
+  if (method !== 'GET' && token) headers.set('x-gathering-admin-csrf', token);
   const base = import.meta.env.VITE_API_BASE_URL ?? '';
   const response = await fetch(`${base}${path}`, { ...options, headers, credentials: 'include' });
   const text = await response.text();

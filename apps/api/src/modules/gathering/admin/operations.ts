@@ -53,12 +53,15 @@ export async function adminDashboard(adminId: string) {
   };
 }
 
-export async function listScopedMembers(adminId: string, query?: string) {
+export async function listScopedMembers(adminId: string, query?: string, groupId?: string) {
   const account = await loadAccount(adminId);
   if (!adminAllows({ role: account.role, disabled: false, scopes: account.scopes, capability: 'MEMBER_READ' })) {
     throw new AppError(403, 'FORBIDDEN', '회원 조회 권한이 없습니다.');
   }
   const ids = groupIdsFor(account, 'MEMBER_READ');
+  if (groupId && ids && !ids.includes(groupId)) {
+    throw new AppError(404, 'GROUP_NOT_FOUND', '모임을 찾을 수 없습니다.');
+  }
   const showContact = adminAllows({
     role: account.role,
     disabled: false,
@@ -68,7 +71,7 @@ export async function listScopedMembers(adminId: string, query?: string) {
   const members = await prisma.gatheringMembership.findMany({
     where: {
       status: { in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
-      ...(ids ? { groupId: { in: ids } } : {}),
+      ...(groupId ? { groupId } : ids ? { groupId: { in: ids } } : {}),
       user: query
         ? {
             OR: [
@@ -141,11 +144,11 @@ export async function approveSubscription(
       where: { groupId, status: 'ACTIVE', startsAt: { lte: now }, expiresAt: { gt: now } },
       orderBy: { expiresAt: 'desc' },
     });
-    if (previous) {
-      await tx.gatheringSubscription.update({ where: { id: previous.id }, data: { status: 'EXPIRED' } });
-    }
     const source = input.source ?? 'PAID';
     const window = termWindow(input.startsAt, input.expiresAt, now, previous?.expiresAt ?? null);
+    if (previous && window.startsAt.getTime() <= now.getTime()) {
+      await tx.gatheringSubscription.update({ where: { id: previous.id }, data: { status: 'EXPIRED' } });
+    }
     const created = await tx.gatheringSubscription.create({
       data: {
         groupId,
@@ -470,6 +473,12 @@ export async function setMemberRestriction(
     const membership = await tx.gatheringMembership.findFirst({ where: { id: membershipId, groupId } });
     if (!membership) throw new AppError(404, 'MEMBER_NOT_FOUND', '회원을 찾을 수 없습니다.');
     const beforeStatus = membership.status;
+    if (input.suspended && membership.status !== 'ACTIVE') {
+      throw new AppError(409, 'MEMBERSHIP_NOT_ACTIVE', '활동 중인 회원만 제한할 수 있습니다.');
+    }
+    if (!input.suspended && membership.status !== 'SUSPENDED') {
+      throw new AppError(409, 'MEMBERSHIP_NOT_RESTRICTED', '제한된 회원만 해제할 수 있습니다.');
+    }
     const status = input.suspended ? 'SUSPENDED' : 'ACTIVE';
     await tx.gatheringMembership.update({ where: { id: membership.id }, data: { status } });
     const [financeCount, handoverCount] = await Promise.all([

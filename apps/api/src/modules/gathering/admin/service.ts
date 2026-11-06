@@ -279,15 +279,6 @@ export async function disableManagedAdmin(actorId: string, targetId: string, rea
   }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
-export async function rotateAdminCsrf(sessionId: string) {
-  const csrfToken = randomToken(32);
-  await prisma.gatheringAdminSession.update({
-    where: { id: sessionId },
-    data: { csrfHash: sha256(csrfToken) },
-  });
-  return csrfToken;
-}
-
 export async function listAdminAccounts(actorId: string) {
   const actor = await prisma.gatheringAdminAccount.findUnique({ where: { id: actorId } });
   if (!actor || !canManageAdminAccounts(actor.role, actor.disabledAt != null)) {

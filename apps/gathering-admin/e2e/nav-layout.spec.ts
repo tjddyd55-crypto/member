@@ -97,6 +97,7 @@ test('관리 메뉴는 좁은 화면에서 한 줄이고, PC에서는 옆 메뉴
   await page.setViewportSize({ width: 390, height: 985 });
   await page.goto(`/groups/${group.id}`);
   await expectMenuRow(page, 390);
+  await expect(tabs).toHaveCount(7);
   const narrowTabs = await tabs.evaluateAll((nodes) => nodes.map((node) => {
     const box = node.getBoundingClientRect();
     return { name: node.textContent ?? '', width: box.width, height: box.height };
@@ -121,6 +122,9 @@ async function login(page: Page, loginId: string) {
 }
 
 async function expectMenuRow(page: Page, width: number) {
+  const nav = page.getByRole('navigation', { name: '관리 메뉴' });
+  await expect(nav.getByRole('link', { name: '대시보드' })).toBeVisible();
+  await expect(nav.getByRole('button', { name: '로그아웃' })).toBeVisible();
   const items = await menuBoxes(page);
   expect(items.map((item) => item.name)).toEqual(['대시보드', '모임', '회원', '운영이력', '시스템설정', '관리자', '내 계정', '로그아웃']);
   const first = items[0];
@@ -131,25 +135,28 @@ async function expectMenuRow(page: Page, width: number) {
     expect(Math.abs(item.y - first.y), item.name).toBeLessThan(8);
   }
   if (width <= 430) {
-    const nav = await page.getByRole('navigation', { name: '관리 메뉴' }).evaluate((node) => ({
+    const scrolled = await nav.evaluate((node) => ({
       scrollWidth: node.scrollWidth,
       clientWidth: node.clientWidth,
     }));
-    expect(nav.scrollWidth).toBeGreaterThan(nav.clientWidth + 24);
+    expect(scrolled.scrollWidth).toBeGreaterThan(scrolled.clientWidth + 24);
   }
   await expectNoPageOverflow(page);
 }
 
 async function expectSideMenu(page: Page) {
+  const nav = page.getByRole('navigation', { name: '관리 메뉴' });
+  await expect(nav.getByRole('link', { name: '대시보드' })).toBeVisible();
+  await expect(nav.getByRole('button', { name: '로그아웃' })).toBeVisible();
   const items = await menuBoxes(page);
   const first = items[0];
   const second = items[1];
   if (!first || !second) throw new Error('메뉴가 없습니다.');
   expect(second.y).toBeGreaterThan(first.y + 20);
   expect(Math.abs(second.x - first.x)).toBeLessThan(4);
-  const nav = await page.getByRole('navigation', { name: '관리 메뉴' }).evaluate((node) => node.getBoundingClientRect().width);
-  expect(nav).toBeGreaterThan(200);
-  expect(nav).toBeLessThan(240);
+  const navWidth = await nav.evaluate((node) => node.getBoundingClientRect().width);
+  expect(navWidth).toBeGreaterThan(200);
+  expect(navWidth).toBeLessThan(240);
 }
 
 async function scrollMenuToEnd(page: Page) {

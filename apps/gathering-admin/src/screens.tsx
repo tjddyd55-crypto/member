@@ -225,7 +225,7 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
   const [error, setError] = useState('');
   function loadPending() {
     api<{ items: Array<{ id: string; payerName: string; amountWon: number; status: string }> }>(`/api/gathering-admin/groups/${groupId}/deposits`)
-      .then((row) => setPending(row.items.filter((item) => item.status === 'PENDING')))
+      .then((row) => setPending(row.items))
       .catch(() => setPending([]));
   }
   useEffect(loadPending, [groupId]);
@@ -265,7 +265,7 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
           ))}
         </div>
       ) : null}
-      {depositId ? <p>기록 {depositId}. 확인 전에는 이용권에 연결되지 않습니다.</p> : null}
+      {depositId ? <p>기록 {depositId}. {pending.find((item) => item.id === depositId)?.status === 'CONFIRMED' ? '확인됨. 이용권에 연결할 수 있습니다.' : '확인 전에는 이용권에 연결되지 않습니다.'}</p> : null}
       <label>연결할 이용권 ID<input value={subscriptionId} onChange={(event) => setSubscriptionId(event.target.value)} /></label>
       {role === 'SUPER_ADMIN' ? <label><input type="checkbox" checked={allowMismatch} onChange={(event) => setAllowMismatch(event.target.checked)} /> 금액이 달라도 슈퍼관리자가 연결</label> : null}
       <button type="button" disabled={!depositId || pending.find((item) => item.id === depositId)?.status === 'CONFIRMED'} onClick={() => void onSubmit(`/api/gathering-admin/deposits/${depositId}/confirm`, {
@@ -275,7 +275,7 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
         if (!saved) return;
         loadPending();
       })}>확인</button>
-      <button type="button" disabled={!depositId || !subscriptionId} onClick={() => void onSubmit(`/api/gathering-admin/deposits/${depositId}/link`, {
+      <button type="button" disabled={pending.find((item) => item.id === depositId)?.status !== 'CONFIRMED' || !subscriptionId} onClick={() => void onSubmit(`/api/gathering-admin/deposits/${depositId}/link`, {
         reason: '이용권 연결',
         idempotencyKey: `link-${depositId}-${subscriptionId}`,
         subscriptionId,

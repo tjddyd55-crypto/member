@@ -81,6 +81,7 @@ describe('모임 화면 배치', () => {
     expect(handoverInProgress('CONFIRMED')).toBe(true);
     expect(handoverInProgress('FINALIZED')).toBe(false);
     expect(uploadBlockReason({ destinationCount: 1, destinationChosen: true })).toBeNull();
+    expect(uploadBlockReason({ writesAllowed: false })).toContain('이미 올린 자료');
     expect(uploadBlockReason({ destinationCount: 0, destinationChosen: false })).toContain('행사나 폴더');
   });
 

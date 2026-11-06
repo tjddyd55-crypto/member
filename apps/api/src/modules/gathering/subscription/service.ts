@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import {
   STORAGE_QUOTA_BYTES,
   billableStorageBytes,
-  subscriptionExpiry,
+  formalTermExpiry,
   subscriptionNoticeDedupeKey,
   subscriptionNoticeWindow,
 } from '@member/gathering-domain';
@@ -11,6 +11,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
 import { writeGatheringAudit } from '../audit.js';
 import { lockGroup } from '../locks.js';
+import { gatheringWriteDecision } from '../entitlement.js';
 import { isSubscriptionActive, loadBillableUsage } from '../storage/usage.js';
 
 const TEST_OPERATOR_SECRET = 'test-operator-secret-not-for-prod';
@@ -60,15 +61,16 @@ export async function readSubscription(userId: string, groupId: string) {
   ]);
   const expiredByDate = latest?.expiresAt != null && latest.expiresAt.getTime() <= now.getTime();
   const status = !latest ? 'NONE' : active ? 'ACTIVE' : expiredByDate || latest.status !== 'ACTIVE' ? 'EXPIRED' : latest.status;
+  const writes = await gatheringWriteDecision(prisma, groupId, now);
   return {
     status,
     source: latest?.source ?? null,
     startsAt: latest?.startsAt?.toISOString() ?? null,
     expiresAt: latest?.expiresAt?.toISOString() ?? null,
-    quotaBytes: STORAGE_QUOTA_BYTES,
+    quotaBytes: latest ? Number(latest.storageQuotaBytes) : STORAGE_QUOTA_BYTES,
     usedBytes: billableStorageBytes(usage),
-    // 이용권 상태만 알려 준다. 사진·영상 업로드는 이 값으로 막지 않는다.
-    uploadsAllowed: active,
+    suspended: !writes.allowed && writes.reason === 'SUSPENDED',
+    uploadsAllowed: writes.allowed,
   };
 }
 
@@ -126,7 +128,7 @@ async function saveGrant(
       approvedByUserId: actorUserId,
       approvedAt: startsAt,
       startsAt,
-      expiresAt: subscriptionExpiry(startsAt),
+      expiresAt: formalTermExpiry(startsAt, currentStillCovers ? previous?.expiresAt ?? null : null, now),
       storageQuotaBytes: BigInt(STORAGE_QUOTA_BYTES),
       note: input.note ?? null,
       idempotencyKey: input.idempotencyKey,

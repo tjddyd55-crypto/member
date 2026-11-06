@@ -78,7 +78,7 @@ async function createEvent(token: string, groupId: string) {
 }
 
 describe('모임 이용권', () => {
-  it('운영자만 수동으로 부여하고, 만료 뒤에도 업로드는 되며 파일은 지우지 않는다', async () => {
+  it('운영자만 수동으로 부여하고, 만료 뒤에는 새 업로드가 거절되며 파일은 지우지 않는다', async () => {
     const owner = await register('이용회장');
     const group = await createGroup(owner.tokens.accessToken);
     const event = await createEvent(owner.tokens.accessToken, group.id);
@@ -114,7 +114,7 @@ describe('모임 이용권', () => {
     });
     expect(replay.json().id).toBe(granted.json().id);
     const audits = await prisma.gatheringSubscriptionAudit.count({ where: { groupId: group.id } });
-    expect(audits).toBe(1);
+    expect(audits).toBe(2);
 
     const upload = await app.inject({
       method: 'POST',
@@ -143,7 +143,8 @@ describe('모임 이용권', () => {
       headers: auth(owner.tokens.accessToken),
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 24 }] },
     });
-    expect(expiredUpload.statusCode).toBe(200);
+    expect(expiredUpload.statusCode).toBe(409);
+    expect(expiredUpload.json().error.code).toBe('ENTITLEMENT_REQUIRED');
     const download = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${group.id}/media/${assetId}/download`,
@@ -159,7 +160,8 @@ describe('모임 이용권', () => {
       headers: auth(owner.tokens.accessToken),
       payload: { items: [{ mimeType: 'application/pdf', sizeBytes: 16 }] },
     });
-    expect(receipt.statusCode).toBe(200);
+    expect(receipt.statusCode).toBe(409);
+    expect(receipt.json().error.code).toBe('ENTITLEMENT_REQUIRED');
 
     const renewed = await app.inject({
       method: 'POST',
@@ -227,6 +229,43 @@ describe('모임 이용권', () => {
     });
     expect(view.json().uploadsAllowed).toBe(true);
   });
+
+  it('새 모임은 30일 체험이고, 같은 휴대폰의 다음 모임은 체험이 없으며 정지는 갱신으로 풀리지 않는다', async () => {
+    const owner = await register('체험회장');
+    const first = await createGroup(owner.tokens.accessToken);
+    const trial = await prisma.gatheringSubscription.findFirstOrThrow({
+      where: { groupId: first.id, source: 'TRIAL' },
+    });
+    expect(trial.expiresAt!.getTime() - trial.startsAt!.getTime()).toBe(30 * 24 * 60 * 60 * 1000);
+    const second = await createGroup(owner.tokens.accessToken);
+    expect(await prisma.gatheringSubscription.count({ where: { groupId: second.id, source: 'TRIAL' } })).toBe(0);
+    expect(await prisma.gatheringTrialClaim.count({ where: { userId: owner.user.id } })).toBe(1);
+
+    await prisma.gatheringGroup.update({ where: { id: first.id }, data: { suspendedAt: new Date() } });
+    const blocked = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${first.id}/events`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { title: '정지 중 행사', startsAt: '2026-06-02T03:00:00.000Z' },
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe('SUSPENDED');
+    const readable = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${first.id}`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(readable.statusCode).toBe(200);
+    const renewed = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/admin/groups/${first.id}/subscription`,
+      headers: { ...auth(owner.tokens.accessToken), 'x-gathering-operator-secret': currentOperatorSecret() },
+      payload: { source: 'PAID', idempotencyKey: `keep-suspend-${first.id}` },
+    });
+    expect(renewed.statusCode).toBe(200);
+    const still = await prisma.gatheringGroup.findUniqueOrThrow({ where: { id: first.id } });
+    expect(still.suspendedAt).not.toBeNull();
+  });
 });
 
 async function cleanup() {
@@ -235,6 +274,7 @@ async function cleanup() {
   await prisma.gatheringMediaAsset.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringNotification.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringSubscriptionAudit.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringTrialClaim.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.gatheringSubscription.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringEventAttendance.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringEvent.deleteMany({ where: { groupId: { in: groupIds } } });

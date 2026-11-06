@@ -186,6 +186,9 @@ async function cleanup() {
   await prisma.gatheringInvite.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringMembership.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringFinanceYear.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringSubscriptionAudit.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringSubscription.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringTrialClaim.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringGroup.deleteMany({ where: { id: { in: groupIds } } });
   await prisma.gatheringAuditLog.deleteMany({ where: { actorUserId: { in: userIds } } });
   await prisma.gatheringSession.deleteMany({ where: { userId: { in: userIds } } });

@@ -39,6 +39,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [destination, setDestination] = useState<Destination | null>(null);
   const [busy, setBusy] = useState(false);
   const [failedUploads, setFailedUploads] = useState<FailedUpload[]>([]);
+  const [writesAllowed, setWritesAllowed] = useState<boolean | undefined>(undefined);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -58,10 +59,21 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    let active = true;
+    void api.subscription(groupId).then((row) => {
+      if (active) setWritesAllowed(row.uploadsAllowed);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [groupId]);
+
   const destinationCount = events.length + folders.length;
   const blockReason = uploadBlockReason({
     destinationCount,
     destinationChosen: destination != null,
+    writesAllowed,
   });
 
   const upload = async (kind: 'PHOTO' | 'VIDEO') => {

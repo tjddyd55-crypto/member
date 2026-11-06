@@ -55,4 +55,13 @@ export type { HandoverAck, HandoverAction, HandoverStatus } from './handover.js'
 export { canRetryTransfer, signedUrlStillFresh, summarizeTransfer } from './transfer.js';
 export type { TransferItem, TransferState } from './transfer.js';
 export { subscriptionExpiry, subscriptionNoticeDedupeKey, subscriptionNoticeWindow } from './subscription.js';
+export {
+  FORMAL_ANNUAL_FEE_WON,
+  TRIAL_DAYS,
+  canOpenTrial,
+  evaluateEntitlement,
+  formalTermExpiry,
+  trialWindow,
+} from './entitlement.js';
+export type { EntitlementAction, EntitlementDenial } from './entitlement.js';
 export type { SubscriptionNoticeWindow } from './subscription.js';

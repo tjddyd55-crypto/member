@@ -18,6 +18,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember, type GroupAccess } from '../access.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
+import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
 import { gatheringUploadLimiter } from '../rate-limit.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
@@ -79,9 +80,9 @@ export async function createFolderMediaUploads(
   const reserved = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
     const now = new Date();
+    await assertGatheringWritable(tx, groupId, now);
     const usage = await loadBillableUsage(tx, groupId, now);
     const additionalBytes = prepared.reduce((sum, item) => sum + item.sizeBytes, 0);
-    // 이용권 만료는 폴더 업로드를 막지 않는다. 50GB와 회원 권한만 본다.
     const decision = evaluateUpload({ usage, kind: 'MEDIA', additionalBytes });
     if (!decision.allowed) rejectUploadDecision(decision);
     const rows: ReservedUpload[] = [];
@@ -221,9 +222,9 @@ async function reserveUploads(
   const now = new Date();
   return prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
+    await assertGatheringWritable(tx, groupId, now);
     const usage = await loadBillableUsage(tx, groupId, now);
     const additionalBytes = items.reduce((sum, item) => sum + item.sizeBytes, 0);
-    // 이용권 만료는 행사 업로드와 손님 링크 업로드를 막지 않는다.
     const decision = evaluateUpload({ usage, kind: 'MEDIA', additionalBytes });
     if (!decision.allowed) rejectUploadDecision(decision);
     const reserved: ReservedUpload[] = [];

@@ -2,12 +2,13 @@
  * 모임 이용권 저장 공간 정책.
  *
  * 한도는 십진 50GB(50_000_000_000 바이트)이고 사진·영상·영수증·기타를 함께 센다.
- * 이용권 행과 만료 시각은 그대로 둔다. 이용 기간이 없거나 끝나도 사진·영상 업로드는 막지 않는다.
- * 한도를 넘으면 미디어와 영수증 모두 거절한다.
+ * 이 함수는 용량만 본다. 이용 기간과 정지는 entitlement.ts 가 따로 거절한다.
+ * 한도를 넘으면 미디어와 영수증 모두 거절한다. 한도를 줄여도 이미 올린 파일은 지우지 않는다.
  * 갱신은 사용량을 0으로 되돌리지 않는다.
  */
 export const STORAGE_QUOTA_BYTES = 50_000_000_000;
 
+/** 예전 게시 연회비. 기존 이력의 3만 원을 이 값으로 다시 쓰지 않는다. 새 정식 요금은 FORMAL_ANNUAL_FEE_WON. */
 export const ANNUAL_GROUP_FEE_WON = 30_000;
 
 export type StorageUsage = {
@@ -24,7 +25,7 @@ export function billableStorageBytes(usage: StorageUsage): number {
   return usage.mediaBytes + usage.receiptBytes + usage.otherBytes;
 }
 
-/** 이용권 활성 여부는 받지 않는다. 회원 권한과 50GB 한도만 업로드를 거절한다. */
+/** 용량만 판정한다. 이용 기간은 인자로 받지 않는다. */
 export function evaluateUpload(input: {
   usage: StorageUsage;
   kind: UploadKind;

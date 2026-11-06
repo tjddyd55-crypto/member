@@ -4,6 +4,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
+import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
 import { lockGroupOpenYear, readFiscalPeriod } from './years.js';
 
@@ -38,6 +39,7 @@ export async function upsertDue(actorId: string, groupId: string, input: DueInpu
   }
   const saved = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
+    await assertGatheringWritable(tx, groupId);
     const period = await readFiscalPeriod(tx, groupId);
     const year = await lockGroupOpenYear(tx, groupId, input.year);
     if (paidAt && fiscalYearOf(paidAt, period) !== year.year) {

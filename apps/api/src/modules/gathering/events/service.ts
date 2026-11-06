@@ -1,6 +1,7 @@
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
+import { assertGatheringWritable } from '../entitlement.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { notifyGatheringEvent } from '../push/service.js';
@@ -20,6 +21,7 @@ const eventInclude = { attendances: true, group: { select: { name: true } } } as
 export async function createGatheringEvent(userId: string, groupId: string, input: EventInput) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'EVENT_MANAGE');
+  await assertGatheringWritable(prisma, groupId);
   const startsAt = parseInstant(input.startsAt, '시작 시각이 필요합니다.');
   const endsAt = parseOptionalInstant(input.endsAt);
   assertTimeOrder(startsAt, endsAt);
@@ -54,6 +56,7 @@ export async function updateGatheringEvent(
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'EVENT_MANAGE');
+  await assertGatheringWritable(prisma, groupId);
   const current = await findGroupEvent(groupId, eventId);
   const startsAt = input.startsAt ? parseInstant(input.startsAt, '시작 시각이 올바르지 않습니다.') : current.startsAt;
   const endsAt = input.endsAt === undefined ? current.endsAt : parseOptionalInstant(input.endsAt);

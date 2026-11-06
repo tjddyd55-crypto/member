@@ -37,6 +37,7 @@ export function MediaPane({
 }) {
   const target = eventId ? { kind: 'event' as const, id: eventId } : { kind: 'folder' as const, id: folderId ?? '' };
   const [items, setItems] = useState<GatheringMediaView[]>([]);
+  const [writesAllowed, setWritesAllowed] = useState<boolean | undefined>(undefined);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
@@ -127,7 +128,17 @@ export function MediaPane({
     }
   };
 
-  const uploadReason = uploadBlockReason({ destinationCount: 1, destinationChosen: true });
+  useEffect(() => {
+    let active = true;
+    void api.subscription(groupId).then((row) => {
+      if (active) setWritesAllowed(row.uploadsAllowed);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [groupId]);
+
+  const uploadReason = uploadBlockReason({ destinationCount: 1, destinationChosen: true, writesAllowed });
 
   const pick = async (kind: 'PHOTO' | 'VIDEO') => {
     if (uploadReason) return;

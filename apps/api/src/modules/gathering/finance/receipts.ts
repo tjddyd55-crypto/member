@@ -15,6 +15,7 @@ import { GatheringAuditAction } from '../constants.js';
 import { assertStoredObject } from '../storage/confirm.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
 import { loadBillableUsage } from '../storage/usage.js';
+import { assertGatheringWritable } from '../entitlement.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
 import { lockGroupOpenYear, lockOpenYearById, readFiscalPeriod } from './years.js';
 
@@ -151,6 +152,7 @@ async function reserveReceipts(
   prefixEnv: string,
 ) {
   await lockGroup(tx, groupId);
+  await assertGatheringWritable(tx, groupId);
   const period = await readFiscalPeriod(tx, groupId);
   const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(event.startsAt, period));
   const usage = await loadBillableUsage(tx, groupId, new Date());

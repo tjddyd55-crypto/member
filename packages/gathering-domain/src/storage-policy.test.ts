@@ -34,7 +34,7 @@ describe('저장 용량과 영수증 보존', () => {
     expect(decision).toEqual({ allowed: false, reason: 'QUOTA_EXCEEDED' });
   });
 
-  it('이용권이 없어도 한도 안의 사진과 영수증은 허용한다', () => {
+  it('용량 판정은 이용 기간을 보지 않고 한도 안의 사진과 영수증을 허용한다', () => {
     expect(evaluateUpload({ usage: underQuota, kind: 'MEDIA', additionalBytes: 1 })).toEqual({ allowed: true });
     expect(evaluateUpload({ usage: underQuota, kind: 'RECEIPT', additionalBytes: 1 })).toEqual({ allowed: true });
   });

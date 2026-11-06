@@ -1,10 +1,21 @@
 import type { Prisma } from '@prisma/client';
-import { fiscalWindowsCovering, fiscalYearOf, fiscalYearRange, isValidFiscalPeriod, type FiscalPeriod } from '@member/gathering-domain';
+import {
+  STORAGE_QUOTA_BYTES,
+  canOpenTrial,
+  fiscalWindowsCovering,
+  fiscalYearOf,
+  fiscalYearRange,
+  isValidFiscalPeriod,
+  normalizeKoreanMobile,
+  trialWindow,
+  type FiscalPeriod,
+} from '@member/gathering-domain';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
 import { writeGatheringAudit } from './audit.js';
 import { GatheringAuditAction } from './constants.js';
+import { sha256 } from './crypto.js';
 import { getGroupDetail } from './group-read.js';
 import { lockGroup } from './locks.js';
 
@@ -73,7 +84,47 @@ async function insertGroup(
     targetType: 'GatheringGroup',
     targetId: group.id,
   });
+  await openTrialIfUnclaimed(tx, userId, group.id, now);
   return group.id;
+}
+
+async function openTrialIfUnclaimed(tx: Prisma.TransactionClient, userId: string, groupId: string, now: Date) {
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { phone: true } });
+  const phone = user?.phone ? normalizeKoreanMobile(user.phone) : null;
+  if (!phone) return;
+  const phoneHash = sha256(phone);
+  const existing = await tx.gatheringTrialClaim.findUnique({ where: { phoneHash }, select: { id: true } });
+  if (!canOpenTrial(existing != null)) return;
+  try {
+    await tx.gatheringTrialClaim.create({ data: { phoneHash, userId, groupId } });
+  } catch (error) {
+    if (isUniqueConflict(error)) return;
+    throw error;
+  }
+  const window = trialWindow(now);
+  const subscription = await tx.gatheringSubscription.create({
+    data: {
+      groupId,
+      status: 'ACTIVE',
+      source: 'TRIAL',
+      startsAt: window.startsAt,
+      expiresAt: window.expiresAt,
+      storageQuotaBytes: BigInt(STORAGE_QUOTA_BYTES),
+    },
+  });
+  await tx.gatheringSubscriptionAudit.create({
+    data: {
+      groupId,
+      subscriptionId: subscription.id,
+      action: 'TRIAL',
+      actorUserId: userId,
+      metaJson: JSON.stringify({ expiresAt: window.expiresAt.toISOString() }),
+    },
+  });
+}
+
+function isUniqueConflict(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
 
 type GroupPatch = {

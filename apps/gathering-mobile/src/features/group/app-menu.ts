@@ -11,6 +11,15 @@ export type GatheringSwitchTarget = {
   membershipStatus: 'ACTIVE' | 'PENDING';
 };
 
+export function visibleGroupName(
+  cached: { id: string; name: string } | null | undefined,
+  currentId?: string,
+) {
+  if (!cached || !currentId || cached.id !== currentId) return null;
+  const name = cached.name.trim();
+  return name || null;
+}
+
 export function compactHeaderTitle(input: { groupName?: string | null; routeTitle: string }) {
   const name = input.groupName?.trim();
   if (name) return name;

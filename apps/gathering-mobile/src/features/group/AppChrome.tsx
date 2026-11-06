@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useGlobalSearchParams, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import {
   GLOBAL_MENU_ROUTES,
   gatheringSwitchItems,
   routeHeaderTitle,
+  visibleGroupName,
 } from './app-menu';
 
 const ChromeContext = createContext(false);
@@ -24,28 +25,29 @@ export function AppChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ groupId?: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : undefined;
-  const [groupName, setGroupName] = useState<string | null>(null);
+  const [namedGroup, setNamedGroup] = useState<{ id: string; name: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<GatheringGroupSummary[]>([]);
   const { width } = useWindowDimensions();
   const title = compactHeaderTitle({
-    groupName: groupId ? groupName : null,
+    groupName: visibleGroupName(namedGroup, groupId),
     routeTitle: routeHeaderTitle(pathname),
   });
 
   useEffect(() => {
     if (!groupId) {
-      setGroupName(null);
+      setNamedGroup(null);
       return;
     }
+    setNamedGroup((current) => (current?.id === groupId ? current : null));
     let active = true;
     void api
       .group(groupId)
       .then((group) => {
-        if (active) setGroupName(group.name);
+        if (active) setNamedGroup({ id: groupId, name: group.name });
       })
       .catch(() => {
-        if (active) setGroupName(null);
+        if (active) setNamedGroup((current) => (current?.id === groupId ? null : current));
       });
     return () => {
       active = false;
@@ -89,24 +91,26 @@ export function AppChrome({ children }: { children: ReactNode }) {
               <Pressable accessibilityRole="button" accessibilityLabel="메뉴 닫기" onPress={() => setOpen(false)} style={styles.close}>
                 <Text style={styles.closeLabel}>닫기</Text>
               </Pressable>
-              {GLOBAL_MENU_ROUTES.map((item) => (
-                <Pressable key={item.id} accessibilityRole="button" onPress={() => go(item.href)} style={styles.item}>
-                  <Text style={styles.itemLabel}>{item.label}</Text>
-                </Pressable>
-              ))}
-              {gatheringSwitchItems(groups, groupId).map((item) => (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: item.selected }}
-                  onPress={() => go(item.href)}
-                  style={styles.item}
-                >
-                  <Text style={styles.itemLabel} numberOfLines={2}>
-                    {item.selected ? `${item.label} · 보는 중` : item.label}
-                  </Text>
-                </Pressable>
-              ))}
+              <ScrollView style={styles.menuScroll} contentContainerStyle={styles.menuContent}>
+                {GLOBAL_MENU_ROUTES.map((item) => (
+                  <Pressable key={item.id} accessibilityRole="button" onPress={() => go(item.href)} style={styles.item}>
+                    <Text style={styles.itemLabel}>{item.label}</Text>
+                  </Pressable>
+                ))}
+                {gatheringSwitchItems(groups, groupId).map((item) => (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: item.selected }}
+                    onPress={() => go(item.href)}
+                    style={styles.item}
+                  >
+                    <Text style={styles.itemLabel} numberOfLines={2}>
+                      {item.selected ? `${item.label} · 보는 중` : item.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="메뉴 닫기" style={styles.backdrop} onPress={() => setOpen(false)} />
           </View>
@@ -142,7 +146,9 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
   },
   drawerRow: { flex: 1, flexDirection: 'row' },
-  drawer: { backgroundColor: theme.colors.bg.default, paddingBottom: theme.space[16] },
+  drawer: { height: '100%', backgroundColor: theme.colors.bg.default },
+  menuScroll: { flex: 1 },
+  menuContent: { paddingBottom: theme.space[16] },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
   close: {
     minHeight: theme.layout.buttonMinHeight,

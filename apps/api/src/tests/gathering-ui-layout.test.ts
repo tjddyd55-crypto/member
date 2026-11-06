@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compactHeaderTitle,
+  visibleGroupName,
   GATHERING_TABS,
   gatheringSwitchItems,
   GLOBAL_MENU_ROUTES,
@@ -38,6 +39,16 @@ describe('모임 화면 배치', () => {
     expect(items).toEqual([
       { id: 'a', label: '2023년 한국JC 위원장 협의회', href: '/(app)/groups/a', selected: true },
     ]);
+    expect(visibleGroupName({ id: 'a', name: '가 모임' }, 'a')).toBe('가 모임');
+    expect(visibleGroupName({ id: 'a', name: '가 모임' }, 'b')).toBeNull();
+    const many = gatheringSwitchItems(
+      Array.from({ length: 30 }, (_, index) => ({
+        id: String(index),
+        name: `모임 ${index}`,
+        membershipStatus: 'ACTIVE' as const,
+      })),
+    );
+    expect(many).toHaveLength(30);
   });
 
   it('앨범 업로드 예약은 한 요청에 20장을 넘기지 않는다', () => {

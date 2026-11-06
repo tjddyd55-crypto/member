@@ -28,8 +28,9 @@ export default defineConfig({
     video: 'off',
   },
   projects: [
-    { name: 'pc', use: { viewport: { width: 1280, height: 800 } } },
-    { name: 'mobile', use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'pc', testIgnore: /nav-layout/, use: { viewport: { width: 1280, height: 800 } } },
+    { name: 'mobile', testIgnore: /nav-layout/, use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'layout', testMatch: /nav-layout/, use: { viewport: { width: 390, height: 985 }, isMobile: true, hasTouch: true } },
   ],
   webServer: [
     {

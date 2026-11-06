@@ -340,6 +340,34 @@ describe('관리자 운영 API', () => {
       where: { groupId: second.id, source: 'PAID' },
     });
     expect(approvals.some((item) => item.targetId === secondSub.id)).toBe(false);
+
+    const reused = await send(localSession, 'POST', `/api/gathering-admin/groups/${second.id}/subscription`, {
+      reason: '다른 모임에 같은 키',
+      idempotencyKey: `scope-first-${first.id}`,
+    });
+    expect(reused.statusCode).toBe(409);
+    expect(reused.json().error.code).toBe('IDEMPOTENCY_CONFLICT');
+    expect(await prisma.gatheringSubscription.count({ where: { groupId: second.id, source: 'PAID' } })).toBe(1);
+
+    const deposit = await send(session, 'POST', `/api/gathering-admin/groups/${first.id}/deposits`, {
+      payerName: '대기자',
+      amountWon: 60000,
+      paidOn: '2026-11-06T00:00:00.000Z',
+      idempotencyKey: `scope-dep-${first.id}`,
+    });
+    expect(deposit.statusCode).toBe(200);
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/api/gathering-admin/groups/${first.id}/deposits`,
+      headers: { cookie: localSession.cookie },
+    });
+    expect(listed.statusCode).toBe(404);
+    const visible = await app.inject({
+      method: 'GET',
+      url: `/api/gathering-admin/groups/${first.id}/deposits`,
+      headers: { cookie: session.cookie },
+    });
+    expect(visible.json().items.some((item: { id: string; status: string }) => item.id === deposit.json().id && item.status === 'PENDING')).toBe(true);
   });
 });
 

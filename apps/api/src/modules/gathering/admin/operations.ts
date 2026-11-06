@@ -117,7 +117,7 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
 }
 
 export async function setGroupSuspension(adminId: string, groupId: string, suspended: boolean, reason: string, idempotencyKey: string) {
-  return withOperation(adminId, idempotencyKey, 'SUSPEND', groupId, async (tx, account) => {
+  return withOperation(adminId, idempotencyKey, 'SUSPEND', groupId, groupId, async (tx, account) => {
     assertCapability(account, 'SUBSCRIPTION_WRITE', groupId);
     if (!reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     const before = await tx.gatheringGroup.findUnique({ where: { id: groupId }, select: { suspendedAt: true, createdByUserId: true } });
@@ -144,7 +144,7 @@ export async function approveSubscription(
   groupId: string,
   input: { idempotencyKey: string; reason: string; source?: 'PAID' | 'COMPLIMENTARY'; startsAt?: string; expiresAt?: string },
 ) {
-  return withOperation(adminId, input.idempotencyKey, 'SUBSCRIPTION_APPROVE', groupId, async (tx, account) => {
+  return withOperation(adminId, input.idempotencyKey, 'SUBSCRIPTION_APPROVE', groupId, groupId, async (tx, account) => {
     assertCapability(account, 'SUBSCRIPTION_WRITE', groupId);
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     const now = new Date();
@@ -187,7 +187,7 @@ export async function approveSubscription(
 }
 
 export async function cancelSubscription(adminId: string, groupId: string, input: { idempotencyKey: string; reason: string }) {
-  return withOperation(adminId, input.idempotencyKey, 'SUBSCRIPTION_CANCEL', groupId, async (tx, account) => {
+  return withOperation(adminId, input.idempotencyKey, 'SUBSCRIPTION_CANCEL', groupId, groupId, async (tx, account) => {
     assertCapability(account, 'SUBSCRIPTION_WRITE', groupId);
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     const current = await tx.gatheringSubscription.findFirst({
@@ -215,7 +215,7 @@ export async function recordDeposit(
   groupId: string,
   input: { idempotencyKey: string; payerName: string; amountWon: number; paidOn: string; memo?: string },
 ) {
-  return withOperation(adminId, input.idempotencyKey, 'DEPOSIT_RECORD', groupId, async (tx, account) => {
+  return withOperation(adminId, input.idempotencyKey, 'DEPOSIT_RECORD', groupId, groupId, async (tx, account) => {
     assertCapability(account, 'PAYMENT_WRITE', groupId);
     if (!Number.isInteger(input.amountWon) || input.amountWon <= 0) {
       throw new AppError(400, 'INVALID_AMOUNT', '입금액은 1원 이상 정수입니다.');
@@ -251,7 +251,7 @@ export async function confirmDeposit(
 ) {
   const deposit = await prisma.gatheringDeposit.findUnique({ where: { id: depositId } });
   if (!deposit) throw new AppError(404, 'DEPOSIT_NOT_FOUND', '입금 기록을 찾을 수 없습니다.');
-  return withOperation(adminId, input.idempotencyKey, 'DEPOSIT_CONFIRM', deposit.groupId, async (tx, account) => {
+  return withOperation(adminId, input.idempotencyKey, 'DEPOSIT_CONFIRM', deposit.groupId, depositId, async (tx, account) => {
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     const current = await tx.gatheringDeposit.findUnique({ where: { id: depositId } });
     if (!current) throw new AppError(404, 'DEPOSIT_NOT_FOUND', '입금 기록을 찾을 수 없습니다.');
@@ -290,7 +290,7 @@ export async function confirmDeposit(
 }
 
 export async function setGroupQuota(adminId: string, groupId: string, input: { idempotencyKey: string; quotaBytes: number; reason: string }) {
-  return withOperation(adminId, input.idempotencyKey, 'QUOTA', groupId, async (tx, account) => {
+  return withOperation(adminId, input.idempotencyKey, 'QUOTA', groupId, groupId, async (tx, account) => {
     assertCapability(account, 'QUOTA_WRITE', groupId);
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     if (!Number.isInteger(input.quotaBytes) || input.quotaBytes < 0) {
@@ -399,19 +399,20 @@ async function withOperation<T>(
   idempotencyKey: string,
   action: string,
   groupId: string,
+  targetId: string,
   run: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], account: AccountWithScopes) => Promise<T>,
 ): Promise<T> {
-  const existing = await prisma.gatheringAdminOperation.findUnique({ where: { idempotencyKey } });
-  if (existing) return replay(existing, action);
   const account = await loadAccount(adminId);
+  const existing = await prisma.gatheringAdminOperation.findUnique({ where: { idempotencyKey } });
+  if (existing) return replay(existing, account, action, groupId, targetId);
   try {
     return await prisma.$transaction(async (tx) => {
       await lockGroup(tx, groupId);
       const again = await tx.gatheringAdminOperation.findUnique({ where: { idempotencyKey } });
-      if (again) return replay(again, action);
+      if (again) return replay(again, account, action, groupId, targetId);
       const result = await run(tx, account);
       await tx.gatheringAdminOperation.create({
-        data: { idempotencyKey, adminId, action, resultJson: JSON.stringify(result) },
+        data: { idempotencyKey, adminId, action, groupId, targetId, resultJson: JSON.stringify(result) },
       });
       return result;
     });
@@ -419,13 +420,48 @@ async function withOperation<T>(
     if (!isUnique(error)) throw error;
     const saved = await prisma.gatheringAdminOperation.findUnique({ where: { idempotencyKey } });
     if (!saved) throw error;
-    return replay(saved, action);
+    return replay(saved, account, action, groupId, targetId);
   }
 }
 
-function replay<T>(row: { action: string; resultJson: string }, action: string): T {
-  if (row.action !== action) throw new AppError(409, 'IDEMPOTENCY_CONFLICT', '같은 키를 다른 작업에 쓸 수 없습니다.');
+function replay<T>(
+  row: { adminId: string; action: string; groupId: string | null; targetId: string | null; resultJson: string },
+  account: AccountWithScopes,
+  action: string,
+  groupId: string,
+  targetId: string,
+): T {
+  if (row.adminId !== account.id || row.action !== action || row.groupId !== groupId || row.targetId !== targetId) {
+    throw new AppError(409, 'IDEMPOTENCY_CONFLICT', '같은 키를 다른 작업에 쓸 수 없습니다.');
+  }
+  assertCapability(account, capabilityFor(action), groupId);
   return JSON.parse(row.resultJson) as T;
+}
+
+function capabilityFor(action: string): AdminCapability {
+  if (action === 'SUSPEND' || action === 'SUBSCRIPTION_APPROVE' || action === 'SUBSCRIPTION_CANCEL') return 'SUBSCRIPTION_WRITE';
+  if (action === 'DEPOSIT_RECORD' || action === 'DEPOSIT_CONFIRM') return 'PAYMENT_WRITE';
+  if (action === 'QUOTA') return 'QUOTA_WRITE';
+  if (action === 'MEMBER_RESTRICTION') return 'MEMBER_RESTRICT';
+  throw new AppError(500, 'UNKNOWN_OPERATION', '알 수 없는 작업입니다.');
+}
+
+export async function listGroupDeposits(adminId: string, groupId: string) {
+  const account = await loadAccount(adminId);
+  assertCapability(account, 'PAYMENT_WRITE', groupId);
+  const rows = await prisma.gatheringDeposit.findMany({
+    where: { groupId },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    payerName: row.payerName,
+    amountWon: row.amountWon,
+    paidOn: row.paidOn.toISOString(),
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+  }));
 }
 
 async function sumUsedBytes(ids: string[] | null) {
@@ -480,7 +516,7 @@ export async function setMemberRestriction(
   membershipId: string,
   input: { suspended: boolean; reason: string; idempotencyKey: string },
 ) {
-  return withOperation(adminId, input.idempotencyKey, 'MEMBER_RESTRICTION', groupId, async (tx, account) => {
+  return withOperation(adminId, input.idempotencyKey, 'MEMBER_RESTRICTION', groupId, membershipId, async (tx, account) => {
     assertCapability(account, 'MEMBER_RESTRICT', groupId);
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     const membership = await tx.gatheringMembership.findFirst({ where: { id: membershipId, groupId } });

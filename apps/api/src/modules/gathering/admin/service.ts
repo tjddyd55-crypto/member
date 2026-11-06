@@ -113,6 +113,21 @@ export async function confirmAdminTotp(
     throw new AppError(401, 'TOTP_INVALID', '인증 코드가 올바르지 않습니다.');
   }
   await prisma.$transaction(async (tx) => {
+    await tx.gatheringAdminAccount.update({
+      where: { id: row.adminId },
+      data: { updatedAt: now },
+    });
+    const current = await tx.gatheringAdminEnrollment.findUnique({ where: { id: row.id } });
+    if (!current || current.usedAt || current.pendingSecretCipher !== row.pendingSecretCipher) {
+      throw new AppError(401, 'ENROLLMENT_USED', '등록 토큰을 이미 사용했습니다.');
+    }
+    const consumed = await tx.gatheringAdminEnrollment.updateMany({
+      where: { id: current.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    if (consumed.count !== 1) {
+      throw new AppError(401, 'ENROLLMENT_USED', '등록 토큰을 이미 사용했습니다.');
+    }
     await tx.gatheringAdminEnrollment.updateMany({
       where: { adminId: row.adminId, usedAt: null },
       data: { usedAt: now, pendingSecretCipher: null },

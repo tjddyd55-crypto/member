@@ -196,7 +196,14 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
   const [subscriptionId, setSubscriptionId] = useState(currentSubscriptionId ?? '');
   const [allowMismatch, setAllowMismatch] = useState(false);
   const [depositId, setDepositId] = useState('');
+  const [pending, setPending] = useState<Array<{ id: string; payerName: string; amountWon: number; status: string }>>([]);
   const [error, setError] = useState('');
+  function loadPending() {
+    api<{ items: Array<{ id: string; payerName: string; amountWon: number; status: string }> }>(`/api/gathering-admin/groups/${groupId}/deposits`)
+      .then((row) => setPending(row.items.filter((item) => item.status === 'PENDING')))
+      .catch(() => setPending([]));
+  }
+  useEffect(loadPending, [groupId]);
   return (
     <form className="panel row" onSubmit={(event) => {
       event.preventDefault();
@@ -209,7 +216,10 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
           paidOn: new Date(paidOn).toISOString(),
           idempotencyKey: `dep-${Date.now()}`,
         }),
-      }).then((created) => setDepositId(created.id)).catch((cause) => {
+      }).then((created) => {
+        setDepositId(created.id);
+        loadPending();
+      }).catch((cause) => {
         setDepositId('');
         setError(cause instanceof ApiError ? cause.message : '입금을 기록하지 못했습니다.');
       });
@@ -219,6 +229,16 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
       <label>금액<input value={amountWon} onChange={(event) => setAmountWon(event.target.value)} inputMode="numeric" /></label>
       <label>입금일<input type="datetime-local" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required /></label>
       <button type="submit">입금 기록</button>
+      {pending.length > 0 ? (
+        <div>
+          <p>확인 전 입금</p>
+          {pending.map((item) => (
+            <button key={item.id} type="button" className={depositId === item.id ? '' : 'ghost'} onClick={() => setDepositId(item.id)}>
+              {item.payerName} {item.amountWon}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {depositId ? <p>기록 {depositId}. 확인 전에는 이용권에 연결되지 않습니다.</p> : null}
       <label>연결할 이용권 ID<input value={subscriptionId} onChange={(event) => setSubscriptionId(event.target.value)} /></label>
       {role === 'SUPER_ADMIN' ? <label><input type="checkbox" checked={allowMismatch} onChange={(event) => setAllowMismatch(event.target.checked)} /> 금액이 달라도 슈퍼관리자가 연결</label> : null}

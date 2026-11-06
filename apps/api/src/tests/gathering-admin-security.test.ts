@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { hashPassword } from '../services/auth-service.js';
-import { totpAt } from '../modules/gathering/admin/totp.js';
+import { decryptAdminSecret, totpAt } from '../modules/gathering/admin/totp.js';
 
 let app: FastifyInstance;
 const userIds: string[] = [];
@@ -169,6 +169,49 @@ describe('관리자 보안과 기간 입력', () => {
     expect(restricted.json().financeCount).toBe(0);
     expect(restricted.json().handoverCount).toBe(0);
     expect(await prisma.gatheringFinanceTransaction.count({ where: { groupId: group.id } })).toBe(0);
+  });
+
+  it('동시에 확인한 다른 등록 토큰은 비밀을 덮어쓰지 않는다', async () => {
+    const loginId = `race.enroll.${Date.now()}`;
+    const admin = await makeAdmin(loginId, 'SUPER_ADMIN');
+    const firstLogin = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/login',
+      payload: { loginId, password },
+    });
+    const secondLogin = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/login',
+      payload: { loginId, password },
+    });
+    const startA = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/totp/start',
+      payload: { enrollmentToken: firstLogin.json().enrollmentToken },
+    });
+    const startB = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/totp/start',
+      payload: { enrollmentToken: secondLogin.json().enrollmentToken },
+    });
+    const [left, right] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/api/gathering-admin/auth/totp/confirm',
+        payload: { enrollmentToken: firstLogin.json().enrollmentToken, code: totpAt(startA.json().secret as string, Date.now()) },
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/gathering-admin/auth/totp/confirm',
+        payload: { enrollmentToken: secondLogin.json().enrollmentToken, code: totpAt(startB.json().secret as string, Date.now()) },
+      }),
+    ]);
+    expect([left.statusCode, right.statusCode].sort()).toEqual([200, 401]);
+    const stored = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: admin.id } });
+    const winner = left.statusCode === 200 ? (startA.json().secret as string) : (startB.json().secret as string);
+    const loser = left.statusCode === 200 ? (startB.json().secret as string) : (startA.json().secret as string);
+    expect(decryptAdminSecret(stored.totpSecretCipher ?? '')).toBe(winner);
+    expect(winner).not.toBe(loser);
   });
 });
 

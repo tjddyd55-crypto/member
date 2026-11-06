@@ -1210,6 +1210,8 @@ model GatheringAdminOperation {
   idempotencyKey String   @unique
   adminId        String
   action         String
+  groupId        String?
+  targetId       String?
   resultJson     String
   createdAt      DateTime @default(now())
 

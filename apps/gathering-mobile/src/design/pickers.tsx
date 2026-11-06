@@ -117,20 +117,47 @@ export function AddressField({
       <Modal animationType="slide" visible={open} onRequestClose={() => setOpen(false)}>
         <View style={styles.modal}>
           <Button label="닫기" variant="text" onPress={() => setOpen(false)} />
-          <WebView
-            source={{ html: POSTCODE_PAGE }}
-            onMessage={(event) => {
-              const roadAddress = parsePostcodeMessage(event.nativeEvent.data);
-              if (!roadAddress) return;
-              apply(roadAddress, detail);
-              setOpen(false);
-            }}
-            originWhitelist={['*']}
-          />
+          {Platform.OS === 'web' ? (
+            <WebPostcode
+              onSelect={(roadAddress) => {
+                apply(roadAddress, detail);
+                setOpen(false);
+              }}
+            />
+          ) : (
+            <WebView
+              source={{ html: POSTCODE_PAGE }}
+              onMessage={(event) => {
+                const roadAddress = parsePostcodeMessage(event.nativeEvent.data);
+                if (!roadAddress) return;
+                apply(roadAddress, detail);
+                setOpen(false);
+              }}
+              originWhitelist={['*']}
+            />
+          )}
         </View>
       </Modal>
     </View>
   );
+}
+
+function WebPostcode({ onSelect }: { onSelect: (road: string) => void }) {
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const raw = typeof event.data === 'string' ? event.data : '';
+      const roadAddress = parsePostcodeMessage(raw);
+      if (!roadAddress) return;
+      onSelect(roadAddress);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [onSelect]);
+  return createElement('iframe', {
+    title: '주소 검색',
+    srcDoc: POSTCODE_PAGE,
+    style: { border: '0', width: '100%', height: '100%', flex: 1 },
+  });
 }
 
 const styles = StyleSheet.create({

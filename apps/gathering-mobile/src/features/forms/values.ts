@@ -98,7 +98,12 @@ export const POSTCODE_PAGE = `<!doctype html>
 new daum.Postcode({
   oncomplete: function (data) {
     var payload = { roadAddress: data.roadAddress || '', jibunAddress: data.jibunAddress || '' };
-    window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+    var raw = JSON.stringify(payload);
+    if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+      window.ReactNativeWebView.postMessage(raw);
+    } else if (window.parent) {
+      window.parent.postMessage(raw, '*');
+    }
   },
   width: '100%',
   height: '100%'

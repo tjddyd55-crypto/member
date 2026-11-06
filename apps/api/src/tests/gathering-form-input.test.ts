@@ -9,6 +9,7 @@ import {
   formatKoreanDate,
   keyboardAvoidingBehavior,
   paidAtFromCalendarDate,
+  POSTCODE_PAGE,
   parsePostcodeMessage,
   uploadLinkStatus,
 } from '../../../gathering-mobile/src/features/forms/values';
@@ -32,6 +33,8 @@ describe('모임 입력', () => {
       '서울 중구 세종대로 110',
     );
     expect(parsePostcodeMessage('{}')).toBeNull();
+    expect(POSTCODE_PAGE).toContain('ReactNativeWebView.postMessage');
+    expect(POSTCODE_PAGE).toContain("window.parent.postMessage(raw, '*')");
     expect(composeAddress('서울 중구 세종대로 110', '101호')).toBe('서울 중구 세종대로 110 101호');
     expect(composeAddress('서울 중구 세종대로 110', '')).toBe('서울 중구 세종대로 110');
   });

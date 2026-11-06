@@ -6,6 +6,7 @@ import {
   type AdminCapability,
   type AdminRole,
 } from '@member/gathering-domain';
+import type { Prisma } from '@prisma/client';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { lockGroup } from '../locks.js';
@@ -190,10 +191,7 @@ export async function cancelSubscription(adminId: string, groupId: string, input
   return withOperation(adminId, input.idempotencyKey, 'SUBSCRIPTION_CANCEL', groupId, groupId, async (tx, account) => {
     assertCapability(account, 'SUBSCRIPTION_WRITE', groupId);
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
-    const current = await tx.gatheringSubscription.findFirst({
-      where: { groupId, status: 'ACTIVE' },
-      orderBy: { expiresAt: 'desc' },
-    });
+    const current = await currentTerm(tx, groupId, new Date());
     if (!current) throw new AppError(409, 'NO_ACTIVE_SUBSCRIPTION', '취소할 이용권이 없습니다.');
     await tx.gatheringSubscription.update({ where: { id: current.id }, data: { status: 'REVOKED' } });
     await writeAdminAudit(tx, {
@@ -296,10 +294,7 @@ export async function setGroupQuota(adminId: string, groupId: string, input: { i
     if (!Number.isInteger(input.quotaBytes) || input.quotaBytes < 0) {
       throw new AppError(400, 'INVALID_QUOTA', '용량은 0 이상의 정수 바이트입니다.');
     }
-    const current = await tx.gatheringSubscription.findFirst({
-      where: { groupId, status: 'ACTIVE' },
-      orderBy: { updatedAt: 'desc' },
-    });
+    const current = await currentTerm(tx, groupId, new Date());
     if (!current) throw new AppError(409, 'NO_ACTIVE_SUBSCRIPTION', '용량을 바꿀 이용권이 없습니다.');
     const before = Number(current.storageQuotaBytes);
     await tx.gatheringSubscription.update({
@@ -436,6 +431,18 @@ function replay<T>(
   }
   assertCapability(account, capabilityFor(action), groupId);
   return JSON.parse(row.resultJson) as T;
+}
+
+async function currentTerm(tx: Prisma.TransactionClient, groupId: string, now: Date) {
+  const covering = await tx.gatheringSubscription.findFirst({
+    where: { groupId, status: 'ACTIVE', startsAt: { lte: now }, expiresAt: { gt: now } },
+    orderBy: { expiresAt: 'desc' },
+  });
+  if (covering) return covering;
+  return tx.gatheringSubscription.findFirst({
+    where: { groupId, status: 'ACTIVE' },
+    orderBy: { startsAt: 'asc' },
+  });
 }
 
 function capabilityFor(action: string): AdminCapability {

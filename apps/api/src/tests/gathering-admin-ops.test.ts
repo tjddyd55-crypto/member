@@ -369,6 +369,45 @@ describe('관리자 운영 API', () => {
     });
     expect(visible.json().items.some((item: { id: string; status: string }) => item.id === deposit.json().id && item.status === 'PENDING')).toBe(true);
   });
+
+  it('취소와 용량 변경은 지금 적용 중인 이용권을 고른다', async () => {
+    const owner = await register('기간회장');
+    const group = await createGroup(owner.token, '미래 이용권 모임');
+    const covering = await prisma.gatheringSubscription.findFirstOrThrow({ where: { groupId: group.id, source: 'TRIAL' } });
+    const { hashPassword } = await import('../services/auth-service.js');
+    const loginId = `term.root.${Date.now()}`;
+    const root = await prisma.gatheringAdminAccount.create({
+      data: { loginId, passwordHash: await hashPassword(password), role: 'SUPER_ADMIN' },
+    });
+    adminIds.push(root.id);
+    const session = await enroll(loginId);
+    const startsAt = new Date(Date.now() + 40 * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString();
+    const future = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/subscription`, {
+      reason: '미래 정식',
+      idempotencyKey: `future-${group.id}`,
+      startsAt,
+      expiresAt,
+    });
+    expect(future.statusCode).toBe(200);
+    const quota = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/quota`, {
+      quotaBytes: 1234,
+      reason: '현재 용량',
+      idempotencyKey: `quota-now-${group.id}`,
+    });
+    expect(quota.statusCode).toBe(200);
+    const coveringAfter = await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: covering.id } });
+    const scheduled = await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: future.json().id as string } });
+    expect(Number(coveringAfter.storageQuotaBytes)).toBe(1234);
+    expect(Number(scheduled.storageQuotaBytes)).not.toBe(1234);
+    const cancelled = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/subscription/cancel`, {
+      reason: '현재 기간 취소',
+      idempotencyKey: `cancel-now-${group.id}`,
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json().id).toBe(covering.id);
+    expect((await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: scheduled.id } })).status).toBe('ACTIVE');
+  });
 });
 
 async function send(session: { cookie: string; csrf: string }, method: 'POST', url: string, payload: unknown) {

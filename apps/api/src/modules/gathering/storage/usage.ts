@@ -12,13 +12,13 @@ export async function loadBillableUsage(db: UsageDb, groupId: string, now: Date)
   return { mediaBytes: media, receiptBytes: receipts, otherBytes: 0 };
 }
 
-export async function loadGroupQuotaBytes(db: UsageDb, groupId: string) {
-  const active = await db.gatheringSubscription.findFirst({
-    where: { groupId, status: 'ACTIVE' },
-    orderBy: { updatedAt: 'desc' },
+export async function loadGroupQuotaBytes(db: UsageDb, groupId: string, now = new Date()) {
+  const covering = await db.gatheringSubscription.findFirst({
+    where: { groupId, status: 'ACTIVE', startsAt: { lte: now }, expiresAt: { gt: now } },
+    orderBy: { expiresAt: 'desc' },
     select: { storageQuotaBytes: true },
   });
-  if (active) return Number(active.storageQuotaBytes);
+  if (covering) return Number(covering.storageQuotaBytes);
   const latest = await db.gatheringSubscription.findFirst({
     where: { groupId },
     orderBy: { createdAt: 'desc' },

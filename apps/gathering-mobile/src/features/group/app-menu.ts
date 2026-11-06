@@ -30,9 +30,15 @@ export function routeHeaderTitle(pathname: string) {
   if (pathname.includes('/calendar')) return '전체 일정';
   if (pathname.includes('/profile')) return '모임 프로필';
   if (pathname.includes('/account-delete')) return '계정 삭제';
+  if (pathname.includes('/groups/create')) return '모임 만들기';
   if (/\/groups\/[^/]+/.test(pathname)) return '모임';
   if (pathname.includes('/groups')) return '내 모임';
   return 'JCI KOREA';
+}
+
+/** 메뉴 이동은 지금 화면만 바꾸지 않고, 쌓인 이전 모임을 먼저 걷어 낸다. */
+export function globalMenuNavigation(canDismiss: boolean) {
+  return canDismiss ? (['dismiss-all', 'replace'] as const) : (['replace'] as const);
 }
 
 export function gatheringSwitchItems(groups: readonly GatheringSwitchTarget[], currentId?: string) {

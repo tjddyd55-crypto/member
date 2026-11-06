@@ -5,6 +5,7 @@ import {
   GATHERING_TABS,
   gatheringSwitchItems,
   GLOBAL_MENU_ROUTES,
+  globalMenuNavigation,
   routeHeaderTitle,
 } from '../../../gathering-mobile/src/features/group/app-menu';
 import { tabIconSize, tabLabelSize, tabSlotWidth } from '../../../gathering-mobile/src/features/group/tab-layout';
@@ -26,7 +27,10 @@ describe('모임 화면 배치', () => {
       '2023년 한국JC 위원장 협의회',
     );
     expect(routeHeaderTitle('/groups/group-1')).toBe('모임');
+    expect(routeHeaderTitle('/groups/create')).toBe('모임 만들기');
     expect(routeHeaderTitle('/groups')).toBe('내 모임');
+    expect(globalMenuNavigation(true)).toEqual(['dismiss-all', 'replace']);
+    expect(globalMenuNavigation(false)).toEqual(['replace']);
     expect(GLOBAL_MENU_ROUTES.map((item) => item.label)).toEqual(['내 모임', '전체 일정']);
     expect(GLOBAL_MENU_ROUTES.some((item) => item.label === '홈')).toBe(false);
     const items = gatheringSwitchItems(

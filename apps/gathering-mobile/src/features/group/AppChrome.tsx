@@ -10,6 +10,7 @@ import {
   compactHeaderTitle,
   GLOBAL_MENU_ROUTES,
   gatheringSwitchItems,
+  globalMenuNavigation,
   routeHeaderTitle,
   visibleGroupName,
 } from './app-menu';
@@ -24,7 +25,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ groupId?: string }>();
-  const groupId = typeof params.groupId === 'string' ? params.groupId : undefined;
+  const groupId = typeof params.groupId === 'string' && params.groupId !== 'create' ? params.groupId : undefined;
   const [namedGroup, setNamedGroup] = useState<{ id: string; name: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<GatheringGroupSummary[]>([]);
@@ -64,7 +65,10 @@ export function AppChrome({ children }: { children: ReactNode }) {
 
   const go = (href: string) => {
     setOpen(false);
-    router.replace(href as '/(app)/groups');
+    for (const step of globalMenuNavigation(router.canDismiss())) {
+      if (step === 'dismiss-all') router.dismissAll();
+      else router.replace(href as '/(app)/groups');
+    }
   };
 
   return (

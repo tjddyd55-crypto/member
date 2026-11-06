@@ -9,4 +9,10 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:3001',
     },
   },
+  preview: {
+    port: 5174,
+    proxy: {
+      '/api': 'http://127.0.0.1:3001',
+    },
+  },
 });

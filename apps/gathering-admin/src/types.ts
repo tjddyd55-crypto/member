@@ -16,7 +16,7 @@ export type GroupItem = {
   president: Person | null;
   memberCount: number;
   suspended: boolean;
-  subscription: { status: string; source: string | null; startsAt: string | null; expiresAt: string | null };
+  subscription: { id: string | null; status: string; source: string | null; startsAt: string | null; expiresAt: string | null };
   usedBytes: number;
   quotaBytes: number;
   lastActivityAt: string;

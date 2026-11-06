@@ -127,6 +127,7 @@ async function presentGroup(groupId: string, showContact: boolean) {
     memberCount,
     suspended: group.suspendedAt != null,
     subscription: {
+      id: subscription?.id ?? null,
       status: !subscription ? 'NONE' : covered ? 'ACTIVE' : 'EXPIRED',
       source: subscription?.source ?? null,
       startsAt: subscription?.startsAt?.toISOString() ?? null,

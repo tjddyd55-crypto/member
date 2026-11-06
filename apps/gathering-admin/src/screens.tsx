@@ -98,7 +98,7 @@ export function GroupsPage() {
               <td><Link to={`/groups/${item.id}`}>{item.name}</Link><br />{item.id}</td>
               <td>{item.creator.name}<br />{phoneLinks(item.creator.phone)}</td>
               <td>{item.president?.name ?? '-'}<br />{phoneLinks(item.president?.phone ?? null)}</td>
-              <td>{item.subscription.source ?? '-'} {item.subscription.status}{item.suspended ? ' · 정지' : ''}<br />{when(item.subscription.expiresAt)}</td>
+              <td data-source={item.subscription.source ?? ''} data-expiry={item.subscription.expiresAt ?? ''}>{item.subscription.source ?? '-'} {item.subscription.status}{item.suspended ? ' · 정지' : ''}<br />{when(item.subscription.expiresAt)}</td>
               <td>{item.usedBytes} / {item.quotaBytes}</td>
             </tr>
           ))}
@@ -138,7 +138,7 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
   return (
     <section>
       <h1>{group.name}</h1>
-      <p>{group.subscription.status} {group.suspended ? '· 정지' : ''} · 만료 {when(group.subscription.expiresAt)} · {group.usedBytes}/{group.quotaBytes}</p>
+      <p data-quota={group.quotaBytes} data-suspended={group.suspended ? '1' : '0'} data-source={group.subscription.source ?? ''}>{group.subscription.status} {group.suspended ? '· 정지' : ''} · 만료 {when(group.subscription.expiresAt)} · {group.usedBytes}/{group.quotaBytes}</p>
       <ErrorText error={error} />
       {notice ? <p>{notice}</p> : null}
       <div className="tabs">
@@ -151,8 +151,8 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
           <article className="panel"><h2>현재 회장</h2><p>{group.president?.name ?? '없음'}</p><p>{group.president?.id}</p>{phoneLinks(group.president?.phone ?? null)}<p>{group.president?.localJcName} · {when(group.president?.since ?? null)}</p></article>
         </div>
       ) : null}
-      {tab === '이용권' ? <SubscriptionForm groupId={groupId} onSubmit={run} /> : null}
-      {tab === '입금' ? <DepositForm groupId={groupId} role={role} onSubmit={run} /> : null}
+      {tab === '이용권' ? <SubscriptionForm groupId={groupId} subscriptionId={group.subscription.id} onSubmit={run} /> : null}
+      {tab === '입금' ? <DepositForm groupId={groupId} subscriptionId={group.subscription.id} role={role} onSubmit={run} /> : null}
       {tab === '용량' ? <QuotaForm groupId={groupId} onSubmit={run} /> : null}
       {tab === '회원' ? <GroupMembers groupId={groupId} refresh={memberRefresh} onSubmit={run} /> : null}
       {tab === '감사' ? <AuditsPage /> : null}
@@ -160,7 +160,7 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
   );
 }
 
-function SubscriptionForm({ groupId, onSubmit }: { groupId: string; onSubmit: (path: string, body: unknown) => Promise<void> }) {
+function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: string; subscriptionId: string | null; onSubmit: (path: string, body: unknown) => Promise<void> }) {
   const [source, setSource] = useState<'PAID' | 'COMPLIMENTARY'>('PAID');
   const [startsAt, setStartsAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
@@ -176,6 +176,7 @@ function SubscriptionForm({ groupId, onSubmit }: { groupId: string; onSubmit: (p
       }
       void onSubmit(`/api/gathering-admin/groups/${groupId}/subscription`, body);
     }}>
+      <p>현재 이용권 {subscriptionId ?? '없음'}</p>
       <label>구분<select value={source} onChange={(event) => setSource(event.target.value as 'PAID' | 'COMPLIMENTARY')}><option value="PAID">정식</option><option value="COMPLIMENTARY">무상</option></select></label>
       <label>시작<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
       <label>종료<input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></label>
@@ -188,16 +189,18 @@ function SubscriptionForm({ groupId, onSubmit }: { groupId: string; onSubmit: (p
   );
 }
 
-function DepositForm({ groupId, role, onSubmit }: { groupId: string; role: 'SUPER_ADMIN' | 'ADMIN'; onSubmit: (path: string, body: unknown) => Promise<void> }) {
+function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onSubmit }: { groupId: string; subscriptionId: string | null; role: 'SUPER_ADMIN' | 'ADMIN'; onSubmit: (path: string, body: unknown) => Promise<void> }) {
   const [payerName, setPayerName] = useState('');
   const [amountWon, setAmountWon] = useState('60000');
   const [paidOn, setPaidOn] = useState('');
-  const [subscriptionId, setSubscriptionId] = useState('');
+  const [subscriptionId, setSubscriptionId] = useState(currentSubscriptionId ?? '');
   const [allowMismatch, setAllowMismatch] = useState(false);
   const [depositId, setDepositId] = useState('');
+  const [error, setError] = useState('');
   return (
     <form className="panel row" onSubmit={(event) => {
       event.preventDefault();
+      setError('');
       void api<{ id: string }>(`/api/gathering-admin/groups/${groupId}/deposits`, {
         method: 'POST',
         body: JSON.stringify({
@@ -206,8 +209,12 @@ function DepositForm({ groupId, role, onSubmit }: { groupId: string; role: 'SUPE
           paidOn: new Date(paidOn).toISOString(),
           idempotencyKey: `dep-${Date.now()}`,
         }),
-      }).then((created) => setDepositId(created.id)).catch(() => setDepositId(''));
+      }).then((created) => setDepositId(created.id)).catch((cause) => {
+        setDepositId('');
+        setError(cause instanceof ApiError ? cause.message : '입금을 기록하지 못했습니다.');
+      });
     }}>
+      <ErrorText error={error} />
       <label>입금자<input value={payerName} onChange={(event) => setPayerName(event.target.value)} required /></label>
       <label>금액<input value={amountWon} onChange={(event) => setAmountWon(event.target.value)} inputMode="numeric" /></label>
       <label>입금일<input type="datetime-local" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required /></label>
@@ -360,12 +367,25 @@ export function SettingsPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
   );
 }
 
-export function AdminsPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
+const ADMIN_CAPABILITY_OPTIONS = [
+  ['GROUP_READ', '모임 조회'],
+  ['MEMBER_READ', '회원 조회'],
+  ['CONTACT_READ', '연락처'],
+  ['AUDIT_READ', '운영이력'],
+  ['SUBSCRIPTION_WRITE', '이용권'],
+  ['PAYMENT_WRITE', '입금'],
+  ['QUOTA_WRITE', '용량'],
+  ['MEMBER_RESTRICT', '회원 제한'],
+  ['SETTINGS', '설정'],
+] as const;
+
+export function AdminsPage({ role, adminId }: { role: 'SUPER_ADMIN' | 'ADMIN'; adminId: string }) {
   const [items, setItems] = useState<AdminAccount[]>([]);
   const [error, setError] = useState('');
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [groupId, setGroupId] = useState('');
+  const [capabilities, setCapabilities] = useState<string[]>(['GROUP_READ', 'MEMBER_READ']);
   function load() {
     api<{ items: AdminAccount[] }>('/api/gathering-admin/admins').then((row) => setItems(row.items)).catch((cause) => setError(cause instanceof Error ? cause.message : '계정을 불러오지 못했습니다.'));
   }
@@ -384,13 +404,27 @@ export function AdminsPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
             password,
             role: 'ADMIN',
             reason: '담당 지정',
-            scopes: groupId ? [{ groupId, capability: 'GROUP_READ' }] : [],
+            scopes: groupId ? capabilities.map((capability) => ({ groupId, capability })) : [],
           }),
         }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : '만들지 못했습니다.'));
       }}>
         <label>아이디<input value={loginId} onChange={(event) => setLoginId(event.target.value)} /></label>
         <label>임시 비밀번호<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
         <label>모임 ID<input value={groupId} onChange={(event) => setGroupId(event.target.value)} /></label>
+        <fieldset>
+          <legend>이 모임의 권한</legend>
+          {ADMIN_CAPABILITY_OPTIONS.map(([capability, label]) => (
+            <label key={capability}>
+              <input
+                type="checkbox"
+                checked={capabilities.includes(capability)}
+                onChange={(event) => {
+                  setCapabilities((current) => event.target.checked ? [...current, capability] : current.filter((item) => item !== capability));
+                }}
+              /> {label}
+            </label>
+          ))}
+        </fieldset>
         <button type="submit">담당 관리자 추가</button>
       </form>
       <table>
@@ -399,7 +433,7 @@ export function AdminsPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
             <tr key={item.id}>
               <td>{item.loginId}<br />{item.role} {item.disabledAt ? '비활성' : ''} {item.totpReady ? '2FA' : '2FA 전'}</td>
               <td>{item.scopes.map((scope) => `${scope.capability}:${scope.groupId}`).join(', ')}</td>
-              <td>{item.role === 'ADMIN' ? <button type="button" onClick={() => api(`/api/gathering-admin/admins/${item.id}/disable`, { method: 'POST', body: JSON.stringify({ reason: '운영 종료' }) }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : '끄지 못했습니다.'))}>비활성</button> : null}</td>
+              <td>{item.id !== adminId && !item.disabledAt ? <button type="button" onClick={() => api(`/api/gathering-admin/admins/${item.id}/disable`, { method: 'POST', body: JSON.stringify({ reason: '운영 종료' }) }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : '끄지 못했습니다.'))}>비활성</button> : null}</td>
             </tr>
           ))}
         </tbody>

@@ -65,7 +65,7 @@ function Shell({ admin, onLogout }: { admin: Admin; onLogout: () => void }) {
           <Route path="/members" element={<MembersPage />} />
           <Route path="/audits" element={<AuditsPage />} />
           <Route path="/settings" element={<SettingsPage role={admin.role} />} />
-          <Route path="/admins" element={<AdminsPage role={admin.role} />} />
+          <Route path="/admins" element={<AdminsPage role={admin.role} adminId={admin.id} />} />
           <Route path="/account" element={<AccountPage onLogout={onLogout} />} />
         </Routes>
       </main>

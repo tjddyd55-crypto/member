@@ -86,7 +86,7 @@ async function insertGroup(
   return group.id;
 }
 
-async function openTrialIfUnclaimed(tx: Prisma.TransactionClient, userId: string, groupId: string, now: Date) {
+export async function openTrialIfUnclaimed(tx: Prisma.TransactionClient, userId: string, groupId: string, now: Date) {
   const existing = await tx.gatheringTrialClaim.findUnique({ where: { groupId }, select: { id: true } });
   if (!canOpenTrial(existing != null)) return;
   await tx.gatheringTrialClaim.create({ data: { userId, groupId } });

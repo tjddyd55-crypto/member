@@ -197,8 +197,11 @@ document.getElementById('go').onclick=async()=>{
   const files=[...document.getElementById('files').files];
   const items=[];
   for(const file of files){
-    const item={kind:file.type.startsWith('video/')?'VIDEO':'PHOTO',mimeType:file.type,sizeBytes:file.size,originalName:file.name};
-    if(item.kind==='VIDEO') item.durationMs=await videoDurationMs(file);
+    const item={kind:file.type.startsWith('video/')?'VIDEO':'PHOTO',mimeType:file.type||'application/octet-stream',sizeBytes:file.size,originalName:file.name};
+    if(item.kind==='VIDEO'){
+      try{ item.durationMs=await videoDurationMs(file); }
+      catch{ log.textContent='영상 길이를 읽지 못했습니다.'; return; }
+    }
     items.push(item);
   }
   const reserved=await fetch('/api/gathering/public/uploads/'+token+'/reserve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items})});
@@ -206,13 +209,17 @@ document.getElementById('go').onclick=async()=>{
   if(!reserved.ok){log.textContent=body.error?.message||'실패';return;}
   for(let i=0;i<files.length;i++){
     const item=body.items[i];
-    const put=await fetch(item.uploadUrl,{method:'PUT',headers:item.headers,body:files[i]});
+    const headers={};
+    for(const [name,value] of Object.entries(item.headers||{})){
+      if(name.toLowerCase()!=='content-length') headers[name]=value;
+    }
+    const put=await fetch(item.uploadUrl,{method:'PUT',headers,body:files[i]});
     if(!put.ok){log.textContent='전송 실패';return;}
     const done=await fetch('/api/gathering/public/uploads/'+token+'/complete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({assetId:item.id,sizeBytes:files[i].size})});
     if(!done.ok){log.textContent='확인 실패';return;}
   }
   log.textContent='올렸습니다. 모임 앨범에 바로 보입니다.';
-  }catch(error){ log.textContent='영상 길이를 읽지 못했습니다.'; }
+  }catch(error){ log.textContent='전송하지 못했습니다.'; }
 };
 function videoDurationMs(file){
   return new Promise((resolve,reject)=>{

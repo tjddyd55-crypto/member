@@ -42,6 +42,7 @@ export async function completeReceiptUpload(
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'RECEIPT_WRITE');
+  await assertGatheringWritable(prisma, groupId);
   const receipt = await requireOwnReceipt(userId, groupId, eventId, receiptId);
   if (receipt.status === 'READY') return presentReceipt(receipt);
   await assertPending(receipt.id, receipt.createdAt, receipt.sizeBytes, sizeBytes);

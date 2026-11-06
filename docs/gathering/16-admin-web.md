@@ -52,7 +52,14 @@ docker build -f apps/gathering-admin/Dockerfile -t gathering-admin .
 docker run --rm -p 8080:80 -e API_UPSTREAM=https://api-development-46a6.up.railway.app gathering-admin
 ```
 
-`/health`는 `ok`다. 웹은 API와 같은 Postgres에 직접 붙지 않는다.
+`/health`는 `ok`다. 웹은 API와 같은 Postgres에 직접 붙지 않는다. 이 클라우드에는 Docker가 없어 이미지 자체는 만들지 않았다. Railway 빌드가 그 확인이다. 워크스페이스 빌드는 여기서 확인했다.
+
+```bash
+npm run build -w @member/gathering-admin
+node scripts/gathering-admin-web-smoke.mjs
+```
+
+스모크는 빌드된 `index.html`을 내려주고 `/health`가 `ok`이며 `/api/`를 뒤 서버로 넘기는지만 본다. 브라우저 자동 테스트는 `npm run e2e -w @member/gathering-admin`이다.
 
 | 이름 | 목적 | 형식 |
 | --- | --- | --- |

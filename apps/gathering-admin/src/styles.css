@@ -19,6 +19,7 @@ button, .linkish {
 }
 button.ghost { background: white; color: #1b3a6b; border: 1px solid #d5dbe3; }
 button:disabled { opacity: 0.55; }
+input[type="checkbox"] { width: auto; min-height: 44px; }
 input, select, textarea {
   width: 100%;
   min-height: 44px;

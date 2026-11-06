@@ -15,7 +15,6 @@ import {
   LoadingState,
   Screen,
   TextField,
-  Title,
 } from '../../../../src/design/ui';
 import { visibleRoleLabels } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
@@ -60,12 +59,10 @@ export default function GroupDetailScreen() {
 
   return (
     <Screen>
-      <Button label="내 모임" variant="text" onPress={() => router.replace('/(app)/groups')} />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' && group ? (
         <>
-          <Title>{group.name}</Title>
           <Body>
             {group.financeYear ? `${group.financeYear.year} 회계연도` : '회계연도 없음'} · 협의회장{' '}
             {group.president?.displayName ?? '미정'}

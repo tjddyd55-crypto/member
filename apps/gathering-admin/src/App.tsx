@@ -45,7 +45,7 @@ function Shell({ admin, onLogout }: { admin: Admin; onLogout: () => void }) {
   }
   return (
     <div className="shell">
-      <nav>
+      <nav aria-label="관리 메뉴">
         {LINKS.map(([href, label]) => (
           <NavLink key={href} to={href} end={href === '/'}>
             {label}

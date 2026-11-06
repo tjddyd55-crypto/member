@@ -6,6 +6,7 @@ import {
   gatheringSwitchItems,
   GLOBAL_MENU_ROUTES,
   globalMenuNavigation,
+  rootResetTarget,
   routeHeaderTitle,
 } from '../../../gathering-mobile/src/features/group/app-menu';
 import { tabIconSize, tabLabelSize, tabSlotWidth } from '../../../gathering-mobile/src/features/group/tab-layout';
@@ -30,6 +31,21 @@ describe('모임 화면 배치', () => {
     expect(routeHeaderTitle('/groups/create')).toBe('모임 만들기');
     expect(routeHeaderTitle('/groups')).toBe('내 모임');
     expect(globalMenuNavigation()).toBe('reset');
+    const root = { key: 'root-stack', routeNames: ['(app)', '(auth)', 'index'] };
+    expect(
+      rootResetTarget(root, {
+        routes: [{ name: '(app)' }],
+      }),
+    ).toBe('root-stack');
+    expect(rootResetTarget(root, { routes: [{ name: 'groups/index' }] })).toBeNull();
+    expect(rootResetTarget({ routeNames: ['(app)'] }, { routes: [{ name: '(app)' }] })).toBeNull();
+    expect(
+      rootResetTarget(root, {
+        stale: false,
+        routeNames: ['(app)'],
+        routes: [{ name: '(app)' }],
+      }),
+    ).toBeNull();
     expect(GLOBAL_MENU_ROUTES.map((item) => item.label)).toEqual(['내 모임', '전체 일정']);
     expect(GLOBAL_MENU_ROUTES.some((item) => item.label === '홈')).toBe(false);
     const items = gatheringSwitchItems(

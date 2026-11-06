@@ -41,6 +41,33 @@ export function globalMenuNavigation() {
   return 'reset' as const;
 }
 
+/**
+ * 경로 상태는 루트 내비게이터 모양이다. 포커스된 화면에 그대로 리셋하면
+ * 루트 경로가 거절되고 이동이 무시된다. 루트가 받을 수 있을 때만 그 키를 돌려준다.
+ */
+export function rootResetTarget(
+  root: { key?: string; routeNames?: readonly string[] } | null | undefined,
+  state:
+    | {
+        stale?: boolean;
+        routeNames?: readonly string[];
+        routes?: readonly { name?: string }[];
+      }
+    | null
+    | undefined,
+) {
+  const target = root?.key;
+  const names = root?.routeNames;
+  const routes = state?.routes;
+  if (!target || !names?.length || !routes?.length) return null;
+  if (!routes.every((route) => typeof route.name === 'string' && names.includes(route.name))) return null;
+  if (state?.stale === false && state.routeNames) {
+    const nextNames = state.routeNames;
+    if (nextNames.length !== names.length || nextNames.some((name) => !names.includes(name))) return null;
+  }
+  return target;
+}
+
 export function gatheringSwitchItems(groups: readonly GatheringSwitchTarget[], currentId?: string) {
   return groups
     .filter((group) => group.membershipStatus === 'ACTIVE')

@@ -13,6 +13,7 @@ import {
   GLOBAL_MENU_ROUTES,
   gatheringSwitchItems,
   globalMenuNavigation,
+  rootResetTarget,
   routeHeaderTitle,
   visibleGroupName,
 } from './app-menu';
@@ -128,8 +129,10 @@ function resetToHref(href: string) {
   const navigation = store.navigationRef;
   if (!navigation.isReady()) return false;
   const state = store.getStateForHref(href);
-  if (!state?.routes.length) return false;
-  navigation.dispatch(CommonActions.reset(state));
+  const root = navigation.getRootState();
+  const target = rootResetTarget(root, state);
+  if (!target || !state) return false;
+  navigation.dispatch({ ...CommonActions.reset(state), target });
   return true;
 }
 

@@ -162,21 +162,36 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
   );
 }
 
+function operationKey(groupId: string, name: string) {
+  return `${name}-${groupId}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: string; subscriptionId: string | null; onSubmit: (path: string, body: unknown) => Promise<boolean> }) {
   const [source, setSource] = useState<'PAID' | 'COMPLIMENTARY'>('PAID');
   const [startsAt, setStartsAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [reason, setReason] = useState('');
-  const key = `sub-${groupId}-${Date.now()}`;
+  const [approveKey, setApproveKey] = useState(() => operationKey(groupId, 'sub'));
+  const [cancelKey, setCancelKey] = useState(() => operationKey(groupId, 'cancel'));
+  const [stopKey, setStopKey] = useState(() => operationKey(groupId, 'stop'));
+  const [resumeKey, setResumeKey] = useState(() => operationKey(groupId, 'resume'));
+  useEffect(() => {
+    setApproveKey(operationKey(groupId, 'sub'));
+    setCancelKey(operationKey(groupId, 'cancel'));
+    setStopKey(operationKey(groupId, 'stop'));
+    setResumeKey(operationKey(groupId, 'resume'));
+  }, [groupId]);
   return (
     <form className="panel row" onSubmit={(event) => {
       event.preventDefault();
-      const body: Record<string, string> = { source, reason, idempotencyKey: key };
+      const body: Record<string, string> = { source, reason, idempotencyKey: approveKey };
       if (startsAt && expiresAt) {
         body.startsAt = new Date(startsAt).toISOString();
         body.expiresAt = new Date(expiresAt).toISOString();
       }
-      void onSubmit(`/api/gathering-admin/groups/${groupId}/subscription`, body);
+      void onSubmit(`/api/gathering-admin/groups/${groupId}/subscription`, body).then((saved) => {
+        if (saved) setApproveKey(operationKey(groupId, 'sub'));
+      });
     }}>
       <p>현재 이용권 {subscriptionId ?? '없음'}</p>
       <label>구분<select value={source} onChange={(event) => setSource(event.target.value as 'PAID' | 'COMPLIMENTARY')}><option value="PAID">정식</option><option value="COMPLIMENTARY">무상</option></select></label>
@@ -184,9 +199,9 @@ function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: stri
       <label>종료<input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></label>
       <label>사유<input value={reason} onChange={(event) => setReason(event.target.value)} required /></label>
       <button type="submit">승인 또는 연장</button>
-      <button type="button" className="ghost" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/subscription/cancel`, { reason: reason || '취소', idempotencyKey: `cancel-${key}` })}>취소</button>
-      <button type="button" className="ghost" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/suspension`, { suspended: true, reason: reason || '정지', idempotencyKey: `stop-${key}` })}>모임 정지</button>
-      <button type="button" className="ghost" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/suspension`, { suspended: false, reason: reason || '해제', idempotencyKey: `resume-${key}` })}>정지 해제</button>
+      <button type="button" className="ghost" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/subscription/cancel`, { reason: reason || '취소', idempotencyKey: cancelKey }).then((saved) => { if (saved) setCancelKey(operationKey(groupId, 'cancel')); })}>취소</button>
+      <button type="button" className="ghost" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/suspension`, { suspended: true, reason: reason || '정지', idempotencyKey: stopKey }).then((saved) => { if (saved) setStopKey(operationKey(groupId, 'stop')); })}>모임 정지</button>
+      <button type="button" className="ghost" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/suspension`, { suspended: false, reason: reason || '해제', idempotencyKey: resumeKey }).then((saved) => { if (saved) setResumeKey(operationKey(groupId, 'resume')); })}>정지 해제</button>
     </form>
   );
 }
@@ -198,6 +213,7 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
   const [subscriptionId, setSubscriptionId] = useState(currentSubscriptionId ?? '');
   const [allowMismatch, setAllowMismatch] = useState(false);
   const [depositId, setDepositId] = useState('');
+  const [recordKey, setRecordKey] = useState(() => operationKey(groupId, 'dep'));
   const [pending, setPending] = useState<Array<{ id: string; payerName: string; amountWon: number; status: string }>>([]);
   const [error, setError] = useState('');
   function loadPending() {
@@ -216,10 +232,11 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
           payerName,
           amountWon: Number(amountWon),
           paidOn: new Date(paidOn).toISOString(),
-          idempotencyKey: `dep-${Date.now()}`,
+          idempotencyKey: recordKey,
         }),
       }).then((created) => {
         setDepositId(created.id);
+        setRecordKey(operationKey(groupId, 'dep'));
         loadPending();
       }).catch((cause) => {
         setDepositId('');
@@ -261,13 +278,17 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
 function QuotaForm({ groupId, onSubmit }: { groupId: string; onSubmit: (path: string, body: unknown) => Promise<boolean> }) {
   const [quotaBytes, setQuotaBytes] = useState('50000000000');
   const [reason, setReason] = useState('');
+  const [quotaKey, setQuotaKey] = useState(() => operationKey(groupId, 'quota'));
+  useEffect(() => setQuotaKey(operationKey(groupId, 'quota')), [groupId]);
   return (
     <form className="panel row" onSubmit={(event: FormEvent) => {
       event.preventDefault();
       void onSubmit(`/api/gathering-admin/groups/${groupId}/quota`, {
         quotaBytes: Number(quotaBytes),
         reason,
-        idempotencyKey: `quota-${Date.now()}`,
+        idempotencyKey: quotaKey,
+      }).then((saved) => {
+        if (saved) setQuotaKey(operationKey(groupId, 'quota'));
       });
     }}>
       <label>할당 바이트<input value={quotaBytes} onChange={(event) => setQuotaBytes(event.target.value)} /></label>

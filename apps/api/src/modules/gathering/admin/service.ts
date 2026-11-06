@@ -63,15 +63,21 @@ export async function loginAdmin(
   }
   if (!account.totpConfirmedAt || !account.totpSecretCipher) {
     const enrollment = await issueEnrollment(account.id, now);
-    await writeAdminAudit(prisma, {
-      actorAdminId: account.id,
-      action: 'ADMIN_ENROLLMENT_STARTED',
-      targetType: 'GatheringAdminAccount',
-      targetId: account.id,
-    });
-    return { kind: 'enrollment' as const, enrollmentToken: enrollment.token, expiresAt: enrollment.expiresAt.toISOString() };
+    if (enrollment) {
+      await writeAdminAudit(prisma, {
+        actorAdminId: account.id,
+        action: 'ADMIN_ENROLLMENT_STARTED',
+        targetType: 'GatheringAdminAccount',
+        targetId: account.id,
+      });
+      return { kind: 'enrollment' as const, enrollmentToken: enrollment.token, expiresAt: enrollment.expiresAt.toISOString() };
+    }
   }
-  const secret = decryptAdminSecret(account.totpSecretCipher);
+  const enrolled = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: account.id } });
+  if (!enrolled.totpSecretCipher) {
+    throw new AppError(401, 'TOTP_INVALID', '인증 코드가 올바르지 않습니다.');
+  }
+  const secret = decryptAdminSecret(enrolled.totpSecretCipher);
   if (!input.totpCode || !totpMatches(secret, input.totpCode, now.getTime())) {
     await recordFailure(account.id, now);
     await writeAdminAudit(prisma, {
@@ -376,12 +382,17 @@ async function issueSession(
 }
 
 async function issueEnrollment(adminId: string, now: Date) {
-  const token = randomToken(32);
-  const expiresAt = new Date(now.getTime() + ADMIN_ENROLLMENT_MS);
-  await prisma.gatheringAdminEnrollment.create({
-    data: { adminId, tokenHash: sha256(token), expiresAt },
+  return prisma.$transaction(async (tx) => {
+    await tx.gatheringAdminAccount.update({ where: { id: adminId }, data: { updatedAt: now } });
+    const current = await tx.gatheringAdminAccount.findUnique({ where: { id: adminId } });
+    if (!current || current.disabledAt || (current.totpConfirmedAt && current.totpSecretCipher)) return null;
+    const token = randomToken(32);
+    const expiresAt = new Date(now.getTime() + ADMIN_ENROLLMENT_MS);
+    await tx.gatheringAdminEnrollment.create({
+      data: { adminId, tokenHash: sha256(token), expiresAt },
+    });
+    return { token, expiresAt };
   });
-  return { token, expiresAt };
 }
 
 async function requireEnrollment(token: string, now: Date) {

@@ -213,6 +213,43 @@ describe('관리자 보안과 기간 입력', () => {
     expect(decryptAdminSecret(stored.totpSecretCipher ?? '')).toBe(winner);
     expect(winner).not.toBe(loser);
   });
+
+  it('이미 등록된 계정에는 새 등록 토큰을 남기지 않는다', async () => {
+    const loginId = `race.issue.${Date.now()}`;
+    const admin = await makeAdmin(loginId, 'SUPER_ADMIN');
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/login',
+      payload: { loginId, password },
+    });
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/totp/start',
+      payload: { enrollmentToken: login.json().enrollmentToken },
+    });
+    const code = totpAt(started.json().secret as string, Date.now());
+    await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/api/gathering-admin/auth/totp/confirm',
+        payload: { enrollmentToken: login.json().enrollmentToken, code },
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/gathering-admin/auth/login',
+        payload: { loginId, password },
+      }),
+    ]);
+    const late = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/login',
+      payload: { loginId, password },
+    });
+    expect(late.statusCode).toBe(401);
+    expect(late.json().enrollmentToken).toBeUndefined();
+    const unused = await prisma.gatheringAdminEnrollment.count({ where: { adminId: admin.id, usedAt: null } });
+    expect(unused).toBe(0);
+  });
 });
 
 async function makeAdmin(loginId: string, role: 'SUPER_ADMIN' | 'ADMIN') {

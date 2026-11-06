@@ -64,4 +64,20 @@ export {
   trialWindow,
 } from './entitlement.js';
 export type { EntitlementAction, EntitlementDenial } from './entitlement.js';
+export {
+  ADMIN_CAPABILITIES,
+  ADMIN_ENROLLMENT_MS,
+  ADMIN_LOCK_MS,
+  ADMIN_LOCK_THRESHOLD,
+  ADMIN_PASSWORD_MIN,
+  ADMIN_ROLES,
+  ADMIN_SESSION_MS,
+  adminAllows,
+  adminLockUntil,
+  adminLoginBlocked,
+  canManageAdminAccounts,
+  isAdminCapability,
+  sessionExpiry,
+} from './admin-access.js';
+export type { AdminCapability, AdminRole, AdminScope } from './admin-access.js';
 export type { SubscriptionNoticeWindow } from './subscription.js';

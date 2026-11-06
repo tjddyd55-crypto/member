@@ -22,7 +22,7 @@ import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
 import { gatheringUploadLimiter } from '../rate-limit.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
-import { isSubscriptionActive, loadBillableUsage } from '../storage/usage.js';
+import { isSubscriptionActive, loadBillableUsage, loadGroupQuotaBytes } from '../storage/usage.js';
 import { rejectMedia, rejectUploadDecision } from './errors.js';
 import { presentMedia } from './present.js';
 
@@ -83,7 +83,12 @@ export async function createFolderMediaUploads(
     await assertGatheringWritable(tx, groupId, now);
     const usage = await loadBillableUsage(tx, groupId, now);
     const additionalBytes = prepared.reduce((sum, item) => sum + item.sizeBytes, 0);
-    const decision = evaluateUpload({ usage, kind: 'MEDIA', additionalBytes });
+    const decision = evaluateUpload({
+      usage,
+      kind: 'MEDIA',
+      additionalBytes,
+      quotaBytes: await loadGroupQuotaBytes(tx, groupId),
+    });
     if (!decision.allowed) rejectUploadDecision(decision);
     const rows: ReservedUpload[] = [];
     for (const item of prepared) {
@@ -225,7 +230,12 @@ async function reserveUploads(
     await assertGatheringWritable(tx, groupId, now);
     const usage = await loadBillableUsage(tx, groupId, now);
     const additionalBytes = items.reduce((sum, item) => sum + item.sizeBytes, 0);
-    const decision = evaluateUpload({ usage, kind: 'MEDIA', additionalBytes });
+    const decision = evaluateUpload({
+      usage,
+      kind: 'MEDIA',
+      additionalBytes,
+      quotaBytes: await loadGroupQuotaBytes(tx, groupId),
+    });
     if (!decision.allowed) rejectUploadDecision(decision);
     const reserved: ReservedUpload[] = [];
     for (const item of items) {

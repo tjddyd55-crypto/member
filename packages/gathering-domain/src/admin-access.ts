@@ -4,6 +4,7 @@ export type AdminRole = (typeof ADMIN_ROLES)[number];
 export const ADMIN_CAPABILITIES = [
   'GROUP_READ',
   'MEMBER_READ',
+  'CONTACT_READ',
   'AUDIT_READ',
   'SUBSCRIPTION_WRITE',
   'PAYMENT_WRITE',

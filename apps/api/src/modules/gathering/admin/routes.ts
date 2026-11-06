@@ -2,6 +2,19 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ADMIN_CAPABILITIES, ADMIN_ROLES } from '@member/gathering-domain';
 import { env } from '../../../config/env.js';
+import {
+  adminDashboard,
+  approveSubscription,
+  cancelSubscription,
+  confirmDeposit,
+  listScopedMembers,
+  readBankSetting,
+  recordDeposit,
+  replaceAdminScopes,
+  setGroupQuota,
+  setGroupSuspension,
+  writeBankSetting,
+} from './operations.js';
 import { listAdminAudits, listAdminGroups, readAdminGroup } from './queries.js';
 import {
   assertAdminCsrf,
@@ -79,6 +92,17 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
     return { admin: { id: session.admin.id, loginId: session.admin.loginId, role: session.admin.role } };
   });
 
+  app.get('/api/gathering-admin/dashboard', async (request) => {
+    const session = await requireAdminSession(readCookie(request));
+    return adminDashboard(session.adminId);
+  });
+
+  app.get('/api/gathering-admin/members', async (request) => {
+    const session = await requireAdminSession(readCookie(request));
+    const query = z.object({ q: z.string().optional() }).parse(request.query);
+    return { items: await listScopedMembers(session.adminId, query.q) };
+  });
+
   app.get('/api/gathering-admin/groups', async (request) => {
     const session = await requireAdminSession(readCookie(request));
     return { items: await listAdminGroups(session.adminId) };
@@ -93,6 +117,94 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
   app.get('/api/gathering-admin/audits', async (request) => {
     const session = await requireAdminSession(readCookie(request));
     return { items: await listAdminAudits(session.adminId) };
+  });
+
+  app.post('/api/gathering-admin/groups/:groupId/suspension', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ groupId: z.string() }).parse(request.params);
+    const body = z.object({ suspended: z.boolean(), reason: z.string(), idempotencyKey: z.string().min(8) }).parse(request.body);
+    return setGroupSuspension(session.adminId, params.groupId, body.suspended, body.reason, body.idempotencyKey);
+  });
+
+  app.post('/api/gathering-admin/groups/:groupId/subscription', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ groupId: z.string() }).parse(request.params);
+    const body = z.object({
+      reason: z.string(),
+      idempotencyKey: z.string().min(8),
+      source: z.enum(['PAID', 'COMPLIMENTARY']).optional(),
+    }).parse(request.body);
+    return approveSubscription(session.adminId, params.groupId, body);
+  });
+
+  app.post('/api/gathering-admin/groups/:groupId/subscription/cancel', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ groupId: z.string() }).parse(request.params);
+    const body = z.object({ reason: z.string(), idempotencyKey: z.string().min(8) }).parse(request.body);
+    return cancelSubscription(session.adminId, params.groupId, body);
+  });
+
+  app.post('/api/gathering-admin/groups/:groupId/deposits', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ groupId: z.string() }).parse(request.params);
+    const body = z.object({
+      payerName: z.string().min(1),
+      amountWon: z.number().int(),
+      paidOn: z.string(),
+      memo: z.string().optional(),
+      idempotencyKey: z.string().min(8),
+    }).parse(request.body);
+    return recordDeposit(session.adminId, params.groupId, body);
+  });
+
+  app.post('/api/gathering-admin/deposits/:depositId/confirm', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ depositId: z.string() }).parse(request.params);
+    const body = z.object({
+      reason: z.string(),
+      idempotencyKey: z.string().min(8),
+      subscriptionId: z.string().optional(),
+    }).parse(request.body);
+    return confirmDeposit(session.adminId, params.depositId, body);
+  });
+
+  app.post('/api/gathering-admin/groups/:groupId/quota', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ groupId: z.string() }).parse(request.params);
+    const body = z.object({
+      quotaBytes: z.number().int(),
+      reason: z.string(),
+      idempotencyKey: z.string().min(8),
+    }).parse(request.body);
+    return setGroupQuota(session.adminId, params.groupId, body);
+  });
+
+  app.put('/api/gathering-admin/admins/:adminId/scopes', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ adminId: z.string() }).parse(request.params);
+    const body = z.object({
+      reason: z.string(),
+      scopes: z.array(z.object({ groupId: z.string(), capability: z.enum(ADMIN_CAPABILITIES) })),
+    }).parse(request.body);
+    await replaceAdminScopes(session.adminId, params.adminId, body.scopes, body.reason);
+    return { ok: true };
+  });
+
+  app.get('/api/gathering-admin/settings/bank', async (request) => {
+    const session = await requireAdminSession(readCookie(request));
+    return { setting: await readBankSetting(session.adminId) };
+  });
+
+  app.put('/api/gathering-admin/settings/bank', async (request) => {
+    const session = await mutate(request);
+    const body = z.object({
+      bankName: z.string().min(1),
+      accountNumber: z.string().min(1),
+      holder: z.string().min(1),
+      memo: z.string().optional(),
+      reason: z.string(),
+    }).parse(request.body);
+    return writeBankSetting(session.adminId, body);
   });
 
   app.post('/api/gathering-admin/admins', async (request) => {
@@ -111,6 +223,12 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
     return { ok: true };
   });
 };
+
+async function mutate(request: FastifyRequest) {
+  const session = await requireAdminSession(readCookie(request));
+  assertAdminCsrf(session.csrfHash, request.headers['x-gathering-admin-csrf']);
+  return session;
+}
 
 function readCookie(request: FastifyRequest) {
   const header = request.headers.cookie;

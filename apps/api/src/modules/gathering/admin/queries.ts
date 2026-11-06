@@ -12,11 +12,22 @@ const contactInclude = {
 export async function listAdminGroups(adminId: string) {
   const allowed = await readableGroupIds(adminId, 'GROUP_READ');
   if (allowed.ids && allowed.ids.length === 0) return [];
+  const account = await loadAccount(adminId);
   const groups = await prisma.gatheringGroup.findMany({
     where: allowed.ids ? { id: { in: allowed.ids } } : undefined,
     orderBy: { createdAt: 'desc' },
   });
-  const rows = (await Promise.all(groups.map((group) => presentGroup(group.id)))).filter((row) => row != null);
+  const rows = (
+    await Promise.all(groups.map((group) => presentGroup(group.id, canSeeContact(account, group.id))))
+  ).filter((row) => row != null);
+  if (rows.some((row) => row.creator.phone || row.president?.phone)) {
+    await writeAdminAudit(prisma, {
+      actorAdminId: adminId,
+      action: 'ADMIN_CONTACT_LIST',
+      after: { count: rows.length },
+      reason: '모임 연락처 조회',
+    });
+  }
   await writeAdminAudit(prisma, {
     actorAdminId: adminId,
     action: 'ADMIN_GROUP_LIST',
@@ -30,7 +41,19 @@ export async function readAdminGroup(adminId: string, groupId: string) {
   if (allowed.ids && !allowed.ids.includes(groupId)) {
     throw new AppError(404, 'GROUP_NOT_FOUND', '모임을 찾을 수 없습니다.');
   }
-  const row = await presentGroup(groupId);
+  const account = await loadAccount(adminId);
+  const showContact =
+    account.role === 'SUPER_ADMIN' || account.scopes.some((scope) => scope.capability === 'CONTACT_READ' && scope.groupId === groupId);
+  const row = await presentGroup(groupId, showContact);
+  if (row && showContact) {
+    await writeAdminAudit(prisma, {
+      actorAdminId: adminId,
+      action: 'ADMIN_CONTACT_READ',
+      targetType: 'GatheringGroup',
+      targetId: groupId,
+      reason: '모임 상세 연락처',
+    });
+  }
   if (!row) throw new AppError(404, 'GROUP_NOT_FOUND', '모임을 찾을 수 없습니다.');
   await writeAdminAudit(prisma, {
     actorAdminId: adminId,
@@ -69,7 +92,7 @@ export async function listAdminAudits(adminId: string) {
   }));
 }
 
-async function presentGroup(groupId: string) {
+async function presentGroup(groupId: string, showContact: boolean) {
   const now = new Date();
   const group = await prisma.gatheringGroup.findUnique({
     where: { id: groupId },
@@ -99,8 +122,8 @@ async function presentGroup(groupId: string) {
     id: group.id,
     name: group.name,
     createdAt: group.createdAt.toISOString(),
-    creator: contact(group.createdBy, group.createdAt),
-    president: president ? contact(president.user, president.assignedAt) : null,
+    creator: contact(group.createdBy, group.createdAt, showContact),
+    president: president ? contact(president.user, president.assignedAt, showContact) : null,
     memberCount,
     suspended: group.suspendedAt != null,
     subscription: {
@@ -123,11 +146,12 @@ function contact(
     gatheringAffiliations: { localJcName: string }[];
   },
   since: Date,
+  showContact: boolean,
 ) {
   return {
     id: user.id,
     name: user.gatheringProfile?.displayName ?? null,
-    phone: user.phone,
+    phone: showContact ? user.phone : null,
     localJcName: user.gatheringAffiliations[0]?.localJcName ?? null,
     since: since.toISOString(),
   };
@@ -148,6 +172,10 @@ async function loadAccount(adminId: string) {
   });
   if (!account || account.disabledAt) throw new AppError(401, 'UNAUTHORIZED', '인증이 필요합니다.');
   return account;
+}
+
+function canSeeContact(account: { role: string; scopes: { groupId: string; capability: string }[] }, groupId: string) {
+  return account.role === 'SUPER_ADMIN' || account.scopes.some((scope) => scope.capability === 'CONTACT_READ' && scope.groupId === groupId);
 }
 
 function later(left: Date, right: Date | null) {

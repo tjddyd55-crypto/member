@@ -130,6 +130,16 @@
 | GET | `/audits` | 슈퍼관리자 또는 `AUDIT_READ` |
 | POST | `/admins` | 슈퍼관리자. 담당 관리자는 모임 범위가 필요 |
 | POST | `/admins/:adminId/disable` | 슈퍼관리자. 자기 자신과 마지막 슈퍼관리자는 거부 |
+| GET | `/dashboard` | 세션. 담당 모임만 집계 |
+| GET | `/members` | `MEMBER_READ`. 전화는 `CONTACT_READ`일 때만, 조회는 감사 |
+| POST | `/groups/:groupId/suspension` | `SUBSCRIPTION_WRITE`. 이용권과 별개 |
+| POST | `/groups/:groupId/subscription` | `SUBSCRIPTION_WRITE`. 멱등. 정지를 풀지 않음 |
+| POST | `/groups/:groupId/subscription/cancel` | `SUBSCRIPTION_WRITE` |
+| POST | `/groups/:groupId/deposits` | `PAYMENT_WRITE`. 승인만으로 이용권이 늘지 않음 |
+| POST | `/deposits/:depositId/confirm` | 금액이 6만 원이 아니면 이용권 연결을 거절 |
+| POST | `/groups/:groupId/quota` | `QUOTA_WRITE`. 파일을 지우지 않음 |
+| PUT | `/admins/:adminId/scopes` | 슈퍼관리자만 |
+| GET, PUT | `/settings/bank` | 슈퍼관리자. 회원 API에 없음 |
 
 최초 계정은 `GATHERING_ADMIN_BOOTSTRAP_LOGIN`과 `GATHERING_ADMIN_BOOTSTRAP_PASSWORD`로 `npx tsx scripts/gathering-admin-bootstrap.ts`를 실행한다. 값은 로그에 남기지 않는다.
 

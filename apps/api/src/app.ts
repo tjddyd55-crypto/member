@@ -39,7 +39,12 @@ export async function buildApp() {
     });
   });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: env.NODE_ENV === 'production' ? false : true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['content-type', 'authorization', 'x-gathering-admin-csrf'],
+  });
   await app.register(authPlugin);
   await app.register(authRoutes);
   await app.register(localRoutes);

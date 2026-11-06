@@ -254,6 +254,7 @@ async function cleanup() {
   await prisma.gatheringMembership.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringFinanceYear.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringGroup.deleteMany({ where: { id: { in: groupIds } } });
+  await prisma.gatheringNotification.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.gatheringSession.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.gatheringRecoveryCode.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.gatheringLocalAffiliation.deleteMany({ where: { userId: { in: userIds } } });

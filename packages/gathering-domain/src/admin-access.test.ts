@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ADMIN_LOCK_THRESHOLD,
+  ADMIN_PASSWORD_MIN,
   adminAllows,
   adminLockUntil,
   adminLoginBlocked,
@@ -20,6 +21,7 @@ describe('관리자 권한', () => {
     expect(adminAllows({ role: 'ADMIN', disabled: true, scopes, capability: 'GROUP_READ', groupId: 'a' })).toBe(false);
     expect(canManageAdminAccounts('ADMIN', false)).toBe(false);
     expect(canManageAdminAccounts('SUPER_ADMIN', false)).toBe(true);
+    expect(ADMIN_PASSWORD_MIN).toBe(8);
   });
 
   it('비밀번호 실패가 기준을 넘으면 잠그고, 시간이 지나면 푼다', () => {

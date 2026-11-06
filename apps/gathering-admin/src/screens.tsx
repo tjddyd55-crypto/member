@@ -429,7 +429,7 @@ export function AdminsPage({ role, adminId }: { role: 'SUPER_ADMIN' | 'ADMIN'; a
         }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : '만들지 못했습니다.'));
       }}>
         <label>아이디<input value={loginId} onChange={(event) => setLoginId(event.target.value)} /></label>
-        <label>임시 비밀번호<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label>임시 비밀번호<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
         <label>모임 ID<input value={groupId} onChange={(event) => setGroupId(event.target.value)} /></label>
         <fieldset>
           <legend>이 모임의 권한</legend>
@@ -480,7 +480,7 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
       <h1>비밀번호</h1>
       <ErrorText error={error} />
       <label>현재<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
-      <label>새 비밀번호<input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} /></label>
+      <label>새 비밀번호<input type="password" minLength={8} value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} /></label>
       <button type="submit">변경 후 다시 로그인</button>
     </form>
   );

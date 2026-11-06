@@ -33,7 +33,7 @@ npm run dev -w @member/gathering-admin
 | --- | --- | --- |
 | `GATHERING_ADMIN_TOTP_KEY` | 관리자 TOTP 비밀을 서버에 암호화해 저장 | 16자 이상. 첫 등록 전에 있어야 한다. |
 | `GATHERING_ADMIN_BOOTSTRAP_LOGIN` | 최초 슈퍼관리자 아이디 | 영문, 숫자, `.`, `_`, `-`. 3자 이상 64자 이하 |
-| `GATHERING_ADMIN_BOOTSTRAP_PASSWORD` | 최초 슈퍼관리자 비밀번호. 명령 한 번 | 12자 이상 |
+| `GATHERING_ADMIN_BOOTSTRAP_PASSWORD` | 최초 슈퍼관리자 비밀번호. 명령 한 번 | 8자 이상. TOTP는 그대로 필수. 모임 회원 비밀번호 규칙과는 따로다 |
 
 순서:
 

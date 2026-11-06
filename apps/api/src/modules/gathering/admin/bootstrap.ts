@@ -11,7 +11,7 @@ export async function bootstrapSuperAdmin(input: { loginId: string; password: st
     throw new AppError(400, 'INVALID_LOGIN', '아이디는 3자 이상의 영문, 숫자, ., _, - 만 됩니다.');
   }
   if (input.password.length < ADMIN_PASSWORD_MIN) {
-    throw new AppError(400, 'WEAK_PASSWORD', '비밀번호는 12자 이상이어야 합니다.');
+    throw new AppError(400, 'WEAK_PASSWORD', `비밀번호는 ${ADMIN_PASSWORD_MIN}자 이상이어야 합니다.`);
   }
   const existing = await prisma.gatheringAdminAccount.findFirst({
     where: { role: 'SUPER_ADMIN', disabledAt: null },

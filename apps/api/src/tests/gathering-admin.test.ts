@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { ADMIN_LOCK_THRESHOLD } from '@member/gathering-domain';
+import { ADMIN_LOCK_THRESHOLD, ADMIN_PASSWORD_MIN } from '@member/gathering-domain';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { bootstrapSuperAdmin } from '../modules/gathering/admin/bootstrap.js';
@@ -109,6 +109,31 @@ describe('슈퍼관리자 세션', () => {
     expect(auditText).not.toContain(password);
     expect(auditText).not.toContain('totp');
     expect(audits.json().items.some((item: { action: string }) => item.action === 'ADMIN_CREATE')).toBe(true);
+    expect(ADMIN_PASSWORD_MIN).toBe(8);
+    const tooShort = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/admins',
+      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': enrolled.csrf },
+      payload: { loginId: 'short.admin', password: '1234567', role: 'ADMIN', reason: '짧은 비밀번호', scopes: [{ groupId: first.id, capability: 'GROUP_READ' }] },
+    });
+    expect(tooShort.statusCode).toBe(400);
+    expect(tooShort.json().error.code).toBe('WEAK_PASSWORD');
+    const eight = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/admins',
+      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': enrolled.csrf },
+      payload: { loginId: 'eight.admin', password: '12345678', role: 'ADMIN', reason: '여덟 자', scopes: [{ groupId: first.id, capability: 'GROUP_READ' }] },
+    });
+    expect(eight.statusCode).toBe(200);
+    adminIds.push((await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { loginId: 'eight.admin' } })).id);
+    const stillLong = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/admins',
+      headers: { cookie: enrolled.cookie, 'x-gathering-admin-csrf': enrolled.csrf },
+      payload: { loginId: 'long.admin', password, role: 'ADMIN', reason: '긴 비밀번호', scopes: [{ groupId: first.id, capability: 'GROUP_READ' }] },
+    });
+    expect(stillLong.statusCode).toBe(200);
+    adminIds.push((await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { loginId: 'long.admin' } })).id);
 
     const noCsrf = await app.inject({
       method: 'POST',

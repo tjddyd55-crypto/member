@@ -166,7 +166,7 @@ export async function logoutAdmin(sessionId: string, actorAdminId: string) {
 
 export async function changeAdminPassword(adminId: string, currentPassword: string, nextPassword: string) {
   if (nextPassword.length < ADMIN_PASSWORD_MIN) {
-    throw new AppError(400, 'WEAK_PASSWORD', '비밀번호는 12자 이상이어야 합니다.');
+    throw new AppError(400, 'WEAK_PASSWORD', `비밀번호는 ${ADMIN_PASSWORD_MIN}자 이상이어야 합니다.`);
   }
   const account = await prisma.gatheringAdminAccount.findUnique({ where: { id: adminId } });
   if (!account || !(await verifyPassword(currentPassword, account.passwordHash))) {
@@ -209,7 +209,7 @@ export async function createManagedAdmin(
     throw new AppError(403, 'FORBIDDEN', '관리자 계정을 만들 권한이 없습니다.');
   }
   if (input.password.length < ADMIN_PASSWORD_MIN) {
-    throw new AppError(400, 'WEAK_PASSWORD', '비밀번호는 12자 이상이어야 합니다.');
+    throw new AppError(400, 'WEAK_PASSWORD', `비밀번호는 ${ADMIN_PASSWORD_MIN}자 이상이어야 합니다.`);
   }
   if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
   if (input.role === 'SUPER_ADMIN' && input.scopes.length > 0) {

@@ -18,7 +18,7 @@ export const ADMIN_LOCK_THRESHOLD = 5;
 export const ADMIN_LOCK_MS = 15 * 60 * 1000;
 export const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
 export const ADMIN_ENROLLMENT_MS = 10 * 60 * 1000;
-export const ADMIN_PASSWORD_MIN = 12;
+export const ADMIN_PASSWORD_MIN = 8;
 
 export type AdminScope = { groupId: string; capability: string };
 

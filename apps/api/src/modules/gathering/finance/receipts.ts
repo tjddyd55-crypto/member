@@ -14,7 +14,7 @@ import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { assertStoredObject } from '../storage/confirm.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
-import { isSubscriptionActive, loadBillableUsage } from '../storage/usage.js';
+import { loadBillableUsage } from '../storage/usage.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
 import { lockGroupOpenYear, lockOpenYearById, readFiscalPeriod } from './years.js';
 
@@ -156,7 +156,6 @@ async function reserveReceipts(
   const usage = await loadBillableUsage(tx, groupId, new Date());
   const decision = evaluateUpload({
     usage,
-    subscriptionActive: await isSubscriptionActive(tx, groupId, new Date()),
     kind: 'RECEIPT',
     additionalBytes: items.reduce((sum, item) => sum + item.sizeBytes, 0),
   });

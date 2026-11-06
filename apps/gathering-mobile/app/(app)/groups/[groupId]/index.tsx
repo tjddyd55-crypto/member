@@ -13,14 +13,13 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
-  Notice,
   Screen,
   TextField,
   Title,
 } from '../../../../src/design/ui';
 import { visibleRoleLabels } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
-import { handoverInProgress, uploadBlockReason } from '../../../../src/features/media/upload-block';
+import { handoverInProgress } from '../../../../src/features/media/upload-block';
 import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
@@ -109,18 +108,11 @@ export default function GroupDetailScreen() {
 }
 
 function HomePane({ group }: { group: GatheringGroupDetail }) {
-  const [uploadNote, setUploadNote] = useState<string | null>(null);
   const [handoverPrompt, setHandoverPrompt] = useState<string | null>(null);
   const [nextEvent, setNextEvent] = useState('다음 행사 없음');
   const [recentEvent, setRecentEvent] = useState('최근 행사 없음');
   const [recentPhotos, setRecentPhotos] = useState('최근 사진 없음');
   const [money, setMoney] = useState('');
-
-  useEffect(() => {
-    void api.subscription(group.id).then((result) => {
-      setUploadNote(uploadBlockReason({ uploadsAllowed: result.uploadsAllowed }));
-    }).catch(() => setUploadNote(null));
-  }, [group.id]);
 
   useEffect(() => {
     void api
@@ -180,7 +172,6 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
           <Body>{money}</Body>
         </View>
       ) : null}
-      {uploadNote ? <Notice>{uploadNote}</Notice> : null}
       {handoverPrompt ? (
         <Button
           label={handoverPrompt}

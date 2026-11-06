@@ -40,14 +40,12 @@ export function MediaPane({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
-  const [uploadsAllowed, setUploadsAllowed] = useState(false);
   const [viewer, setViewer] = useState<{ uri: string; kind: 'PHOTO' | 'VIDEO' } | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
     try {
-      const usage = await api.storage(groupId);
       if (target.kind === 'folder') {
         const media = await api.folderMedia(groupId, target.id);
         onTitle?.(media.folder.title);
@@ -58,7 +56,6 @@ export function MediaPane({
         setItems(media.items);
         setNextCursor(media.nextCursor);
       }
-      setUploadsAllowed(usage.subscriptionActive);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '사진·영상을 불러오지 못했습니다.');
@@ -130,7 +127,7 @@ export function MediaPane({
     }
   };
 
-  const uploadReason = uploadBlockReason({ uploadsAllowed, destinationCount: 1, destinationChosen: true });
+  const uploadReason = uploadBlockReason({ destinationCount: 1, destinationChosen: true });
 
   const pick = async (kind: 'PHOTO' | 'VIDEO') => {
     if (uploadReason) return;

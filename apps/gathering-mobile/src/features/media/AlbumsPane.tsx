@@ -7,7 +7,7 @@ import { api } from '../../api/client';
 import { Body, Button, EmptyState, ErrorState, Notice, TextField } from '../../design/ui';
 import { theme } from '../../theme';
 import { signedUrlStillFresh } from '@member/gathering-domain';
-import { SUBSCRIPTION_RETRY_HINT, subscriptionUploadState, uploadAlbumFiles } from './album-upload';
+import { uploadAlbumFiles } from './album-upload';
 import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
 import { uploadBlockReason } from './upload-block';
 
@@ -36,7 +36,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
-  const [uploadsAllowed, setUploadsAllowed] = useState<boolean | null>(null);
   const [destination, setDestination] = useState<Destination | null>(null);
   const [busy, setBusy] = useState(false);
   const [failedUploads, setFailedUploads] = useState<FailedUpload[]>([]);
@@ -44,17 +43,10 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const load = useCallback(async () => {
     setStatus('loading');
     try {
-      const [result, subscription] = await Promise.all([
-        api.albums(groupId, year ?? undefined),
-        api.subscription(groupId).then(
-          (value) => value,
-          () => null,
-        ),
-      ]);
+      const result = await api.albums(groupId, year ?? undefined);
       setYears(result.years);
       setEvents(result.events);
       setFolders(result.folders ?? []);
-      setUploadsAllowed(subscription ? subscription.uploadsAllowed : null);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '앨범을 불러오지 못했습니다.');
@@ -67,9 +59,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   }, [load]);
 
   const destinationCount = events.length + folders.length;
-  const subscriptionState = subscriptionUploadState(uploadsAllowed);
   const blockReason = uploadBlockReason({
-    uploadsAllowed: subscriptionState !== 'inactive',
     destinationCount,
     destinationChosen: destination != null,
   });
@@ -143,12 +133,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
       <Button label="사진 올리기" disabled={Boolean(blockReason) || busy} onPress={() => void upload('PHOTO')} />
       <Button label="영상 올리기" disabled={Boolean(blockReason) || busy} onPress={() => void upload('VIDEO')} />
       {blockReason ? <Notice>{blockReason}</Notice> : null}
-      {status === 'ready' && subscriptionState === 'unknown' ? (
-        <>
-          <Notice>{SUBSCRIPTION_RETRY_HINT}</Notice>
-          <Button label="이용 상태 다시 확인" variant="text" onPress={() => void load()} />
-        </>
-      ) : null}
       {failedUploads.map((item) => (
         <View key={item.key} style={styles.card}>
           <Text style={styles.title}>{item.name}</Text>

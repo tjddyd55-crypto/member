@@ -233,7 +233,7 @@ describe('행사 사진·영상', () => {
     expect(albums.json().years[0].year).toBe(2027);
   });
 
-  it('이용권이 없거나 형식이 다르거나 한도를 넘으면 올리지 못한다', async () => {
+  it('이용권이 없어도 올리고, 형식이 다르거나 한도를 넘으면 거절한다', async () => {
     const owner = await register('제한회장');
     const group = await createGroup(owner.tokens.accessToken, '제한 모임');
     const event = await createEvent(owner.tokens.accessToken, group.id, '2026-06-01T03:00:00.000Z');
@@ -243,8 +243,34 @@ describe('행사 사진·영상', () => {
       headers: auth(owner.tokens.accessToken),
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
     });
-    expect(noPass.statusCode).toBe(403);
-    expect(noPass.json().error.code).toBe('SUBSCRIPTION_EXPIRED');
+    expect(noPass.statusCode).toBe(200);
+    const folder = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/folders`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { title: '이용권 없는 폴더' },
+    });
+    expect(folder.statusCode).toBe(200);
+    const folderUpload = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/folders/${folder.json().id}/media/uploads`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(folderUpload.statusCode).toBe(200);
+    const link = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/upload-links`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { eventId: event.id },
+    });
+    expect(link.statusCode).toBe(200);
+    const guest = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${link.json().token}/reserve`,
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(guest.statusCode).toBe(200);
 
     await grantPass(group.id, owner.user.id);
     const video = await app.inject({
@@ -417,7 +443,7 @@ describe('행사 사진·영상', () => {
     expect(unconfigured.json().error.code).toBe('STORAGE_UNCONFIGURED');
   });
 
-  it('인계 전과 중과 후에도 사진 업로드는 되고, 이용권·용량·비회원은 막힌다', async () => {
+  it('인계 전과 중과 후에도 사진 업로드는 되고, 만료된 이용권은 막지 않으며 용량·비회원은 막힌다', async () => {
     const owner = await register('사진인계회장');
     const next = await register('사진차기회장');
     const outsider = await register('사진외부');
@@ -525,8 +551,14 @@ describe('행사 사진·영상', () => {
       data: { expiresAt: new Date(Date.now() - 60_000) },
     });
     const expired = await reserve();
-    expect(expired.statusCode).toBe(403);
-    expect(expired.json().error.code).toBe('SUBSCRIPTION_EXPIRED');
+    expect(expired.statusCode).toBe(200);
+    expect((await reserveFolder()).statusCode).toBe(200);
+    const expiredGuest = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/public/uploads/${link.json().token}/reserve`,
+      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
+    });
+    expect(expiredGuest.statusCode).toBe(200);
 
     await prisma.gatheringSubscription.updateMany({
       where: { groupId: group.id },

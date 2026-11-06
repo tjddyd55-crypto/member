@@ -1,15 +1,5 @@
 import { chunkForReserve } from './upload-block';
 
-export const SUBSCRIPTION_RETRY_HINT = '이용 상태를 확인하지 못했습니다. 다시 확인해 주세요.';
-
-export type SubscriptionUploadState = 'unknown' | 'allowed' | 'inactive';
-
-/** 조회 실패는 이용 종료가 아니다. 버튼은 두고 서버가 실제 이용 상태를 판단한다. */
-export function subscriptionUploadState(uploadsAllowed: boolean | null | undefined): SubscriptionUploadState {
-  if (uploadsAllowed == null) return 'unknown';
-  return uploadsAllowed ? 'allowed' : 'inactive';
-}
-
 export type AlbumReserve = {
   key: string;
   assetId: string;

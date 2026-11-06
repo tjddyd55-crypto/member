@@ -2,8 +2,7 @@
  * 모임 이용권 저장 공간 정책.
  *
  * 한도는 십진 50GB(50_000_000_000 바이트)이고 사진·영상·영수증·기타를 함께 센다.
- * 영수증은 보존 의무가 있어 이용권 만료로 지우지 않는다.
- * 만료 후 막히는 신규 업로드는 미디어뿐이다. 영수증은 한도 안이면 만료 후에도 올릴 수 있다.
+ * 이용권 행과 만료 시각은 그대로 둔다. 이용 기간이 없거나 끝나도 사진·영상 업로드는 막지 않는다.
  * 한도를 넘으면 미디어와 영수증 모두 거절한다.
  * 갱신은 사용량을 0으로 되돌리지 않는다.
  */
@@ -19,16 +18,15 @@ export type StorageUsage = {
 
 export type UploadKind = 'MEDIA' | 'RECEIPT';
 
-export type UploadDecision =
-  { allowed: true } | { allowed: false; reason: 'SUBSCRIPTION_EXPIRED' | 'QUOTA_EXCEEDED' };
+export type UploadDecision = { allowed: true } | { allowed: false; reason: 'QUOTA_EXCEEDED' };
 
 export function billableStorageBytes(usage: StorageUsage): number {
   return usage.mediaBytes + usage.receiptBytes + usage.otherBytes;
 }
 
+/** 이용권 활성 여부는 받지 않는다. 회원 권한과 50GB 한도만 업로드를 거절한다. */
 export function evaluateUpload(input: {
   usage: StorageUsage;
-  subscriptionActive: boolean;
   kind: UploadKind;
   additionalBytes: number;
 }): UploadDecision {
@@ -38,9 +36,6 @@ export function evaluateUpload(input: {
   const nextTotal = billableStorageBytes(input.usage) + input.additionalBytes;
   if (nextTotal > STORAGE_QUOTA_BYTES) {
     return { allowed: false, reason: 'QUOTA_EXCEEDED' };
-  }
-  if (!input.subscriptionActive && input.kind === 'MEDIA') {
-    return { allowed: false, reason: 'SUBSCRIPTION_EXPIRED' };
   }
   return { allowed: true };
 }

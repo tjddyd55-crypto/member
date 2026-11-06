@@ -80,9 +80,9 @@ export async function createFolderMediaUploads(
     await lockGroup(tx, groupId);
     const now = new Date();
     const usage = await loadBillableUsage(tx, groupId, now);
-    const subscriptionActive = await isSubscriptionActive(tx, groupId, now);
     const additionalBytes = prepared.reduce((sum, item) => sum + item.sizeBytes, 0);
-    const decision = evaluateUpload({ usage, subscriptionActive, kind: 'MEDIA', additionalBytes });
+    // 이용권 만료는 폴더 업로드를 막지 않는다. 50GB와 회원 권한만 본다.
+    const decision = evaluateUpload({ usage, kind: 'MEDIA', additionalBytes });
     if (!decision.allowed) rejectUploadDecision(decision);
     const rows: ReservedUpload[] = [];
     for (const item of prepared) {
@@ -222,9 +222,9 @@ async function reserveUploads(
   return prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
     const usage = await loadBillableUsage(tx, groupId, now);
-    const subscriptionActive = await isSubscriptionActive(tx, groupId, now);
     const additionalBytes = items.reduce((sum, item) => sum + item.sizeBytes, 0);
-    const decision = evaluateUpload({ usage, subscriptionActive, kind: 'MEDIA', additionalBytes });
+    // 이용권 만료는 행사 업로드와 손님 링크 업로드를 막지 않는다.
+    const decision = evaluateUpload({ usage, kind: 'MEDIA', additionalBytes });
     if (!decision.allowed) rejectUploadDecision(decision);
     const reserved: ReservedUpload[] = [];
     for (const item of items) {

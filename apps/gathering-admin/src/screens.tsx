@@ -492,7 +492,7 @@ export function AdminsPage({ role, adminId }: { role: 'SUPER_ADMIN' | 'ADMIN'; a
         <tbody>
           {items.map((item) => (
             <tr key={item.id}>
-              <td>{item.loginId}<br />{item.role} {item.disabledAt ? '비활성' : ''} {item.totpReady ? '2FA' : '2FA 전'}</td>
+              <td>{item.loginId}<br />{item.role} {item.disabledAt ? '비활성' : ''}</td>
               <td>{item.scopes.map((scope) => `${scope.capability}:${scope.groupId}`).join(', ')}</td>
               <td>{item.id !== adminId && !item.disabledAt ? <button type="button" onClick={() => api(`/api/gathering-admin/admins/${item.id}/disable`, { method: 'POST', body: JSON.stringify({ reason: '운영 종료' }) }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : '끄지 못했습니다.'))}>비활성</button> : null}</td>
             </tr>

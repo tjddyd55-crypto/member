@@ -1,5 +1,4 @@
 import {
-  ADMIN_ENROLLMENT_MS,
   ADMIN_PASSWORD_MIN,
   adminLockUntil,
   adminLoginBlocked,
@@ -15,7 +14,6 @@ import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { randomToken, sha256 } from '../crypto.js';
 import { writeAdminAudit } from './audit.js';
-import { decryptAdminSecret, encryptAdminSecret, generateTotpSecret, otpauthUrl, totpMatches } from './totp.js';
 
 type SessionBody = {
   token: string;
@@ -25,7 +23,7 @@ type SessionBody = {
 };
 
 export async function loginAdmin(
-  input: { loginId: string; password: string; totpCode?: string; userAgent?: string },
+  input: { loginId: string; password: string; userAgent?: string },
   now = new Date(),
 ) {
   const loginId = normalizeLogin(input.loginId);
@@ -61,100 +59,8 @@ export async function loginAdmin(
     });
     throw new AppError(429, 'ADMIN_LOCKED', '로그인 시도가 잠겨 있습니다. 잠시 뒤 다시 하세요.');
   }
-  if (!account.totpConfirmedAt || !account.totpSecretCipher) {
-    const enrollment = await issueEnrollment(account.id, now);
-    if (enrollment) {
-      await writeAdminAudit(prisma, {
-        actorAdminId: account.id,
-        action: 'ADMIN_ENROLLMENT_STARTED',
-        targetType: 'GatheringAdminAccount',
-        targetId: account.id,
-      });
-      return { kind: 'enrollment' as const, enrollmentToken: enrollment.token, expiresAt: enrollment.expiresAt.toISOString() };
-    }
-  }
-  const enrolled = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: account.id } });
-  if (!enrolled.totpSecretCipher) {
-    throw new AppError(401, 'TOTP_INVALID', '인증 코드가 올바르지 않습니다.');
-  }
-  const secret = decryptAdminSecret(enrolled.totpSecretCipher);
-  if (!input.totpCode || !totpMatches(secret, input.totpCode, now.getTime())) {
-    await recordFailure(account.id, now);
-    await writeAdminAudit(prisma, {
-      actorAdminId: account.id,
-      action: 'ADMIN_TOTP_FAILED',
-      targetType: 'GatheringAdminAccount',
-      targetId: account.id,
-    });
-    throw new AppError(401, 'TOTP_INVALID', '인증 코드가 올바르지 않습니다.');
-  }
   const session = await openSession(account.id, input.userAgent, now, 'ADMIN_LOGIN');
   return { kind: 'session' as const, ...session };
-}
-
-export async function startAdminTotp(enrollmentToken: string, now = new Date()) {
-  const row = await requireEnrollment(enrollmentToken, now);
-  const secret = generateTotpSecret();
-  await prisma.gatheringAdminEnrollment.update({
-    where: { id: row.id },
-    data: { pendingSecretCipher: encryptAdminSecret(secret) },
-  });
-  const account = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: row.adminId } });
-  return { secret, otpauthUrl: otpauthUrl(account.loginId, secret) };
-}
-
-export async function confirmAdminTotp(
-  enrollmentToken: string,
-  code: string,
-  userAgent?: string,
-  now = new Date(),
-) {
-  const row = await requireEnrollment(enrollmentToken, now);
-  if (!row.pendingSecretCipher) {
-    throw new AppError(409, 'TOTP_NOT_STARTED', '인증 앱 등록을 먼저 시작하세요.');
-  }
-  const secret = decryptAdminSecret(row.pendingSecretCipher);
-  if (!totpMatches(secret, code, now.getTime())) {
-    await recordFailure(row.adminId, now);
-    throw new AppError(401, 'TOTP_INVALID', '인증 코드가 올바르지 않습니다.');
-  }
-  await prisma.$transaction(async (tx) => {
-    await tx.gatheringAdminAccount.update({
-      where: { id: row.adminId },
-      data: { updatedAt: now },
-    });
-    const current = await tx.gatheringAdminEnrollment.findUnique({ where: { id: row.id } });
-    if (!current || current.usedAt || current.pendingSecretCipher !== row.pendingSecretCipher) {
-      throw new AppError(401, 'ENROLLMENT_USED', '등록 토큰을 이미 사용했습니다.');
-    }
-    const consumed = await tx.gatheringAdminEnrollment.updateMany({
-      where: { id: current.id, usedAt: null },
-      data: { usedAt: now },
-    });
-    if (consumed.count !== 1) {
-      throw new AppError(401, 'ENROLLMENT_USED', '등록 토큰을 이미 사용했습니다.');
-    }
-    await tx.gatheringAdminEnrollment.updateMany({
-      where: { adminId: row.adminId, usedAt: null },
-      data: { usedAt: now, pendingSecretCipher: null },
-    });
-    await tx.gatheringAdminAccount.update({
-      where: { id: row.adminId },
-      data: {
-        totpSecretCipher: encryptAdminSecret(secret),
-        totpConfirmedAt: now,
-        failedAttempts: 0,
-        lockedUntil: null,
-      },
-    });
-    await writeAdminAudit(tx, {
-      actorAdminId: row.adminId,
-      action: 'ADMIN_TOTP_CONFIRMED',
-      targetType: 'GatheringAdminAccount',
-      targetId: row.adminId,
-    });
-  });
-  return openSession(row.adminId, userAgent, now, 'ADMIN_LOGIN');
 }
 
 export async function logoutAdmin(sessionId: string, actorAdminId: string) {
@@ -314,7 +220,6 @@ export async function listAdminAccounts(actorId: string) {
     loginId: row.loginId,
     role: row.role,
     disabledAt: row.disabledAt?.toISOString() ?? null,
-    totpReady: row.totpConfirmedAt != null,
     scopes: row.scopes.map((scope) => ({ groupId: scope.groupId, capability: scope.capability })),
   }));
 }
@@ -379,28 +284,6 @@ async function issueSession(
     },
   });
   return { token, csrfToken, expiresAt: expiresAt.toISOString() };
-}
-
-async function issueEnrollment(adminId: string, now: Date) {
-  return prisma.$transaction(async (tx) => {
-    await tx.gatheringAdminAccount.update({ where: { id: adminId }, data: { updatedAt: now } });
-    const current = await tx.gatheringAdminAccount.findUnique({ where: { id: adminId } });
-    if (!current || current.disabledAt || (current.totpConfirmedAt && current.totpSecretCipher)) return null;
-    const token = randomToken(32);
-    const expiresAt = new Date(now.getTime() + ADMIN_ENROLLMENT_MS);
-    await tx.gatheringAdminEnrollment.create({
-      data: { adminId, tokenHash: sha256(token), expiresAt },
-    });
-    return { token, expiresAt };
-  });
-}
-
-async function requireEnrollment(token: string, now: Date) {
-  const row = await prisma.gatheringAdminEnrollment.findUnique({ where: { tokenHash: sha256(token) } });
-  if (!row || row.usedAt || row.expiresAt.getTime() <= now.getTime()) {
-    throw new AppError(401, 'ENROLLMENT_EXPIRED', '인증 앱 등록 시간이 지났습니다. 다시 로그인하세요.');
-  }
-  return row;
 }
 
 async function recordFailure(adminId: string, now: Date) {

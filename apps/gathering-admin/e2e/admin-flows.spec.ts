@@ -6,8 +6,6 @@ import { expect, test, type Page } from '@playwright/test';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { ANNUAL_GROUP_FEE_WON } from '@member/gathering-domain';
-import { totpAt } from '../../api/src/modules/gathering/admin/totp.ts';
-
 config({ path: join(import.meta.dirname, '../../../.env') });
 
 const API = 'http://127.0.0.1:3001';
@@ -69,13 +67,6 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   const loginId = `browser.${stamp}`.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 64);
   const phone = `010${String(Math.floor(10000000 + Math.random() * 89999999))}`;
   const groupName = `브라우저 ${stamp}`;
-  const secretBox = { secret: '' };
-  page.on('response', async (response) => {
-    if (!response.url().includes('/api/gathering-admin/auth/totp/start') || !response.ok()) return;
-    const body = (await response.json()) as { secret?: string };
-    if (body.secret) secretBox.secret = body.secret;
-  });
-
   const owner = await register(phone, '브라우저회장');
   const successor = await register(`010${String(Math.floor(10000000 + Math.random() * 89999999))}`, '브라우저차기');
   const group = await api<{ id: string; financeYear: { year: number } }>('/api/gathering/groups', owner.token, {
@@ -114,15 +105,13 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   });
   adminIds.push(other.id);
 
-  await page.goto('/login');
+  await page.goto('/enroll');
   await expect(page.getByRole('heading', { name: 'JCI KOREA 관리' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '인증 앱 등록' })).toHaveCount(0);
+  await expect(page.getByLabel('인증 코드')).toHaveCount(0);
   await page.getByLabel('아이디').fill(loginId);
   await page.getByLabel('비밀번호').fill(password);
   await page.getByRole('button', { name: '로그인' }).click();
-  await expect(page.getByRole('heading', { name: '인증 앱 등록' })).toBeVisible();
-  await expect.poll(() => secretBox.secret.length).toBeGreaterThan(10);
-  await page.getByLabel('6자리 코드').fill(totpAt(secretBox.secret, Date.now()));
-  await page.getByRole('button', { name: '등록하고 로그인' }).click();
   await expect(page.getByRole('heading', { name: '대시보드' })).toBeVisible();
   const session = (await page.context().cookies()).find((cookie) => cookie.name === 'gathering_admin_session');
   expect(session?.value).toBeTruthy();
@@ -138,7 +127,7 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   await expect(page.getByRole('link', { name: '문자' }).first()).toHaveAttribute('href', `sms:${phone}`);
   await expect(page.getByRole('button', { name: '복사' }).first()).toBeVisible();
 
-  await page.getByRole('button', { name: '이용권' }).click();
+  await page.getByRole('button', { name: '이용권', exact: true }).click();
   await expect(page.getByText(`현재 이용권 ${trial.id}`)).toBeVisible();
   await page.getByLabel('사유').fill('정식 1년');
   await page.getByRole('button', { name: '승인 또는 연장' }).click();
@@ -183,7 +172,7 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   await page.getByRole('button', { name: '이용권에 연결' }).click();
   await expect(page.getByText('금액이 정식 연회비와 다릅니다')).toBeVisible();
 
-  await page.getByRole('button', { name: '이용권' }).click();
+  await page.getByRole('button', { name: '이용권', exact: true }).click();
   await page.getByLabel('구분').selectOption('COMPLIMENTARY');
   await page.getByLabel('사유').fill('무상');
   await page.getByRole('button', { name: '승인 또는 연장' }).click();
@@ -209,7 +198,7 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   await expect(page.locator('#log')).toContainText('정지되어');
 
   await page.goto(`/groups/${group.id}`);
-  await page.getByRole('button', { name: '이용권' }).click();
+  await page.getByRole('button', { name: '이용권', exact: true }).click();
   await page.getByRole('button', { name: '정지 해제' }).click();
   await expect(page.locator('[data-suspended="0"]')).toBeVisible();
   const resumed = await fetch(`${API}/api/gathering/groups/${group.id}/events`, {
@@ -268,7 +257,6 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   await expect(page.getByRole('heading', { name: 'JCI KOREA 관리' })).toBeVisible();
   await page.getByLabel('아이디').fill(loginId);
   await page.getByLabel('비밀번호').fill(password);
-  await page.getByLabel('인증 코드').fill(totpAt(secretBox.secret, Date.now()));
   await page.getByRole('button', { name: '로그인' }).click();
   await page.getByRole('link', { name: '내 계정' }).click();
   await page.getByLabel('현재').fill(password);

@@ -31,17 +31,16 @@ npm run dev -w @member/gathering-admin
 
 | 이름 | 목적 | 형식 |
 | --- | --- | --- |
-| `GATHERING_ADMIN_TOTP_KEY` | 관리자 TOTP 비밀을 서버에 암호화해 저장 | 16자 이상. 첫 등록 전에 있어야 한다. |
+| `GATHERING_ADMIN_TOTP_KEY` | 예전 등록용. 로그인에는 쓰지 않는다 | 이미 있는 값과 저장된 암호문은 지우지 않는다. 새 등록은 없다 |
 | `GATHERING_ADMIN_BOOTSTRAP_LOGIN` | 최초 슈퍼관리자 아이디 | 영문, 숫자, `.`, `_`, `-`. 3자 이상 64자 이하 |
-| `GATHERING_ADMIN_BOOTSTRAP_PASSWORD` | 최초 슈퍼관리자 비밀번호. 명령 한 번 | 8자 이상. TOTP는 그대로 필수. 모임 회원 비밀번호 규칙과는 따로다 |
+| `GATHERING_ADMIN_BOOTSTRAP_PASSWORD` | 최초 슈퍼관리자 비밀번호. 명령 한 번 | 8자 이상. 모임 회원 비밀번호 규칙과는 따로다 |
 
 순서:
 
-1. 위 세 이름을 Development API 서비스에 넣는다. 웹 서비스나 Production에는 넣지 않는다.
+1. 아이디와 비밀번호 이름을 Development API 서비스에 넣는다. 웹 서비스나 Production에는 넣지 않는다. 이미 있는 TOTP 키는 로그인에 쓰지 않으며 지우지 않아도 된다.
 2. 리뷰가 끝난 뒤에만 foundation 병합으로 API를 배포한다. 마이그레이션은 그 배포의 `db:migrate:deploy`가 추가만 한다.
 3. 저장소 루트에서 `npx tsx scripts/gathering-admin-bootstrap.ts`를 한 번 실행한다. 루트 패키지는 CommonJS다. `scripts/package.json`만 `type: module`이라서 이 스크립트와 API 모듈을 ESM으로 읽는다. 출력은 계정을 만들었는지, 이미 있는지만 말한다. 값이 없으면 계정을 만들지 않는다.
-4. 관리 화면에서 그 아이디로 로그인한다. 인증 앱 등록 화면이 비밀을 한 번 보여 준다. 그 화면이 운영자에게 넘기는 자리다. 서버 로그에는 비밀이 없다.
-5. 코드를 확인하면 세션 쿠키가 생긴다. 이후 로그인에는 인증 코드가 필요하다.
+4. 관리 화면에서 아이디와 비밀번호만 입력하면 세션이 생기고 관리 화면으로 들어간다. `/enroll`로 열려도 같은 로그인 화면이다. 인증 코드는 묻지 않는다. 서버 로그에는 비밀번호가 없다.
 
 ## 관리 웹을 따로 둘 때
 

@@ -4,7 +4,6 @@ import { ADMIN_LOCK_THRESHOLD, ADMIN_PASSWORD_MIN } from '@member/gathering-doma
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { bootstrapSuperAdmin } from '../modules/gathering/admin/bootstrap.js';
-import { totpAt } from '../modules/gathering/admin/totp.js';
 
 let app: FastifyInstance;
 const userIds: string[] = [];
@@ -26,7 +25,7 @@ afterAll(async () => {
 });
 
 describe('슈퍼관리자 세션', () => {
-  it('회원 토큰은 거부하고, TOTP를 확인한 서버 세션만 담당 모임을 본다', async () => {
+  it('회원 토큰은 거부하고, 비밀번호 세션만 담당 모임을 본다', async () => {
     const owner = await register('관리회장');
     const first = await createGroup(owner.tokens.accessToken, '가 모임');
     const second = await createGroup(owner.tokens.accessToken, '나 모임');
@@ -44,7 +43,7 @@ describe('슈퍼관리자 세션', () => {
     const root = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { loginId: 'root.admin' } });
     adminIds.push(root.id);
 
-    const enrolled = await enroll('root.admin', password);
+    const enrolled = await signIn('root.admin', password);
     const me = await app.inject({
       method: 'GET',
       url: '/api/gathering-admin/me',
@@ -85,7 +84,7 @@ describe('슈퍼관리자 세션', () => {
     expect(scoped.statusCode).toBe(200);
     const local = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { loginId: 'local.admin' } });
     adminIds.push(local.id);
-    const localSession = await enroll('local.admin', password);
+    const localSession = await signIn('local.admin', password);
     const visible = await app.inject({
       method: 'GET',
       url: '/api/gathering-admin/groups',
@@ -191,30 +190,18 @@ describe('슈퍼관리자 세션', () => {
   });
 });
 
-async function enroll(loginId: string, secretPassword: string) {
+async function signIn(loginId: string, secretPassword: string) {
   const login = await app.inject({
     method: 'POST',
     url: '/api/gathering-admin/auth/login',
     payload: { loginId, password: secretPassword },
   });
   expect(login.statusCode).toBe(200);
-  expect(login.json().status).toBe('ENROLLMENT_REQUIRED');
-  expect(login.headers['set-cookie']).toBeUndefined();
-  const started = await app.inject({
-    method: 'POST',
-    url: '/api/gathering-admin/auth/totp/start',
-    payload: { enrollmentToken: login.json().enrollmentToken },
-  });
-  expect(started.statusCode).toBe(200);
-  const confirmed = await app.inject({
-    method: 'POST',
-    url: '/api/gathering-admin/auth/totp/confirm',
-    payload: { enrollmentToken: login.json().enrollmentToken, code: totpAt(started.json().secret as string, Date.now()) },
-  });
-  expect(confirmed.statusCode).toBe(200);
-  expect(JSON.stringify(confirmed.json())).not.toContain(started.json().secret as string);
-  expect(JSON.stringify(confirmed.json())).not.toContain(secretPassword);
-  return { cookie: cookieOf(confirmed), csrf: confirmed.json().csrfToken as string };
+  expect(login.json().status).toBe('AUTHENTICATED');
+  expect(login.json().enrollmentToken).toBeUndefined();
+  expect(login.headers['set-cookie']).toBeDefined();
+  expect(JSON.stringify(login.json())).not.toContain(secretPassword);
+  return { cookie: cookieOf(login), csrf: login.json().csrfToken as string };
 }
 
 async function register(name: string) {

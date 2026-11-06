@@ -691,6 +691,7 @@ model GatheringGroup {
   notifications      GatheringNotification[]
   auditLogs          GatheringAuditLog[]
   attendances        GatheringEventAttendance[]
+  adminScopes        GatheringAdminScope[]
 
   @@index([createdByUserId])
   @@map("gathering_groups")
@@ -1099,6 +1100,99 @@ model GatheringTrialClaim {
   createdAt DateTime @default(now())
 
   @@map("gathering_trial_claims")
+}
+
+enum GatheringAdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+/// 모임 회원 계정과 분리된 관리자. 비밀번호 해시만 저장한다.
+model GatheringAdminAccount {
+  id                String             @id @default(cuid())
+  loginId           String             @unique
+  passwordHash      String
+  role              GatheringAdminRole
+  disabledAt        DateTime?
+  failedAttempts    Int                @default(0)
+  lockedUntil       DateTime?
+  totpSecretCipher  String?
+  totpConfirmedAt   DateTime?
+  passwordChangedAt DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  sessions    GatheringAdminSession[]
+  enrollments GatheringAdminEnrollment[]
+  scopes      GatheringAdminScope[]
+  audits      GatheringAdminAudit[]      @relation("GatheringAdminAuditActor")
+
+  @@map("gathering_admin_accounts")
+}
+
+model GatheringAdminSession {
+  id        String    @id @default(cuid())
+  adminId   String
+  tokenHash String    @unique
+  csrfHash  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@map("gathering_admin_sessions")
+}
+
+model GatheringAdminEnrollment {
+  id                  String    @id @default(cuid())
+  adminId             String
+  tokenHash           String    @unique
+  pendingSecretCipher String?
+  expiresAt           DateTime
+  usedAt              DateTime?
+  createdAt           DateTime  @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@map("gathering_admin_enrollments")
+}
+
+model GatheringAdminScope {
+  id         String   @id @default(cuid())
+  adminId    String
+  groupId    String
+  capability String
+  createdAt  DateTime @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+  group GatheringGroup        @relation(fields: [groupId], references: [id])
+
+  @@unique([adminId, groupId, capability])
+  @@index([groupId])
+  @@map("gathering_admin_scopes")
+}
+
+/// 덧붙이기만 한다. 애플리케이션은 이 테이블을 수정하거나 지우지 않는다.
+model GatheringAdminAudit {
+  id           String   @id @default(cuid())
+  actorAdminId String?
+  action       String
+  targetType   String?
+  targetId     String?
+  beforeJson   String?
+  afterJson    String?
+  reason       String?
+  createdAt    DateTime @default(now())
+
+  actor GatheringAdminAccount? @relation("GatheringAdminAuditActor", fields: [actorAdminId], references: [id])
+
+  @@index([createdAt])
+  @@index([actorAdminId, createdAt])
+  @@map("gathering_admin_audits")
 }
 
 model GatheringSubscriptionAudit {

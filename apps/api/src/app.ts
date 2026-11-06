@@ -7,6 +7,7 @@ import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { localRoutes } from './routes/local.js';
 import { memberRoutes } from './routes/members.js';
+import { gatheringAdminRoutes } from './modules/gathering/admin/routes.js';
 import { gatheringRoutes } from './modules/gathering/routes/index.js';
 import { startDevStorageIfEnabled, stopDevStorage } from './modules/gathering/storage/file-sink.js';
 
@@ -44,6 +45,7 @@ export async function buildApp() {
   await app.register(localRoutes);
   await app.register(memberRoutes);
   await app.register(gatheringRoutes);
+  await app.register(gatheringAdminRoutes);
   await startDevStorageIfEnabled();
   app.addHook('onClose', async () => {
     await stopDevStorage();

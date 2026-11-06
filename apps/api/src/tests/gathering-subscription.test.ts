@@ -230,7 +230,7 @@ describe('모임 이용권', () => {
     expect(view.json().uploadsAllowed).toBe(true);
   });
 
-  it('새 모임은 30일 체험이고, 같은 휴대폰의 다음 모임은 체험이 없으며 정지는 갱신으로 풀리지 않는다', async () => {
+  it('별개 모임은 각각 30일 체험이고, 정지는 갱신으로 풀리지 않는다', async () => {
     const owner = await register('체험회장');
     const first = await createGroup(owner.tokens.accessToken);
     const trial = await prisma.gatheringSubscription.findFirstOrThrow({
@@ -238,8 +238,12 @@ describe('모임 이용권', () => {
     });
     expect(trial.expiresAt!.getTime() - trial.startsAt!.getTime()).toBe(30 * 24 * 60 * 60 * 1000);
     const second = await createGroup(owner.tokens.accessToken);
-    expect(await prisma.gatheringSubscription.count({ where: { groupId: second.id, source: 'TRIAL' } })).toBe(0);
-    expect(await prisma.gatheringTrialClaim.count({ where: { userId: owner.user.id } })).toBe(1);
+    const secondTrial = await prisma.gatheringSubscription.findFirstOrThrow({
+      where: { groupId: second.id, source: 'TRIAL' },
+    });
+    expect(secondTrial.expiresAt!.getTime() - secondTrial.startsAt!.getTime()).toBe(30 * 24 * 60 * 60 * 1000);
+    expect(await prisma.gatheringTrialClaim.count({ where: { userId: owner.user.id } })).toBe(2);
+    expect(await prisma.gatheringSubscription.count({ where: { groupId: first.id, source: 'TRIAL' } })).toBe(1);
 
     await prisma.gatheringGroup.update({ where: { id: first.id }, data: { suspendedAt: new Date() } });
     const blocked = await app.inject({

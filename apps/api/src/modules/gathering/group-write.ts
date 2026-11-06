@@ -6,7 +6,6 @@ import {
   fiscalYearOf,
   fiscalYearRange,
   isValidFiscalPeriod,
-  normalizeKoreanMobile,
   trialWindow,
   type FiscalPeriod,
 } from '@member/gathering-domain';
@@ -15,7 +14,6 @@ import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
 import { writeGatheringAudit } from './audit.js';
 import { GatheringAuditAction } from './constants.js';
-import { sha256 } from './crypto.js';
 import { getGroupDetail } from './group-read.js';
 import { lockGroup } from './locks.js';
 
@@ -89,14 +87,10 @@ async function insertGroup(
 }
 
 async function openTrialIfUnclaimed(tx: Prisma.TransactionClient, userId: string, groupId: string, now: Date) {
-  const user = await tx.user.findUnique({ where: { id: userId }, select: { phone: true } });
-  const phone = user?.phone ? normalizeKoreanMobile(user.phone) : null;
-  if (!phone) return;
-  const phoneHash = sha256(phone);
-  const existing = await tx.gatheringTrialClaim.findUnique({ where: { phoneHash }, select: { id: true } });
+  const existing = await tx.gatheringTrialClaim.findUnique({ where: { groupId }, select: { id: true } });
   if (!canOpenTrial(existing != null)) return;
   try {
-    await tx.gatheringTrialClaim.create({ data: { phoneHash, userId, groupId } });
+    await tx.gatheringTrialClaim.create({ data: { userId, groupId } });
   } catch (error) {
     if (isUniqueConflict(error)) return;
     throw error;

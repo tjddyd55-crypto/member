@@ -29,7 +29,7 @@
 | 회원 감사 | `GatheringAuditLog`. 회원수첩 `AuditLog`와 별개다. |
 | 운영자 비밀 | `GATHERING_OPERATOR_SECRET`. 서버 환경변수. 응답과 앱 번들에 넣지 않는다. |
 
-Railway Development는 프로젝트 `jci-korea` `dab078792-d0ff-4cd6-a5ad-31c62cd8ce26`, API `https://api-development-46a6.up.railway.app`, PostgreSQL, R2 `jci-korea-media`를 그대로 쓴다. 새 데이터베이스와 새 Railway 프로젝트는 만들지 않는다. 관리자 웹은 나중에 같은 Development 프로젝트의 서비스로 붙일 수 있다. 마이그레이션은 추가만 하고, 이 환경에서 Development에 적용하지 않는다.
+Railway Development는 프로젝트 `jci-korea` `ab078792-d0ff-4cd6-a5ad-31c62cd8ce26`, API `https://api-development-46a6.up.railway.app`, PostgreSQL, R2 `jci-korea-media`를 그대로 쓴다. 새 데이터베이스와 새 Railway 프로젝트는 만들지 않는다. 관리자 웹은 나중에 같은 Development 프로젝트의 서비스로 붙일 수 있다. Production은 대상이 아니다.
 
 ## 프레임워크
 
@@ -47,7 +47,8 @@ Railway Development는 프로젝트 `jci-korea` `dab078792-d0ff-4cd6-a5ad-31c62c
 2026-11-06 지시가 이전의 무기한 업로드를 대체한다.
 
 - 새로 만든 모임만 요청 시각부터 30일 `TRIAL`이다. 기존 모임 행에는 체험을 넣지 않는다.
-- 체험은 휴대폰 해시당 한 번이다. `gathering_trial_claims`는 모임이나 계정을 지워도 지우지 않는다.
+- 같은 회원이 만든 별개 모임도 각각 체험을 받는다. `gathering_trial_claims`는 모임 행당 하나다.
+- 모임을 지우고 같은 이름으로 다시 만드는 경우는 이름만으로 같은 모임이라고 보지 않는다. 그 남용 방지는 아직 자동으로 구분하지 않는다.
 - 정식은 연 60,000원. 즉시 갱신 만료는 `max(지금, 현재 만료) + 1년`이다. 예전 3만 원 상수 `ANNUAL_GROUP_FEE_WON`과 기존 이력은 고치지 않는다.
 - `GatheringGroup.suspendedAt`은 이용권과 별개다. 갱신해도 정지는 풀리지 않는다.
 - 기간이 없거나 끝났거나 정지된 모임은 새 행사, 장부, 회비, 사진·영상·영수증 예약을 거절한다. 조회, 다운로드, 초대와 회원 상태 조회는 남긴다.

@@ -1091,15 +1091,13 @@ model GatheringSubscription {
   @@map("gathering_subscriptions")
 }
 
-/// 체험은 휴대폰당 한 번. 모임이나 계정을 지워도 이 행은 남긴다.
+/// 이 모임 행이 체험을 받았다는 표시. 다른 모임을 막지 않는다.
 model GatheringTrialClaim {
   id        String   @id @default(cuid())
-  phoneHash String   @unique
   userId    String
-  groupId   String
+  groupId   String   @unique
   createdAt DateTime @default(now())
 
-  @@index([groupId])
   @@map("gathering_trial_claims")
 }
 

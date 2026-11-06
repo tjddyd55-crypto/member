@@ -33,7 +33,7 @@ describe('모임 이용 기간', () => {
     expect(scheduled.toISOString()).toBe('2028-01-01T00:00:00.000Z');
   });
 
-  it('같은 휴대폰의 두 번째 체험은 열지 않는다', () => {
+  it('같은 모임 행의 두 번째 체험만 열지 않는다', () => {
     expect(canOpenTrial(false)).toBe(true);
     expect(canOpenTrial(true)).toBe(false);
   });

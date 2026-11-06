@@ -35,9 +35,12 @@ export function formalTermExpiry(approvedAt: Date, currentExpiresAt: Date | null
   return expires;
 }
 
-/** 같은 휴대폰의 체험은 한 번. 모임을 지우고 다시 만들어도 이 값이 참이면 열지 않는다. */
-export function canOpenTrial(alreadyClaimed: boolean) {
-  return !alreadyClaimed;
+/**
+ * 이 모임 행에 체험 기록이 있으면 다시 열지 않는다.
+ * 다른 모임은 막지 않는다. 이름이나 휴대폰으로 같은 모임인지 추정하지 않는다.
+ */
+export function canOpenTrial(groupAlreadyHasTrial: boolean) {
+  return !groupAlreadyHasTrial;
 }
 
 /**

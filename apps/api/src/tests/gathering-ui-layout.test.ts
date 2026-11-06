@@ -1,4 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import {
+  compactHeaderTitle,
+  visibleGroupName,
+  GATHERING_TABS,
+  gatheringSwitchItems,
+  GLOBAL_MENU_ROUTES,
+  globalMenuNavigation,
+  rootResetTarget,
+  routeHeaderTitle,
+} from '../../../gathering-mobile/src/features/group/app-menu';
 import { tabIconSize, tabLabelSize, tabSlotWidth } from '../../../gathering-mobile/src/features/group/tab-layout';
 import { uploadAlbumFiles } from '../../../gathering-mobile/src/features/media/album-upload';
 import { chunkForReserve, handoverInProgress, uploadBlockReason } from '../../../gathering-mobile/src/features/media/upload-block';
@@ -10,6 +20,54 @@ describe('모임 화면 배치', () => {
     expect(tabSlotWidth(412)).toBeGreaterThan(70);
     expect(tabLabelSize(320)).toBeLessThanOrEqual(tabLabelSize(412));
     expect(tabIconSize(320)).toBeLessThanOrEqual(tabIconSize(412));
+  });
+
+  it('모임 안 제목은 헤더에 바로 보이고 전역 메뉴는 모임 목록으로 간다', () => {
+    expect(GATHERING_TABS).toEqual(['홈', '회원', '일정', '사진', '재무']);
+    expect(compactHeaderTitle({ groupName: '2023년 한국JC 위원장 협의회', routeTitle: '내 모임' })).toBe(
+      '2023년 한국JC 위원장 협의회',
+    );
+    expect(routeHeaderTitle('/groups/group-1')).toBe('모임');
+    expect(routeHeaderTitle('/groups/create')).toBe('모임 만들기');
+    expect(routeHeaderTitle('/groups')).toBe('내 모임');
+    expect(globalMenuNavigation()).toBe('reset');
+    const root = { key: 'root-stack', routeNames: ['(app)', '(auth)', 'index'] };
+    expect(
+      rootResetTarget(root, {
+        routes: [{ name: '(app)' }],
+      }),
+    ).toBe('root-stack');
+    expect(rootResetTarget(root, { routes: [{ name: 'groups/index' }] })).toBeNull();
+    expect(rootResetTarget({ routeNames: ['(app)'] }, { routes: [{ name: '(app)' }] })).toBeNull();
+    expect(
+      rootResetTarget(root, {
+        stale: false,
+        routeNames: ['(app)'],
+        routes: [{ name: '(app)' }],
+      }),
+    ).toBeNull();
+    expect(GLOBAL_MENU_ROUTES.map((item) => item.label)).toEqual(['내 모임', '전체 일정']);
+    expect(GLOBAL_MENU_ROUTES.some((item) => item.label === '홈')).toBe(false);
+    const items = gatheringSwitchItems(
+      [
+        { id: 'a', name: '2023년 한국JC 위원장 협의회', membershipStatus: 'ACTIVE' },
+        { id: 'b', name: '다른 모임', membershipStatus: 'PENDING' },
+      ],
+      'a',
+    );
+    expect(items).toEqual([
+      { id: 'a', label: '2023년 한국JC 위원장 협의회', href: '/(app)/groups/a', selected: true },
+    ]);
+    expect(visibleGroupName({ id: 'a', name: '가 모임' }, 'a')).toBe('가 모임');
+    expect(visibleGroupName({ id: 'a', name: '가 모임' }, 'b')).toBeNull();
+    const many = gatheringSwitchItems(
+      Array.from({ length: 30 }, (_, index) => ({
+        id: String(index),
+        name: `모임 ${index}`,
+        membershipStatus: 'ACTIVE' as const,
+      })),
+    );
+    expect(many).toHaveLength(30);
   });
 
   it('앨범 업로드 예약은 한 요청에 20장을 넘기지 않는다', () => {

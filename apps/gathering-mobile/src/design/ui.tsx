@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DISCLAIMER } from '../copy';
 import { focusedFieldScrollY, keyboardAvoidingBehavior } from '../features/forms/values';
+import { useUnderAppChrome } from '../features/group/AppChrome';
 import { theme } from '../theme';
 
 type FormScroll = {
@@ -24,6 +25,7 @@ type FormScroll = {
 const FormScrollContext = createContext<FormScroll | null>(null);
 
 export function Screen({ children }: { children: React.ReactNode }) {
+  const underChrome = useUnderAppChrome();
   const scrollRef = useRef<ScrollView>(null);
   const contentRef = useRef<View>(null);
   const formScroll = useMemo<FormScroll>(
@@ -34,7 +36,7 @@ export function Screen({ children }: { children: React.ReactNode }) {
     [],
   );
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={underChrome ? ['bottom'] : ['top', 'bottom']}>
       <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
         <FormScrollContext.Provider value={formScroll}>
           <ScrollView

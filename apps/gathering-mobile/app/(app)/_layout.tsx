@@ -1,6 +1,7 @@
 import { Redirect, Stack } from 'expo-router';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { LoadingState, Screen } from '../../src/design/ui';
+import { AppChrome } from '../../src/features/group/AppChrome';
 
 export default function AppLayout() {
   const { booting, user } = useAuth();
@@ -12,5 +13,9 @@ export default function AppLayout() {
     );
   }
   if (!user) return <Redirect href="/(auth)/login" />;
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <AppChrome>
+      <Stack screenOptions={{ headerShown: false }} />
+    </AppChrome>
+  );
 }

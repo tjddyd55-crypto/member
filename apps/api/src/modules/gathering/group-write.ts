@@ -89,12 +89,7 @@ async function insertGroup(
 async function openTrialIfUnclaimed(tx: Prisma.TransactionClient, userId: string, groupId: string, now: Date) {
   const existing = await tx.gatheringTrialClaim.findUnique({ where: { groupId }, select: { id: true } });
   if (!canOpenTrial(existing != null)) return;
-  try {
-    await tx.gatheringTrialClaim.create({ data: { userId, groupId } });
-  } catch (error) {
-    if (isUniqueConflict(error)) return;
-    throw error;
-  }
+  await tx.gatheringTrialClaim.create({ data: { userId, groupId } });
   const window = trialWindow(now);
   const subscription = await tx.gatheringSubscription.create({
     data: {
@@ -115,10 +110,6 @@ async function openTrialIfUnclaimed(tx: Prisma.TransactionClient, userId: string
       metaJson: JSON.stringify({ expiresAt: window.expiresAt.toISOString() }),
     },
   });
-}
-
-function isUniqueConflict(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
 
 type GroupPatch = {

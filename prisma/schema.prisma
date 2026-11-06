@@ -1190,6 +1190,8 @@ model GatheringAdminAudit {
   action       String
   targetType   String?
   targetId     String?
+  /// 이 기록이 속한 모임. 대상 ID가 이용권·입금·회원 행이어도 담당 범위로 거른다.
+  groupId      String?
   beforeJson   String?
   afterJson    String?
   reason       String?
@@ -1199,6 +1201,7 @@ model GatheringAdminAudit {
 
   @@index([createdAt])
   @@index([actorAdminId, createdAt])
+  @@index([groupId, createdAt])
   @@map("gathering_admin_audits")
 }
 

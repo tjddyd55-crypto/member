@@ -20,19 +20,27 @@ export async function listAdminGroups(adminId: string) {
   const rows = (
     await Promise.all(groups.map((group) => presentGroup(group.id, canSeeContact(account, group.id))))
   ).filter((row) => row != null);
-  if (rows.some((row) => row.creator.phone || row.president?.phone)) {
+  for (const row of rows) {
+    if (row.creator.phone || row.president?.phone) {
+      await writeAdminAudit(prisma, {
+        actorAdminId: adminId,
+        action: 'ADMIN_CONTACT_LIST',
+        targetType: 'GatheringGroup',
+        targetId: row.id,
+        groupId: row.id,
+        after: { count: 1 },
+        reason: '모임 연락처 조회',
+      });
+    }
     await writeAdminAudit(prisma, {
       actorAdminId: adminId,
-      action: 'ADMIN_CONTACT_LIST',
-      after: { count: rows.length },
-      reason: '모임 연락처 조회',
+      action: 'ADMIN_GROUP_LIST',
+      targetType: 'GatheringGroup',
+      targetId: row.id,
+      groupId: row.id,
+      after: { count: 1 },
     });
   }
-  await writeAdminAudit(prisma, {
-    actorAdminId: adminId,
-    action: 'ADMIN_GROUP_LIST',
-    after: { count: rows.length },
-  });
   return rows;
 }
 
@@ -51,6 +59,7 @@ export async function readAdminGroup(adminId: string, groupId: string) {
       action: 'ADMIN_CONTACT_READ',
       targetType: 'GatheringGroup',
       targetId: groupId,
+      groupId,
       reason: '모임 상세 연락처',
     });
   }
@@ -60,6 +69,7 @@ export async function readAdminGroup(adminId: string, groupId: string) {
     action: 'ADMIN_GROUP_READ',
     targetType: 'GatheringGroup',
     targetId: groupId,
+    groupId,
   });
   return row;
 }
@@ -74,7 +84,7 @@ export async function listAdminAudits(adminId: string) {
       ? null
       : account.scopes.filter((scope) => scope.capability === 'AUDIT_READ').map((scope) => scope.groupId);
   const rows = await prisma.gatheringAdminAudit.findMany({
-    where: groupIds ? { targetId: { in: groupIds } } : undefined,
+    where: groupIds ? { groupId: { in: groupIds } } : undefined,
     orderBy: { createdAt: 'desc' },
     take: 50,
     include: { actor: { select: { id: true, loginId: true, role: true } } },

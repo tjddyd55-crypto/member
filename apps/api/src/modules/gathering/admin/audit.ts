@@ -11,6 +11,7 @@ export async function writeAdminAudit(
     action: string;
     targetType?: string;
     targetId?: string;
+    groupId?: string | null;
     before?: unknown;
     after?: unknown;
     reason?: string;
@@ -22,6 +23,7 @@ export async function writeAdminAudit(
       action: input.action,
       targetType: input.targetType ?? null,
       targetId: input.targetId ?? null,
+      groupId: input.groupId ?? null,
       beforeJson: input.before === undefined ? null : JSON.stringify(scrub(input.before)),
       afterJson: input.after === undefined ? null : JSON.stringify(scrub(input.after)),
       reason: input.reason ?? null,

@@ -62,24 +62,27 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
   if (groupId && ids && !ids.includes(groupId)) {
     throw new AppError(404, 'GROUP_NOT_FOUND', '모임을 찾을 수 없습니다.');
   }
-  const showContact = adminAllows({
-    role: account.role,
-    disabled: false,
-    scopes: account.scopes,
-    capability: 'CONTACT_READ',
-  });
+  const contactIds = groupIdsFor(account, 'CONTACT_READ');
+  const phoneGroupIds = groupId
+    ? contactIds?.filter((id) => id === groupId) ?? [groupId]
+    : contactIds;
   const members = await prisma.gatheringMembership.findMany({
     where: {
       status: { in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
       ...(groupId ? { groupId } : ids ? { groupId: { in: ids } } : {}),
-      user: query
+      ...(query
         ? {
             OR: [
-              { phone: { contains: query } },
-              { gatheringProfile: { displayName: { contains: query, mode: 'insensitive' } } },
+              { user: { gatheringProfile: { displayName: { contains: query, mode: 'insensitive' } } } },
+              ...(phoneGroupIds == null || phoneGroupIds.length > 0
+                ? [{
+                    user: { phone: { contains: query } },
+                    ...(phoneGroupIds ? { groupId: { in: phoneGroupIds } } : {}),
+                  }]
+                : []),
             ],
           }
-        : undefined,
+        : {}),
     },
     include: {
       user: { include: { gatheringProfile: true, gatheringAffiliations: { where: { isCurrent: true }, take: 1 } } },
@@ -88,11 +91,15 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
-  if (showContact) {
+  const shown = members.filter((row) => contactIds == null || contactIds.includes(row.group.id));
+  for (const id of new Set(shown.map((row) => row.group.id))) {
     await writeAdminAudit(prisma, {
       actorAdminId: adminId,
       action: 'ADMIN_CONTACT_LIST',
-      after: { count: members.length },
+      targetType: 'GatheringGroup',
+      targetId: id,
+      groupId: id,
+      after: { count: shown.filter((row) => row.group.id === id).length },
       reason: '회원 연락처 조회',
     });
   }
@@ -104,7 +111,7 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
       id: row.user.id,
       name: row.user.gatheringProfile?.displayName ?? null,
       localJcName: row.user.gatheringAffiliations[0]?.localJcName ?? null,
-      phone: showContact ? row.user.phone : null,
+      phone: contactIds == null || contactIds.includes(row.group.id) ? row.user.phone : null,
     },
   }));
 }
@@ -123,6 +130,7 @@ export async function setGroupSuspension(adminId: string, groupId: string, suspe
       action: suspended ? 'ADMIN_SUSPEND' : 'ADMIN_UNSUSPEND',
       targetType: 'GatheringGroup',
       targetId: groupId,
+      groupId,
       before: { suspendedAt: before.suspendedAt?.toISOString() ?? null, createdByUserId: before.createdByUserId },
       after: { suspendedAt: after?.suspendedAt?.toISOString() ?? null, createdByUserId: after?.createdByUserId },
       reason: reason.trim(),
@@ -169,6 +177,7 @@ export async function approveSubscription(
       action: 'ADMIN_SUBSCRIPTION_APPROVE',
       targetType: 'GatheringSubscription',
       targetId: created.id,
+      groupId,
       before: { subscriptionId: previous?.id ?? null, expiresAt: previous?.expiresAt?.toISOString() ?? null },
       after: { subscriptionId: created.id, expiresAt: created.expiresAt?.toISOString() ?? null, source, suspended: group?.suspendedAt != null, createdByUserId: group?.createdByUserId },
       reason: input.reason.trim(),
@@ -192,6 +201,7 @@ export async function cancelSubscription(adminId: string, groupId: string, input
       action: 'ADMIN_SUBSCRIPTION_CANCEL',
       targetType: 'GatheringSubscription',
       targetId: current.id,
+      groupId,
       before: { status: current.status },
       after: { status: 'REVOKED' },
       reason: input.reason.trim(),
@@ -227,6 +237,7 @@ export async function recordDeposit(
       action: 'ADMIN_DEPOSIT_RECORD',
       targetType: 'GatheringDeposit',
       targetId: row.id,
+      groupId,
       after: { amountWon: row.amountWon, status: row.status },
     });
     return { id: row.id, status: row.status, amountWon: row.amountWon };
@@ -270,6 +281,7 @@ export async function confirmDeposit(
       action: 'ADMIN_DEPOSIT_CONFIRM',
       targetType: 'GatheringDeposit',
       targetId: current.id,
+      groupId: current.groupId,
       after: { status: updated.status, linked },
       reason: input.reason.trim(),
     });
@@ -300,6 +312,7 @@ export async function setGroupQuota(adminId: string, groupId: string, input: { i
       action: 'ADMIN_QUOTA',
       targetType: 'GatheringSubscription',
       targetId: current.id,
+      groupId,
       before: { quotaBytes: before },
       after: { quotaBytes: input.quotaBytes, mediaCount: assets },
       reason: input.reason.trim(),
@@ -490,6 +503,7 @@ export async function setMemberRestriction(
       action: input.suspended ? 'ADMIN_MEMBER_RESTRICT' : 'ADMIN_MEMBER_RELEASE',
       targetType: 'GatheringMembership',
       targetId: membership.id,
+      groupId,
       before: { status: beforeStatus },
       after: { status, financeCount, handoverCount },
       reason: input.reason.trim(),

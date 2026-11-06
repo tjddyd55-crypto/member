@@ -260,6 +260,87 @@ describe('관리자 운영 API', () => {
     const cipher = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: account.id } });
     expect(cipher.totpSecretCipher).not.toContain(started.json().secret as string);
   });
+
+  it('연락처와 감사는 그 모임의 권한으로만 보여 준다', async () => {
+    const owner = await register('권한회장');
+    const first = await createGroup(owner.token, '연락 있는 모임');
+    const second = await createGroup(owner.token, '연락 없는 모임');
+    const { hashPassword } = await import('../services/auth-service.js');
+    const loginId = `scope.root.${Date.now()}`;
+    const root = await prisma.gatheringAdminAccount.create({
+      data: { loginId, passwordHash: await hashPassword(password), role: 'SUPER_ADMIN' },
+    });
+    adminIds.push(root.id);
+    const session = await enroll(loginId);
+    const localLogin = `scope.local.${Date.now()}`;
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/admins',
+      headers: { cookie: session.cookie, 'x-gathering-admin-csrf': session.csrf },
+      payload: {
+        loginId: localLogin,
+        password,
+        role: 'ADMIN',
+        reason: '범위 분리',
+        scopes: [
+          { groupId: first.id, capability: 'MEMBER_READ' },
+          { groupId: second.id, capability: 'MEMBER_READ' },
+          { groupId: first.id, capability: 'CONTACT_READ' },
+          { groupId: first.id, capability: 'AUDIT_READ' },
+          { groupId: first.id, capability: 'SUBSCRIPTION_WRITE' },
+        ],
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const local = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { loginId: localLogin } });
+    adminIds.push(local.id);
+    const localSession = await enroll(localLogin);
+    await send(session, 'POST', `/api/gathering-admin/groups/${second.id}/subscription`, {
+      reason: '둘째 정식',
+      idempotencyKey: `scope-second-${second.id}`,
+    });
+    await send(localSession, 'POST', `/api/gathering-admin/groups/${first.id}/subscription`, {
+      reason: '첫째 정식',
+      idempotencyKey: `scope-first-${first.id}`,
+    });
+
+    const members = await app.inject({
+      method: 'GET',
+      url: '/api/gathering-admin/members',
+      headers: { cookie: localSession.cookie },
+    });
+    expect(members.statusCode).toBe(200);
+    const rows = members.json().items as Array<{ group: { id: string }; user: { phone: string | null } }>;
+    expect(rows.find((row) => row.group.id === first.id)?.user.phone).toBe(owner.phone);
+    expect(rows.find((row) => row.group.id === second.id)?.user.phone).toBeNull();
+    const hiddenGroup = await app.inject({
+      method: 'GET',
+      url: `/api/gathering-admin/members?groupId=${second.id}`,
+      headers: { cookie: localSession.cookie },
+    });
+    expect(hiddenGroup.json().items[0].user.phone).toBeNull();
+    const byPhone = await app.inject({
+      method: 'GET',
+      url: `/api/gathering-admin/members?q=${encodeURIComponent(owner.phone)}`,
+      headers: { cookie: localSession.cookie },
+    });
+    const phoneRows = byPhone.json().items as Array<{ group: { id: string } }>;
+    expect(phoneRows.some((row) => row.group.id === second.id)).toBe(false);
+    expect(phoneRows.some((row) => row.group.id === first.id)).toBe(true);
+
+    const audits = await app.inject({
+      method: 'GET',
+      url: '/api/gathering-admin/audits',
+      headers: { cookie: localSession.cookie },
+    });
+    const actions = audits.json().items as Array<{ action: string; targetId: string | null }>;
+    const approvals = actions.filter((item) => item.action === 'ADMIN_SUBSCRIPTION_APPROVE');
+    expect(approvals.length).toBeGreaterThan(0);
+    const secondSub = await prisma.gatheringSubscription.findFirstOrThrow({
+      where: { groupId: second.id, source: 'PAID' },
+    });
+    expect(approvals.some((item) => item.targetId === secondSub.id)).toBe(false);
+  });
 });
 
 async function send(session: { cookie: string; csrf: string }, method: 'POST', url: string, payload: unknown) {

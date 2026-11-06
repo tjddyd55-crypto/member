@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { UPLOAD_INTENT_TTL_MS, type StorageUsage } from '@member/gathering-domain';
+import { STORAGE_QUOTA_BYTES, UPLOAD_INTENT_TTL_MS, type StorageUsage } from '@member/gathering-domain';
 
 type UsageDb = Prisma.TransactionClient | PrismaClient;
 
@@ -10,6 +10,21 @@ export async function loadBillableUsage(db: UsageDb, groupId: string, now: Date)
     sumBytes(db, 'receipt', groupId, pendingSince),
   ]);
   return { mediaBytes: media, receiptBytes: receipts, otherBytes: 0 };
+}
+
+export async function loadGroupQuotaBytes(db: UsageDb, groupId: string) {
+  const active = await db.gatheringSubscription.findFirst({
+    where: { groupId, status: 'ACTIVE' },
+    orderBy: { updatedAt: 'desc' },
+    select: { storageQuotaBytes: true },
+  });
+  if (active) return Number(active.storageQuotaBytes);
+  const latest = await db.gatheringSubscription.findFirst({
+    where: { groupId },
+    orderBy: { createdAt: 'desc' },
+    select: { storageQuotaBytes: true },
+  });
+  return latest ? Number(latest.storageQuotaBytes) : STORAGE_QUOTA_BYTES;
 }
 
 export async function isSubscriptionActive(db: UsageDb, groupId: string, now: Date) {

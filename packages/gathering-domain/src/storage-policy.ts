@@ -30,12 +30,14 @@ export function evaluateUpload(input: {
   usage: StorageUsage;
   kind: UploadKind;
   additionalBytes: number;
+  quotaBytes?: number;
 }): UploadDecision {
-  if (!Number.isFinite(input.additionalBytes) || input.additionalBytes < 0) {
+  const quota = input.quotaBytes ?? STORAGE_QUOTA_BYTES;
+  if (!Number.isFinite(input.additionalBytes) || input.additionalBytes < 0 || !Number.isFinite(quota) || quota < 0) {
     return { allowed: false, reason: 'QUOTA_EXCEEDED' };
   }
   const nextTotal = billableStorageBytes(input.usage) + input.additionalBytes;
-  if (nextTotal > STORAGE_QUOTA_BYTES) {
+  if (nextTotal > quota) {
     return { allowed: false, reason: 'QUOTA_EXCEEDED' };
   }
   return { allowed: true };

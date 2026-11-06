@@ -692,6 +692,7 @@ model GatheringGroup {
   auditLogs          GatheringAuditLog[]
   attendances        GatheringEventAttendance[]
   adminScopes        GatheringAdminScope[]
+  deposits           GatheringDeposit[]
 
   @@index([createdByUserId])
   @@map("gathering_groups")
@@ -1075,6 +1076,7 @@ model GatheringSubscription {
   status           GatheringSubscriptionStatus
   source           GatheringSubscriptionSource
   approvedByUserId String?
+  approvedByAdminId String?
   approvedAt       DateTime?
   startsAt         DateTime?
   expiresAt        DateTime?
@@ -1086,7 +1088,9 @@ model GatheringSubscription {
 
   group    GatheringGroup               @relation(fields: [groupId], references: [id])
   approver User?                        @relation("GatheringSubscriptionApprover", fields: [approvedByUserId], references: [id])
+  approvedByAdmin GatheringAdminAccount? @relation("GatheringSubscriptionAdmin", fields: [approvedByAdminId], references: [id])
   audits   GatheringSubscriptionAudit[]
+  depositLinks GatheringDepositLink[]
 
   @@index([groupId, status])
   @@map("gathering_subscriptions")
@@ -1126,6 +1130,9 @@ model GatheringAdminAccount {
   enrollments GatheringAdminEnrollment[]
   scopes      GatheringAdminScope[]
   audits      GatheringAdminAudit[]      @relation("GatheringAdminAuditActor")
+  approvedSubscriptions GatheringSubscription[] @relation("GatheringSubscriptionAdmin")
+  operations  GatheringAdminOperation[]
+  deposits    GatheringDeposit[]
 
   @@map("gathering_admin_accounts")
 }
@@ -1193,6 +1200,71 @@ model GatheringAdminAudit {
   @@index([createdAt])
   @@index([actorAdminId, createdAt])
   @@map("gathering_admin_audits")
+}
+
+model GatheringAdminOperation {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique
+  adminId        String
+  action         String
+  resultJson     String
+  createdAt      DateTime @default(now())
+
+  admin GatheringAdminAccount @relation(fields: [adminId], references: [id])
+
+  @@map("gathering_admin_operations")
+}
+
+enum GatheringDepositStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+model GatheringDeposit {
+  id                 String                 @id @default(cuid())
+  groupId            String
+  payerName          String
+  amountWon          Int
+  paidOn             DateTime
+  status             GatheringDepositStatus @default(PENDING)
+  memo               String?
+  confirmedByAdminId String?
+  confirmedAt        DateTime?
+  idempotencyKey     String                 @unique
+  createdAt          DateTime               @default(now())
+
+  group       GatheringGroup         @relation(fields: [groupId], references: [id])
+  confirmedBy GatheringAdminAccount? @relation(fields: [confirmedByAdminId], references: [id])
+  link        GatheringDepositLink?
+
+  @@index([groupId, status])
+  @@map("gathering_deposits")
+}
+
+model GatheringDepositLink {
+  id             String   @id @default(cuid())
+  depositId      String   @unique
+  subscriptionId String
+  createdAt      DateTime @default(now())
+
+  deposit      GatheringDeposit      @relation(fields: [depositId], references: [id])
+  subscription GatheringSubscription @relation(fields: [subscriptionId], references: [id])
+
+  @@map("gathering_deposit_links")
+}
+
+/// 회원 앱에 내려가지 않는 내부 계좌 메모.
+model GatheringAdminBankSetting {
+  id               String   @id @default("bank")
+  bankName         String
+  accountNumber    String
+  holder           String
+  memo             String?
+  updatedByAdminId String?
+  updatedAt        DateTime @updatedAt
+
+  @@map("gathering_admin_bank_settings")
 }
 
 model GatheringSubscriptionAudit {

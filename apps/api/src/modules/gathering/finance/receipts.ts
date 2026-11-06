@@ -14,7 +14,7 @@ import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { assertStoredObject } from '../storage/confirm.js';
 import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
-import { loadBillableUsage } from '../storage/usage.js';
+import { loadBillableUsage, loadGroupQuotaBytes } from '../storage/usage.js';
 import { assertGatheringWritable } from '../entitlement.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
 import { lockGroupOpenYear, lockOpenYearById, readFiscalPeriod } from './years.js';
@@ -160,6 +160,7 @@ async function reserveReceipts(
     usage,
     kind: 'RECEIPT',
     additionalBytes: items.reduce((sum, item) => sum + item.sizeBytes, 0),
+    quotaBytes: await loadGroupQuotaBytes(tx, groupId),
   });
   if (!decision.allowed) {
     throw new AppError(409, 'QUOTA_EXCEEDED', '모임 저장 공간 50GB를 초과해 올릴 수 없습니다.');

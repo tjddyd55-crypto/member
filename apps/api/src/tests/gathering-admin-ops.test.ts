@@ -450,7 +450,33 @@ describe('관리자 운영 API', () => {
       headers: { cookie: session.cookie },
     });
     expect(listed.json().items.some((item: { id: string }) => item.id === waiting.json().id)).toBe(true);
-    expect(listed.json().items.every((item: { status: string }) => item.status === 'PENDING')).toBe(true);
+    const confirmedOnly = await send(session, 'POST', `/api/gathering-admin/deposits/${waiting.json().id}/confirm`, {
+      reason: '확인만',
+      idempotencyKey: `confirm-only-${waiting.json().id}`,
+    });
+    expect(confirmedOnly.statusCode).toBe(200);
+    expect(confirmedOnly.json().linked).toBe(false);
+    const stillListed = await app.inject({
+      method: 'GET',
+      url: `/api/gathering-admin/groups/${group.id}/deposits`,
+      headers: { cookie: session.cookie },
+    });
+    expect(stillListed.json().items.some((item: { id: string; status: string }) => item.id === waiting.json().id && item.status === 'CONFIRMED')).toBe(true);
+    const beforeExpiry = (await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: scheduled.id } })).expiresAt;
+    const linkedLater = await send(session, 'POST', `/api/gathering-admin/deposits/${waiting.json().id}/link`, {
+      reason: '나중에 연결',
+      idempotencyKey: `link-later-${waiting.json().id}`,
+      subscriptionId: scheduled.id,
+    });
+    expect(linkedLater.statusCode).toBe(200);
+    expect(linkedLater.json().linked).toBe(true);
+    expect((await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: scheduled.id } })).expiresAt?.toISOString()).toBe(beforeExpiry?.toISOString());
+    const afterLink = await app.inject({
+      method: 'GET',
+      url: `/api/gathering-admin/groups/${group.id}/deposits`,
+      headers: { cookie: session.cookie },
+    });
+    expect(afterLink.json().items.some((item: { id: string }) => item.id === waiting.json().id)).toBe(false);
   });
 });
 

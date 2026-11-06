@@ -287,6 +287,44 @@ export async function confirmDeposit(
   });
 }
 
+export async function linkDeposit(
+  adminId: string,
+  depositId: string,
+  input: { idempotencyKey: string; subscriptionId: string; reason: string; allowMismatch?: boolean },
+) {
+  const deposit = await prisma.gatheringDeposit.findUnique({ where: { id: depositId } });
+  if (!deposit) throw new AppError(404, 'DEPOSIT_NOT_FOUND', '입금 기록을 찾을 수 없습니다.');
+  return withOperation(adminId, input.idempotencyKey, 'DEPOSIT_LINK', deposit.groupId, depositId, async (tx, account) => {
+    if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
+    assertCapability(account, 'PAYMENT_WRITE', deposit.groupId);
+    const current = await tx.gatheringDeposit.findUnique({ where: { id: depositId }, include: { link: true } });
+    if (!current) throw new AppError(404, 'DEPOSIT_NOT_FOUND', '입금 기록을 찾을 수 없습니다.');
+    if (current.status !== 'CONFIRMED') throw new AppError(409, 'NOT_CONFIRMED', '확인된 입금만 이용권에 연결합니다.');
+    if (current.link) throw new AppError(409, 'ALREADY_LINKED', '이미 이용권에 연결된 입금입니다.');
+    if (current.amountWon !== FORMAL_ANNUAL_FEE_WON && !input.allowMismatch) {
+      throw new AppError(409, 'AMOUNT_MISMATCH', '금액이 정식 연회비와 다릅니다. 자동으로 연결하지 않습니다.');
+    }
+    if (input.allowMismatch && account.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'FORBIDDEN', '금액이 다른 입금 연결은 슈퍼관리자만 할 수 있습니다.');
+    }
+    const subscription = await tx.gatheringSubscription.findFirst({
+      where: { id: input.subscriptionId, groupId: current.groupId },
+    });
+    if (!subscription) throw new AppError(404, 'SUBSCRIPTION_NOT_FOUND', '이용권을 찾을 수 없습니다.');
+    await tx.gatheringDepositLink.create({ data: { depositId: current.id, subscriptionId: subscription.id } });
+    await writeAdminAudit(tx, {
+      actorAdminId: adminId,
+      action: 'ADMIN_DEPOSIT_LINK',
+      targetType: 'GatheringDeposit',
+      targetId: current.id,
+      groupId: current.groupId,
+      after: { subscriptionId: subscription.id, expiresAt: subscription.expiresAt?.toISOString() ?? null },
+      reason: input.reason.trim(),
+    });
+    return { id: current.id, linked: true, expiresAt: subscription.expiresAt?.toISOString() ?? null };
+  });
+}
+
 export async function setGroupQuota(adminId: string, groupId: string, input: { idempotencyKey: string; quotaBytes: number; reason: string }) {
   return withOperation(adminId, input.idempotencyKey, 'QUOTA', groupId, groupId, async (tx, account) => {
     assertCapability(account, 'QUOTA_WRITE', groupId);
@@ -442,7 +480,7 @@ async function currentTerm(tx: Prisma.TransactionClient, groupId: string, now: D
 
 function capabilityFor(action: string): AdminCapability {
   if (action === 'SUSPEND' || action === 'SUBSCRIPTION_APPROVE' || action === 'SUBSCRIPTION_CANCEL') return 'SUBSCRIPTION_WRITE';
-  if (action === 'DEPOSIT_RECORD' || action === 'DEPOSIT_CONFIRM') return 'PAYMENT_WRITE';
+  if (action === 'DEPOSIT_RECORD' || action === 'DEPOSIT_CONFIRM' || action === 'DEPOSIT_LINK') return 'PAYMENT_WRITE';
   if (action === 'QUOTA') return 'QUOTA_WRITE';
   if (action === 'MEMBER_RESTRICTION') return 'MEMBER_RESTRICT';
   throw new AppError(500, 'UNKNOWN_OPERATION', '알 수 없는 작업입니다.');
@@ -451,11 +489,19 @@ function capabilityFor(action: string): AdminCapability {
 export async function listGroupDeposits(adminId: string, groupId: string) {
   const account = await loadAccount(adminId);
   assertCapability(account, 'PAYMENT_WRITE', groupId);
-  const rows = await prisma.gatheringDeposit.findMany({
-    where: { groupId, status: 'PENDING' },
-    orderBy: { createdAt: 'asc' },
-    take: 20,
-  });
+  const [waiting, unlinked] = await Promise.all([
+    prisma.gatheringDeposit.findMany({
+      where: { groupId, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+    }),
+    prisma.gatheringDeposit.findMany({
+      where: { groupId, status: 'CONFIRMED', link: null },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+    }),
+  ]);
+  const rows = [...waiting, ...unlinked];
   return rows.map((row) => ({
     id: row.id,
     payerName: row.payerName,

@@ -178,7 +178,9 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   await page.getByLabel('입금일').fill('2026-11-06T09:00');
   await page.getByRole('button', { name: '입금 기록' }).click();
   await expect(page.getByText(/기록 /)).toBeVisible();
-  await page.getByRole('button', { name: '확인 후 연결' }).click();
+  await page.getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.getByRole('button', { name: /연결 전/ })).toBeVisible();
+  await page.getByRole('button', { name: '이용권에 연결' }).click();
   await expect(page.getByText('금액이 정식 연회비와 다릅니다')).toBeVisible();
 
   await page.getByRole('button', { name: '이용권' }).click();

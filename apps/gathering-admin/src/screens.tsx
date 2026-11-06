@@ -257,10 +257,10 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
       <button type="submit">입금 기록</button>
       {pending.length > 0 ? (
         <div>
-          <p>확인 전 입금</p>
+          <p>확인 전 또는 아직 연결하지 않은 입금</p>
           {pending.map((item) => (
             <button key={item.id} type="button" className={depositId === item.id ? '' : 'ghost'} onClick={() => setDepositId(item.id)}>
-              {item.payerName} {item.amountWon}
+              {item.status === 'PENDING' ? '확인 전' : '연결 전'} {item.payerName} {item.amountWon}
             </button>
           ))}
         </div>
@@ -268,16 +268,23 @@ function DepositForm({ groupId, subscriptionId: currentSubscriptionId, role, onS
       {depositId ? <p>기록 {depositId}. 확인 전에는 이용권에 연결되지 않습니다.</p> : null}
       <label>연결할 이용권 ID<input value={subscriptionId} onChange={(event) => setSubscriptionId(event.target.value)} /></label>
       {role === 'SUPER_ADMIN' ? <label><input type="checkbox" checked={allowMismatch} onChange={(event) => setAllowMismatch(event.target.checked)} /> 금액이 달라도 슈퍼관리자가 연결</label> : null}
-      <button type="button" disabled={!depositId} onClick={() => void onSubmit(`/api/gathering-admin/deposits/${depositId}/confirm`, {
+      <button type="button" disabled={!depositId || pending.find((item) => item.id === depositId)?.status === 'CONFIRMED'} onClick={() => void onSubmit(`/api/gathering-admin/deposits/${depositId}/confirm`, {
         reason: '은행 확인',
         idempotencyKey: `confirm-${depositId}`,
-        subscriptionId: subscriptionId || undefined,
+      }).then((saved) => {
+        if (!saved) return;
+        loadPending();
+      })}>확인</button>
+      <button type="button" disabled={!depositId || !subscriptionId} onClick={() => void onSubmit(`/api/gathering-admin/deposits/${depositId}/link`, {
+        reason: '이용권 연결',
+        idempotencyKey: `link-${depositId}-${subscriptionId}`,
+        subscriptionId,
         allowMismatch,
       }).then((saved) => {
         if (!saved) return;
         setDepositId('');
         loadPending();
-      })}>확인{subscriptionId ? ' 후 연결' : ''}</button>
+      })}>이용권에 연결</button>
     </form>
   );
 }

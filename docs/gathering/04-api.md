@@ -137,7 +137,8 @@
 | POST | `/groups/:groupId/subscription/cancel` | `SUBSCRIPTION_WRITE` |
 | GET | `/groups/:groupId/deposits` | `PAYMENT_WRITE`. 대기 입금을 다시 고를 수 있음 |
 | POST | `/groups/:groupId/deposits` | `PAYMENT_WRITE`. 승인만으로 이용권이 늘지 않음 |
-| POST | `/deposits/:depositId/confirm` | 금액이 6만 원이 아니면 이용권 연결을 거절 |
+| POST | `/deposits/:depositId/confirm` | 확인만 하거나, 이때 이용권을 함께 연결. 금액이 6만 원이 아니면 연결을 거절 |
+| POST | `/deposits/:depositId/link` | 이미 확인했고 아직 연결하지 않은 입금을 이용권에 연결. 기간은 바꾸지 않음 |
 | POST | `/groups/:groupId/quota` | `QUOTA_WRITE`. 파일을 지우지 않음 |
 | PUT | `/admins/:adminId/scopes` | 슈퍼관리자만 |
 | GET, PUT | `/settings/bank` | 슈퍼관리자. 회원 API에 없음 |

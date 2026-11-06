@@ -7,6 +7,7 @@ import {
   approveSubscription,
   cancelSubscription,
   confirmDeposit,
+  linkDeposit,
   listGroupDeposits,
   listScopedMembers,
   readBankSetting,
@@ -202,6 +203,18 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
       allowMismatch: z.boolean().optional(),
     }).parse(request.body);
     return confirmDeposit(session.adminId, params.depositId, body);
+  });
+
+  app.post('/api/gathering-admin/deposits/:depositId/link', async (request) => {
+    const session = await mutate(request);
+    const params = z.object({ depositId: z.string() }).parse(request.params);
+    const body = z.object({
+      reason: z.string(),
+      idempotencyKey: z.string().min(8),
+      subscriptionId: z.string().min(1),
+      allowMismatch: z.boolean().optional(),
+    }).parse(request.body);
+    return linkDeposit(session.adminId, params.depositId, body);
   });
 
   app.post('/api/gathering-admin/groups/:groupId/members/:membershipId/restriction', async (request) => {

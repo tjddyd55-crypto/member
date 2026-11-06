@@ -1,5 +1,6 @@
 import { createElement, useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { WebView } from 'react-native-webview';
 import { theme } from '../theme';
@@ -28,6 +29,7 @@ export function DateTimeField({
   onChange: (next: Date) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const shown = mode === 'date' ? formatKoreanDate(value) : formatKoreanTime(value);
   const change = (event: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === 'android') setOpen(false);
@@ -64,7 +66,8 @@ export function DateTimeField({
       {Platform.OS === 'ios' ? (
         <Modal transparent visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
           <View style={styles.sheetBackdrop}>
-            <View style={styles.sheet}>
+            <Pressable accessibilityRole="button" accessibilityLabel="닫기" style={styles.sheetDismiss} onPress={() => setOpen(false)} />
+            <View style={[styles.sheet, { paddingBottom: theme.space[16] + insets.bottom }]}>
               <DateTimePicker value={value} mode={mode} display="spinner" locale="ko-KR" onChange={change} />
               <Button label="완료" variant="secondary" onPress={() => setOpen(false)} />
             </View>
@@ -175,6 +178,7 @@ const styles = StyleSheet.create({
   value: { ...theme.typography.body, color: theme.colors.text.primary },
   modal: { flex: 1, backgroundColor: theme.colors.bg.default, paddingTop: theme.space[16] },
   sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheetDismiss: { flex: 1 },
   sheet: {
     gap: theme.space[12],
     padding: theme.space[16],

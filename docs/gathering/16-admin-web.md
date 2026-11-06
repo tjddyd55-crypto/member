@@ -39,7 +39,7 @@ npm run dev -w @member/gathering-admin
 
 1. 위 세 이름을 Development API 서비스에 넣는다. 웹 서비스나 Production에는 넣지 않는다.
 2. 리뷰가 끝난 뒤에만 foundation 병합으로 API를 배포한다. 마이그레이션은 그 배포의 `db:migrate:deploy`가 추가만 한다.
-3. API 서비스에서 `npx tsx scripts/gathering-admin-bootstrap.ts`를 한 번 실행한다. 출력은 계정을 만들었는지, 이미 있는지만 말한다.
+3. 저장소 루트에서 `npx tsx scripts/gathering-admin-bootstrap.ts`를 한 번 실행한다. 루트 패키지는 CommonJS다. `scripts/package.json`만 `type: module`이라서 이 스크립트와 API 모듈을 ESM으로 읽는다. 출력은 계정을 만들었는지, 이미 있는지만 말한다. 값이 없으면 계정을 만들지 않는다.
 4. 관리 화면에서 그 아이디로 로그인한다. 인증 앱 등록 화면이 비밀을 한 번 보여 준다. 그 화면이 운영자에게 넘기는 자리다. 서버 로그에는 비밀이 없다.
 5. 코드를 확인하면 세션 쿠키가 생긴다. 이후 로그인에는 인증 코드가 필요하다.
 

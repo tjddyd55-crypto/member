@@ -36,9 +36,9 @@ export function routeHeaderTitle(pathname: string) {
   return 'JCI KOREA';
 }
 
-/** 메뉴 이동은 지금 화면만 바꾸지 않고, 쌓인 이전 모임을 먼저 걷어 낸다. */
-export function globalMenuNavigation(canDismiss: boolean) {
-  return canDismiss ? (['dismiss-all', 'replace'] as const) : (['replace'] as const);
+/** 메뉴 이동은 한 번의 내비게이션으로 이전 모임을 스택에 남기지 않는다. */
+export function globalMenuNavigation() {
+  return 'reset' as const;
 }
 
 export function gatheringSwitchItems(groups: readonly GatheringSwitchTarget[], currentId?: string) {

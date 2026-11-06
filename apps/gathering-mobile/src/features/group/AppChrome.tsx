@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CommonActions } from '@react-navigation/native';
 import { router, useGlobalSearchParams, usePathname } from 'expo-router';
+import { store } from 'expo-router/build/global-state/router-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GatheringGroupSummary } from '@member/contracts';
 import { api } from '../../api/client';
@@ -65,10 +67,8 @@ export function AppChrome({ children }: { children: ReactNode }) {
 
   const go = (href: string) => {
     setOpen(false);
-    for (const step of globalMenuNavigation(router.canDismiss())) {
-      if (step === 'dismiss-all') router.dismissAll();
-      else router.replace(href as '/(app)/groups');
-    }
+    if (globalMenuNavigation() === 'reset' && resetToHref(href)) return;
+    router.replace(href as '/(app)/groups');
   };
 
   return (
@@ -122,6 +122,15 @@ export function AppChrome({ children }: { children: ReactNode }) {
       </View>
     </ChromeContext.Provider>
   );
+}
+
+function resetToHref(href: string) {
+  const navigation = store.navigationRef;
+  if (!navigation.isReady()) return false;
+  const state = store.getStateForHref(href);
+  if (!state?.routes.length) return false;
+  navigation.dispatch(CommonActions.reset(state));
+  return true;
 }
 
 const styles = StyleSheet.create({

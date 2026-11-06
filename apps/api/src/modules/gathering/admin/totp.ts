@@ -3,6 +3,8 @@ import { AppError } from '../../../lib/errors.js';
 
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
+// 로그인은 이 파일을 부르지 않는다. 이미 저장된 암호문과 키는 지우지 않는다.
+
 function totpKey() {
   const raw =
     process.env.GATHERING_ADMIN_TOTP_KEY ||

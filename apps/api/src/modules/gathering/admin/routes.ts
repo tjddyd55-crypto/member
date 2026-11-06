@@ -22,14 +22,12 @@ import { listAdminAudits, listAdminGroups, readAdminGroup } from './queries.js';
 import {
   assertAdminCsrf,
   changeAdminPassword,
-  confirmAdminTotp,
   createManagedAdmin,
   disableManagedAdmin,
   loginAdmin,
   listAdminAccounts,
   logoutAdmin,
   requireAdminSession,
-  startAdminTotp,
 } from './service.js';
 
 const COOKIE = 'gathering_admin_session';
@@ -37,10 +35,7 @@ const COOKIE = 'gathering_admin_session';
 const loginBody = z.object({
   loginId: z.string(),
   password: z.string(),
-  totpCode: z.string().optional(),
 });
-const tokenBody = z.object({ enrollmentToken: z.string().min(1) });
-const confirmBody = tokenBody.extend({ code: z.string() });
 const passwordBody = z.object({ currentPassword: z.string(), nextPassword: z.string() });
 const createBody = z.object({
   loginId: z.string(),
@@ -55,21 +50,6 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
   app.post('/api/gathering-admin/auth/login', async (request, reply) => {
     const body = loginBody.parse(request.body);
     const result = await loginAdmin({ ...body, userAgent: request.headers['user-agent'] });
-    if (result.kind === 'enrollment') {
-      return { status: 'ENROLLMENT_REQUIRED', enrollmentToken: result.enrollmentToken, expiresAt: result.expiresAt };
-    }
-    setSessionCookie(reply, result.token, result.expiresAt, result.csrfToken);
-    return { status: 'AUTHENTICATED', admin: result.admin, csrfToken: result.csrfToken, expiresAt: result.expiresAt };
-  });
-
-  app.post('/api/gathering-admin/auth/totp/start', async (request) => {
-    const body = tokenBody.parse(request.body);
-    return startAdminTotp(body.enrollmentToken);
-  });
-
-  app.post('/api/gathering-admin/auth/totp/confirm', async (request, reply) => {
-    const body = confirmBody.parse(request.body);
-    const result = await confirmAdminTotp(body.enrollmentToken, body.code, request.headers['user-agent']);
     setSessionCookie(reply, result.token, result.expiresAt, result.csrfToken);
     return { status: 'AUTHENTICATED', admin: result.admin, csrfToken: result.csrfToken, expiresAt: result.expiresAt };
   });

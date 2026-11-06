@@ -1,10 +1,10 @@
 # 관리 화면 남은 확인과 체험 재생성 안
 
-비밀 값은 적지 않는다. 계정, 비밀번호, TOTP 씨앗은 명령이 환경 변수에서만 읽고, 로그나 이 문서에 출력하지 않는다. Production과 이미 있는 Development 회원 데이터에는 쓰지 않는다.
+비밀 값은 적지 않는다. 계정과 비밀번호는 명령이 환경 변수에서만 읽고, 로그나 이 문서에 출력하지 않는다. Production과 이미 있는 Development 회원 데이터에는 쓰지 않는다.
 
 ## 여기서 이미 한 자동 확인
 
-`npm run build -w @member/gathering-admin` 뒤 `npm run e2e -w @member/gathering-admin` 가 로컬 API와 프로덕션 빌드를 Chromium으로 열었다. 너비 1280과 390이다. 결과 표는 `17-admin-coverage.md`다. API는 `NODE_ENV=test`와 `GATHERING_DEV_STORAGE=1`로만 띄운다. 그 조합은 테스트용 TOTP 키와 로컬 파일함을 쓰고, R2로 파일을 보내지 않는다.
+`npm run build -w @member/gathering-admin` 뒤 `npm run e2e -w @member/gathering-admin` 가 로컬 API와 프로덕션 빌드를 Chromium으로 열었다. 너비 1280과 390이다. 결과 표는 `17-admin-coverage.md`다. API는 `NODE_ENV=test`와 `GATHERING_DEV_STORAGE=1`로만 띄운다. 그 조합은 로컬 파일함을 쓰고, R2로 파일을 보내지 않는다.
 
 ## 부모가 회원 앱이나 Dev에서 볼 것
 
@@ -17,7 +17,7 @@
 5. 인계를 지명하고, 다음 회장이 수락한 뒤, 회장이 확정한다. 현재 회장만 바뀌고 최초 생성자는 그대로다.
 6. 관리 세션을 12시간 두어 자연 만료를 본다. 자동 테스트는 비밀번호 변경으로 세션을 끊는 것까지만 했다.
 
-초기 관리 계정이 없으면 Development API에 환경 변수를 넣은 뒤 `npx tsx scripts/gathering-admin-bootstrap.ts`를 한 번 실행한다. 이미 있으면 다시 만들지 않는다. 등록 화면이 TOTP를 한 번 보여 준다.
+초기 관리 계정이 없으면 Development API에 환경 변수를 넣은 뒤 `npx tsx scripts/gathering-admin-bootstrap.ts`를 한 번 실행한다. 이미 있으면 다시 만들지 않는다. 아이디와 비밀번호만으로 들어간다. `/enroll`도 로그인 화면이다.
 
 ## 모임을 지운 뒤 체험을 또 받는 문제
 

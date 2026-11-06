@@ -115,13 +115,11 @@
 
 ## 관리자
 
-`/api/gathering-admin`은 모임 회원 토큰으로 열리지 않는다. 로그인 뒤 TOTP를 확인해야 서버 세션 쿠키가 생긴다. 쿠키를 쓰는 변경 요청은 `x-gathering-admin-csrf`가 필요하다. 비밀번호, TOTP 비밀, 운영자 비밀은 응답과 감사 로그에 넣지 않는다.
+`/api/gathering-admin`은 모임 회원 토큰으로 열리지 않는다. 아이디와 비밀번호가 맞으면 서버 세션 쿠키가 생긴다. 인증 코드나 등록 화면은 없다. 쿠키를 쓰는 변경 요청은 `x-gathering-admin-csrf`가 필요하다. 비밀번호와 운영자 비밀은 응답과 감사 로그에 넣지 않는다. 이미 저장된 TOTP 암호문은 로그인 때 지우지 않는다.
 
 | 메서드 | 경로 | 권한 |
 | --- | --- | --- |
-| POST | `/auth/login` | 공개. 비밀번호 뒤 TOTP. 미등록이면 등록 토큰만 |
-| POST | `/auth/totp/start` | 등록 토큰. 비밀은 이 응답 한 번 |
-| POST | `/auth/totp/confirm` | 등록 토큰과 코드. 세션 쿠키 |
+| POST | `/auth/login` | 공개. 아이디와 비밀번호. 세션 쿠키 |
 | POST | `/auth/logout` | 세션과 CSRF |
 | POST | `/auth/password` | 세션과 CSRF. 기존 세션을 모두 폐기 |
 | GET | `/me` | 세션 |

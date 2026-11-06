@@ -4,7 +4,6 @@ import { FORMAL_ANNUAL_FEE_WON } from '@member/gathering-domain';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { bootstrapSuperAdmin } from '../modules/gathering/admin/bootstrap.js';
-import { totpAt } from '../modules/gathering/admin/totp.js';
 
 let app: FastifyInstance;
 const userIds: string[] = [];
@@ -218,10 +217,16 @@ describe('관리자 운영 API', () => {
     expect(afterLogout.statusCode).toBe(401);
   });
 
-  it('등록 토큰은 한 번만 세션이 되고 비밀번호를 바꾸면 이전 세션이 죽는다', async () => {
+  it('비밀번호 로그인으로 세션이 생기고 비밀번호를 바꾸면 이전 세션이 죽는다', async () => {
     const { hashPassword } = await import('../services/auth-service.js');
     const account = await prisma.gatheringAdminAccount.create({
-      data: { loginId: 'ops.once', passwordHash: await hashPassword(password), role: 'ADMIN' },
+      data: {
+        loginId: 'ops.once',
+        passwordHash: await hashPassword(password),
+        role: 'ADMIN',
+        totpSecretCipher: 'stored-cipher',
+        totpConfirmedAt: new Date('2026-11-01T00:00:00.000Z'),
+      },
     });
     adminIds.push(account.id);
     const login = await app.inject({
@@ -229,36 +234,23 @@ describe('관리자 운영 API', () => {
       url: '/api/gathering-admin/auth/login',
       payload: { loginId: 'ops.once', password },
     });
-    const started = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/start',
-      payload: { enrollmentToken: login.json().enrollmentToken },
-    });
-    const code = totpAt(started.json().secret as string, Date.now());
-    const first = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/confirm',
-      payload: { enrollmentToken: login.json().enrollmentToken, code },
-    });
-    expect(first.statusCode).toBe(200);
-    const second = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/confirm',
-      payload: { enrollmentToken: login.json().enrollmentToken, code },
-    });
-    expect(second.statusCode).toBe(401);
-    const cookie = cookieOf(first);
+    expect(login.statusCode).toBe(200);
+    expect(login.json().status).toBe('AUTHENTICATED');
+    expect(JSON.stringify(login.json())).not.toContain(password);
+    expect(JSON.stringify(login.json())).not.toContain('stored-cipher');
+    const cookie = cookieOf(login);
     const changed = await app.inject({
       method: 'POST',
       url: '/api/gathering-admin/auth/password',
-      headers: { cookie, 'x-gathering-admin-csrf': first.json().csrfToken },
+      headers: { cookie, 'x-gathering-admin-csrf': login.json().csrfToken },
       payload: { currentPassword: password, nextPassword: 'OpsAdminPass2!' },
     });
     expect(changed.statusCode).toBe(200);
     const stale = await app.inject({ method: 'GET', url: '/api/gathering-admin/me', headers: { cookie } });
     expect(stale.statusCode).toBe(401);
     const cipher = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: account.id } });
-    expect(cipher.totpSecretCipher).not.toContain(started.json().secret as string);
+    expect(cipher.totpSecretCipher).toBe('stored-cipher');
+    expect(cipher.totpConfirmedAt?.toISOString()).toBe('2026-11-01T00:00:00.000Z');
   });
 
   it('연락처와 감사는 그 모임의 권한으로만 보여 준다', async () => {
@@ -496,18 +488,9 @@ async function enroll(loginId: string) {
     payload: { loginId, password },
   });
   expect(login.statusCode).toBe(200);
-  const started = await app.inject({
-    method: 'POST',
-    url: '/api/gathering-admin/auth/totp/start',
-    payload: { enrollmentToken: login.json().enrollmentToken },
-  });
-  const confirmed = await app.inject({
-    method: 'POST',
-    url: '/api/gathering-admin/auth/totp/confirm',
-    payload: { enrollmentToken: login.json().enrollmentToken, code: totpAt(started.json().secret as string, Date.now()) },
-  });
-  expect(confirmed.statusCode).toBe(200);
-  return { cookie: cookieOf(confirmed), csrf: confirmed.json().csrfToken as string };
+  expect(login.json().status).toBe('AUTHENTICATED');
+  expect(login.json().enrollmentToken).toBeUndefined();
+  return { cookie: cookieOf(login), csrf: login.json().csrfToken as string };
 }
 
 async function register(name: string) {

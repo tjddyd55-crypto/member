@@ -3,7 +3,6 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { hashPassword } from '../services/auth-service.js';
-import { decryptAdminSecret, totpAt } from '../modules/gathering/admin/totp.js';
 
 let app: FastifyInstance;
 const userIds: string[] = [];
@@ -56,7 +55,7 @@ afterAll(async () => {
 });
 
 describe('관리자 보안과 기간 입력', () => {
-  it('다른 등록 토큰은 무효가 되고, 회원 제한은 장부를 남긴다', async () => {
+  it('비밀번호 세션으로 회원 제한을 해도 장부는 남는다', async () => {
     const owner = await register('보안회장');
     const member = await register('일반회원');
     const group = await createGroup(owner.token);
@@ -71,36 +70,16 @@ describe('관리자 보안과 기간 입력', () => {
       url: '/api/gathering-admin/auth/login',
       payload: { loginId: 'security.extra', password },
     });
-    await makeAdmin('security.extra', 'ADMIN');
-    const tokenA = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/login',
-      payload: { loginId: 'security.extra', password },
-    });
-    const tokenB = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/login',
-      payload: { loginId: 'security.extra', password },
-    });
-    expect(tokenA.json().enrollmentToken).not.toBe(tokenB.json().enrollmentToken);
-    const started = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/start',
-      payload: { enrollmentToken: tokenB.json().enrollmentToken },
-    });
-    const confirmed = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/confirm',
-      payload: { enrollmentToken: tokenB.json().enrollmentToken, code: totpAt(started.json().secret as string, Date.now()) },
-    });
-    expect(confirmed.statusCode).toBe(200);
-    const reused = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/confirm',
-      payload: { enrollmentToken: tokenA.json().enrollmentToken, code: '000000' },
-    });
-    expect(reused.statusCode).toBe(401);
     expect(firstLogin.statusCode).toBe(401);
+    await makeAdmin('security.extra', 'ADMIN');
+    const signed = await app.inject({
+      method: 'POST',
+      url: '/api/gathering-admin/auth/login',
+      payload: { loginId: 'security.extra', password, totpCode: '000000' },
+    });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json().status).toBe('AUTHENTICATED');
+    expect(signed.json().enrollmentToken).toBeUndefined();
 
     const customEnd = '2027-01-15T00:00:00.000Z';
     const approved = await send(session, `/api/gathering-admin/groups/${group.id}/subscription`, {
@@ -171,84 +150,49 @@ describe('관리자 보안과 기간 입력', () => {
     expect(await prisma.gatheringFinanceTransaction.count({ where: { groupId: group.id } })).toBe(0);
   });
 
-  it('동시에 확인한 다른 등록 토큰은 비밀을 덮어쓰지 않는다', async () => {
-    const loginId = `race.enroll.${Date.now()}`;
-    const admin = await makeAdmin(loginId, 'SUPER_ADMIN');
-    const firstLogin = await app.inject({
+  it('등록 여부와 상관없이 비밀번호만으로 세션이 생기고 저장된 비밀은 남는다', async () => {
+    const freshId = `plain.${Date.now()}`;
+    const fresh = await makeAdmin(freshId, 'SUPER_ADMIN');
+    const freshLogin = await app.inject({
       method: 'POST',
       url: '/api/gathering-admin/auth/login',
-      payload: { loginId, password },
+      payload: { loginId: freshId, password },
     });
-    const secondLogin = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/login',
-      payload: { loginId, password },
-    });
-    const startA = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/start',
-      payload: { enrollmentToken: firstLogin.json().enrollmentToken },
-    });
-    const startB = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/totp/start',
-      payload: { enrollmentToken: secondLogin.json().enrollmentToken },
-    });
-    const [left, right] = await Promise.all([
-      app.inject({
-        method: 'POST',
-        url: '/api/gathering-admin/auth/totp/confirm',
-        payload: { enrollmentToken: firstLogin.json().enrollmentToken, code: totpAt(startA.json().secret as string, Date.now()) },
-      }),
-      app.inject({
-        method: 'POST',
-        url: '/api/gathering-admin/auth/totp/confirm',
-        payload: { enrollmentToken: secondLogin.json().enrollmentToken, code: totpAt(startB.json().secret as string, Date.now()) },
-      }),
-    ]);
-    expect([left.statusCode, right.statusCode].sort()).toEqual([200, 401]);
-    const stored = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: admin.id } });
-    const winner = left.statusCode === 200 ? (startA.json().secret as string) : (startB.json().secret as string);
-    const loser = left.statusCode === 200 ? (startB.json().secret as string) : (startA.json().secret as string);
-    expect(decryptAdminSecret(stored.totpSecretCipher ?? '')).toBe(winner);
-    expect(winner).not.toBe(loser);
-  });
+    expect(freshLogin.statusCode).toBe(200);
+    expect(freshLogin.json().status).toBe('AUTHENTICATED');
+    expect(freshLogin.json().enrollmentToken).toBeUndefined();
+    expect(JSON.stringify(freshLogin.json())).not.toContain(password);
+    expect(String(freshLogin.headers['set-cookie'])).toContain('HttpOnly');
+    expect(await prisma.gatheringAdminEnrollment.count({ where: { adminId: fresh.id } })).toBe(0);
+    const freshRow = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: fresh.id } });
+    expect(freshRow.totpSecretCipher).toBeNull();
+    expect(freshRow.totpConfirmedAt).toBeNull();
 
-  it('이미 등록된 계정에는 새 등록 토큰을 남기지 않는다', async () => {
-    const loginId = `race.issue.${Date.now()}`;
-    const admin = await makeAdmin(loginId, 'SUPER_ADMIN');
-    const login = await app.inject({
+    const enrolledId = `kept.${Date.now()}`;
+    const enrolled = await makeAdmin(enrolledId, 'SUPER_ADMIN');
+    const confirmedAt = new Date('2026-11-01T00:00:00.000Z');
+    await prisma.gatheringAdminAccount.update({
+      where: { id: enrolled.id },
+      data: { totpSecretCipher: 'already-stored-cipher', totpConfirmedAt: confirmedAt },
+    });
+    const enrolledLogin = await app.inject({
       method: 'POST',
       url: '/api/gathering-admin/auth/login',
-      payload: { loginId, password },
+      payload: { loginId: enrolledId, password },
     });
-    const started = await app.inject({
+    expect(enrolledLogin.statusCode).toBe(200);
+    expect(enrolledLogin.json().status).toBe('AUTHENTICATED');
+    expect(JSON.stringify(enrolledLogin.json())).not.toContain('already-stored-cipher');
+    const kept = await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { id: enrolled.id } });
+    expect(kept.totpSecretCipher).toBe('already-stored-cipher');
+    expect(kept.totpConfirmedAt?.toISOString()).toBe(confirmedAt.toISOString());
+
+    const gone = await app.inject({
       method: 'POST',
       url: '/api/gathering-admin/auth/totp/start',
-      payload: { enrollmentToken: login.json().enrollmentToken },
+      payload: { enrollmentToken: 'unused' },
     });
-    const code = totpAt(started.json().secret as string, Date.now());
-    await Promise.all([
-      app.inject({
-        method: 'POST',
-        url: '/api/gathering-admin/auth/totp/confirm',
-        payload: { enrollmentToken: login.json().enrollmentToken, code },
-      }),
-      app.inject({
-        method: 'POST',
-        url: '/api/gathering-admin/auth/login',
-        payload: { loginId, password },
-      }),
-    ]);
-    const late = await app.inject({
-      method: 'POST',
-      url: '/api/gathering-admin/auth/login',
-      payload: { loginId, password },
-    });
-    expect(late.statusCode).toBe(401);
-    expect(late.json().enrollmentToken).toBeUndefined();
-    const unused = await prisma.gatheringAdminEnrollment.count({ where: { adminId: admin.id, usedAt: null } });
-    expect(unused).toBe(0);
+    expect(gone.statusCode).toBe(404);
   });
 });
 
@@ -266,19 +210,12 @@ async function enroll(loginId: string) {
     url: '/api/gathering-admin/auth/login',
     payload: { loginId, password },
   });
-  const started = await app.inject({
-    method: 'POST',
-    url: '/api/gathering-admin/auth/totp/start',
-    payload: { enrollmentToken: login.json().enrollmentToken },
-  });
-  const confirmed = await app.inject({
-    method: 'POST',
-    url: '/api/gathering-admin/auth/totp/confirm',
-    payload: { enrollmentToken: login.json().enrollmentToken, code: totpAt(started.json().secret as string, Date.now()) },
-  });
-  expect(confirmed.statusCode).toBe(200);
-  const cookie = String(confirmed.headers['set-cookie']).split(';')[0] ?? '';
-  return { cookie, csrf: confirmed.json().csrfToken as string };
+  expect(login.statusCode).toBe(200);
+  expect(login.json().status).toBe('AUTHENTICATED');
+  const raw = login.headers['set-cookie'];
+  const line = Array.isArray(raw) ? raw[0] : raw;
+  const cookie = String(line ?? '').split(';')[0] ?? '';
+  return { cookie, csrf: login.json().csrfToken as string };
 }
 
 async function send(session: { cookie: string; csrf: string }, url: string, payload: unknown) {

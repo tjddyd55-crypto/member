@@ -44,6 +44,5 @@ export type AdminAccount = {
   loginId: string;
   role: 'SUPER_ADMIN' | 'ADMIN';
   disabledAt: string | null;
-  totpReady: boolean;
   scopes: { groupId: string; capability: string }[];
 };

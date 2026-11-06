@@ -390,6 +390,14 @@ describe('관리자 운영 API', () => {
       expiresAt,
     });
     expect(future.statusCode).toBe(200);
+    const half = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/subscription`, {
+      reason: '시작만 지정',
+      idempotencyKey: `half-${group.id}`,
+      startsAt,
+    });
+    expect(half.statusCode).toBe(400);
+    expect(half.json().error.code).toBe('INVALID_DATE');
+    expect((await prisma.gatheringSubscription.findUniqueOrThrow({ where: { id: covering.id } })).status).toBe('ACTIVE');
     const quota = await send(session, 'POST', `/api/gathering-admin/groups/${group.id}/quota`, {
       quotaBytes: 1234,
       reason: '현재 용량',

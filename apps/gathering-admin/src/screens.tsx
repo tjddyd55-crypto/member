@@ -171,6 +171,7 @@ function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: stri
   const [startsAt, setStartsAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [reason, setReason] = useState('');
+  const [formError, setFormError] = useState('');
   const [approveKey, setApproveKey] = useState(() => operationKey(groupId, 'sub'));
   const [cancelKey, setCancelKey] = useState(() => operationKey(groupId, 'cancel'));
   const [stopKey, setStopKey] = useState(() => operationKey(groupId, 'stop'));
@@ -184,6 +185,11 @@ function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: stri
   return (
     <form className="panel row" onSubmit={(event) => {
       event.preventDefault();
+      if (Boolean(startsAt) !== Boolean(expiresAt)) {
+        setFormError('시작과 종료를 함께 입력하세요.');
+        return;
+      }
+      setFormError('');
       const body: Record<string, string> = { source, reason, idempotencyKey: approveKey };
       if (startsAt && expiresAt) {
         body.startsAt = new Date(startsAt).toISOString();
@@ -194,6 +200,7 @@ function SubscriptionForm({ groupId, subscriptionId, onSubmit }: { groupId: stri
       });
     }}>
       <p>현재 이용권 {subscriptionId ?? '없음'}</p>
+      <ErrorText error={formError} />
       <label>구분<select value={source} onChange={(event) => setSource(event.target.value as 'PAID' | 'COMPLIMENTARY')}><option value="PAID">정식</option><option value="COMPLIMENTARY">무상</option></select></label>
       <label>시작<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
       <label>종료<input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></label>

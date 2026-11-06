@@ -49,7 +49,7 @@ export async function grantSubscription(actorUserId: string, groupId: string, in
 }
 
 export async function readSubscription(userId: string, groupId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const now = new Date();
   const [latest, usage, active] = await Promise.all([
     prisma.gatheringSubscription.findFirst({

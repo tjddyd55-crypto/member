@@ -91,7 +91,7 @@ export async function listGroupEvents(
   to: Date,
   options?: { order?: 'asc' | 'desc'; status?: 'SCHEDULED' | 'CANCELLED' },
 ) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   assertRange(from, to);
   const events = await prisma.gatheringEvent.findMany({
     where: {
@@ -125,7 +125,7 @@ export async function listMyEvents(userId: string, from: Date, to: Date) {
 }
 
 export async function getGatheringEvent(userId: string, groupId: string, eventId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const event = await prisma.gatheringEvent.findFirst({
     where: { id: eventId, groupId, deletedAt: null },
     include: eventInclude,

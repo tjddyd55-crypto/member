@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/.expo
+**/coverage
+**/*.log
+.env
+**/.env
+!apps/api/.env.example
+!apps/gathering-mobile/.env.example
+!apps/mobile/.env.example

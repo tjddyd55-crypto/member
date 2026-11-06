@@ -4,7 +4,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
 
 export async function financeSummary(userId: string, groupId: string, year?: number) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const financeYear = await selectYear(groupId, year);
   const [transactions, dues] = await Promise.all([
     prisma.gatheringFinanceTransaction.findMany({

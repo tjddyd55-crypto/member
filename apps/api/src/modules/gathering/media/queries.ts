@@ -13,7 +13,7 @@ export async function listEventMedia(
   cursor: string | undefined,
   limit = MEDIA_PAGE_LIMIT,
 ) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   await requireListedEvent(groupId, eventId);
   const hidden = await blockedUserIds(groupId, userId);
   const decoded = cursor ? decodeMediaCursor(cursor) : null;
@@ -45,7 +45,7 @@ export async function listFolderMedia(
   cursor: string | undefined,
   limit = MEDIA_PAGE_LIMIT,
 ) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const folder = await prisma.gatheringMediaFolder.findFirst({
     where: { id: folderId, groupId, deletedAt: null },
     select: { id: true, title: true },
@@ -76,7 +76,7 @@ export async function listFolderMedia(
 }
 
 export async function downloadMedia(userId: string, groupId: string, assetId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const asset = await prisma.gatheringMediaAsset.findFirst({
     where: { id: assetId, groupId, status: 'READY', deletedAt: null },
   });
@@ -95,7 +95,7 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
 }
 
 export async function listAlbums(userId: string, groupId: string, year?: number) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const hidden = await blockedUserIds(groupId, userId);
   const counts = await prisma.gatheringMediaAsset.groupBy({
     by: ['eventId', 'kind'],

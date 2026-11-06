@@ -11,7 +11,7 @@ import { countPendingReceipts, loadHandoverFacts } from './facts.js';
 import { sha256Canonical } from './hash.js';
 
 export async function readHandover(userId: string, groupId: string) {
-  const access = await requireGroupMember(userId, groupId);
+  const access = await requireGroupMember(userId, groupId, 'read');
   const year = await openYear(groupId);
   const handover = year
     ? await prisma.gatheringHandover.findFirst({
@@ -24,11 +24,13 @@ export async function readHandover(userId: string, groupId: string) {
     handover: handover ? presentHandover(handover) : null,
     preview: ack,
     actions: {
-      nominate: access.permissions.includes('HANDOVER') && year?.status === 'OPEN' && !handover,
-      accept: handover?.status === 'NOMINATED' && handover.toUserId === userId,
-      confirm: handover?.status === 'ACCEPTED' && handover.fromUserId === userId,
-      finalize: handover?.status === 'CONFIRMED' && handover.fromUserId === userId,
+      nominate:
+        !access.restricted && access.permissions.includes('HANDOVER') && year?.status === 'OPEN' && !handover,
+      accept: !access.restricted && handover?.status === 'NOMINATED' && handover.toUserId === userId,
+      confirm: !access.restricted && handover?.status === 'ACCEPTED' && handover.fromUserId === userId,
+      finalize: !access.restricted && handover?.status === 'CONFIRMED' && handover.fromUserId === userId,
       cancel:
+        !access.restricted &&
         access.permissions.includes('HANDOVER') &&
         handover != null &&
         handover.status !== 'FINALIZED' &&

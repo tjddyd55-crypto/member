@@ -45,7 +45,14 @@ npm run dev -w @member/gathering-admin
 
 ## 관리 웹을 따로 둘 때
 
-부모가 Development에만 서비스를 만들 수 있다. 루트 디렉터리는 `apps/gathering-admin`이고 Dockerfile이 `/health`를 연다. 같은 Postgres를 직접 연결하지 않고 API로만 말한다.
+부모가 Development에만 서비스를 만들 수 있다. 서비스의 루트 디렉터리는 저장소 루트다. `apps/gathering-admin`만 컨텍스트로 쓰면 상위 `package-lock.json`이 없어 workspace 설치가 되지 않는다. Dockerfile 경로는 `apps/gathering-admin/Dockerfile`이다.
+
+```bash
+docker build -f apps/gathering-admin/Dockerfile -t gathering-admin .
+docker run --rm -p 8080:80 -e API_UPSTREAM=https://api-development-46a6.up.railway.app gathering-admin
+```
+
+`/health`는 `ok`다. 웹은 API와 같은 Postgres에 직접 붙지 않는다.
 
 | 이름 | 목적 | 형식 |
 | --- | --- | --- |

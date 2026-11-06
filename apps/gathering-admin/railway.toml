@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "apps/gathering-admin/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"

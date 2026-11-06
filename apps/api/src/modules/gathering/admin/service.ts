@@ -9,6 +9,7 @@ import {
   type AdminCapability,
   type AdminRole,
 } from '@member/gathering-domain';
+import { Prisma } from '@prisma/client';
 import { hashPassword, verifyPassword } from '../../../services/auth-service.js';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -252,11 +253,10 @@ export async function disableManagedAdmin(actorId: string, targetId: string, rea
   if (!target) throw new AppError(404, 'ADMIN_NOT_FOUND', '관리자 계정을 찾을 수 없습니다.');
   await prisma.$transaction(async (tx) => {
     if (target.role === 'SUPER_ADMIN' && target.disabledAt == null) {
-      await tx.$queryRaw`
-        SELECT id FROM gathering_admin_accounts
-        WHERE role = 'SUPER_ADMIN' AND "disabledAt" IS NULL
-        FOR UPDATE
-      `;
+      await tx.gatheringAdminAccount.updateMany({
+        where: { role: 'SUPER_ADMIN' },
+        data: { updatedAt: new Date() },
+      });
       const others = await tx.gatheringAdminAccount.count({
         where: { role: 'SUPER_ADMIN', disabledAt: null, id: { not: targetId } },
       });
@@ -276,7 +276,7 @@ export async function disableManagedAdmin(actorId: string, targetId: string, rea
       after: { disabledAt: new Date().toISOString() },
       reason: reason.trim(),
     });
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
 export async function rotateAdminCsrf(sessionId: string) {

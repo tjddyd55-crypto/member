@@ -93,7 +93,7 @@ export async function getGroupDetail(
   userId: string,
   groupId: string,
 ): Promise<GatheringGroupDetail> {
-  const access = await requireGroupMember(userId, groupId);
+  const access = await requireGroupMember(userId, groupId, 'read');
   const group = await prisma.gatheringGroup.findUniqueOrThrow({ where: { id: groupId } });
   const [president, memberCount, financeYear, pendingCount] = await Promise.all([
     findPresident(groupId),
@@ -148,7 +148,7 @@ export async function listGroupMembers(
   query?: string,
   status: 'ACTIVE' | 'PENDING' = 'ACTIVE',
 ) {
-  const access = await requireGroupMember(userId, groupId);
+  const access = await requireGroupMember(userId, groupId, 'read');
   assertPermission(access, status === 'PENDING' ? 'MEMBER_MANAGE' : 'MEMBER_READ');
   const members = await prisma.gatheringMembership.findMany({
     where: {

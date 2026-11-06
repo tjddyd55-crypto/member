@@ -69,7 +69,7 @@ export async function completeReceiptUpload(
 }
 
 export async function listReceipts(userId: string, groupId: string, eventId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   await requireEvent(groupId, eventId);
   const rows = await prisma.gatheringReceiptAsset.findMany({
     where: { groupId, eventId, status: 'READY', deletedAt: null },
@@ -79,7 +79,7 @@ export async function listReceipts(userId: string, groupId: string, eventId: str
 }
 
 export async function downloadReceipt(userId: string, groupId: string, receiptId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const receipt = await prisma.gatheringReceiptAsset.findFirst({
     where: { id: receiptId, groupId, status: 'READY', deletedAt: null },
   });

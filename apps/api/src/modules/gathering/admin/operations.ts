@@ -469,10 +469,6 @@ export async function setMemberRestriction(
     if (!input.reason.trim()) throw new AppError(400, 'REASON_REQUIRED', '사유를 입력하세요.');
     const membership = await tx.gatheringMembership.findFirst({ where: { id: membershipId, groupId } });
     if (!membership) throw new AppError(404, 'MEMBER_NOT_FOUND', '회원을 찾을 수 없습니다.');
-    const president = await tx.gatheringRoleAssignment.findFirst({
-      where: { membershipId, role: 'PRESIDENT', revokedAt: null },
-    });
-    if (president) throw new AppError(403, 'PRESIDENT_LOCKED', '회장은 인계 뒤에만 이용을 막을 수 있습니다.');
     const beforeStatus = membership.status;
     const status = input.suspended ? 'SUSPENDED' : 'ACTIVE';
     await tx.gatheringMembership.update({ where: { id: membership.id }, data: { status } });

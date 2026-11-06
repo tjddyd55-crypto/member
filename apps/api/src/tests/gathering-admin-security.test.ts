@@ -139,10 +139,26 @@ describe('관리자 보안과 기간 입력', () => {
     const president = await prisma.gatheringMembership.findFirstOrThrow({ where: { groupId: group.id, userId: owner.userId } });
     const presidentBlock = await send(session, `/api/gathering-admin/groups/${group.id}/members/${president.id}/restriction`, {
       suspended: true,
-      reason: '회장',
+      reason: '회장 제한',
       idempotencyKey: 'block-president-0001',
     });
-    expect(presidentBlock.statusCode).toBe(403);
+    expect(presidentBlock.statusCode).toBe(200);
+    expect(presidentBlock.json().status).toBe('SUSPENDED');
+    expect(await prisma.gatheringRoleAssignment.count({ where: { membershipId: president.id, revokedAt: null, role: 'PRESIDENT' } })).toBe(1);
+    expect(await prisma.gatheringHandover.count({ where: { groupId: group.id } })).toBe(0);
+    const stillReads = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}`,
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    expect(stillReads.statusCode).toBe(403);
+    const blockedWrite = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events`,
+      headers: { authorization: `Bearer ${owner.token}` },
+      payload: { title: '제한 중', startsAt: '2026-12-01T00:00:00.000Z' },
+    });
+    expect(blockedWrite.statusCode).toBe(403);
     const restricted = await send(session, `/api/gathering-admin/groups/${group.id}/members/${membership.id}/restriction`, {
       suspended: true,
       reason: '운영 제한',

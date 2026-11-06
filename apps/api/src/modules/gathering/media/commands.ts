@@ -3,7 +3,6 @@ import type { GatheringMediaAsset, GatheringMediaKind } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import {
   SIGNED_URL_TTL_SECONDS,
-  STORAGE_QUOTA_BYTES,
   billableStorageBytes,
   buildGatheringFolderObjectKey,
   canDeleteStoredObject,
@@ -108,6 +107,7 @@ export async function completeFolderMediaUpload(
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_UPLOAD');
+  await assertGatheringWritable(prisma, groupId);
   const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { folderId });
   if (asset.status === 'READY') return revalidateReady(asset, userId);
   await assertPendingStillValid(asset.storageKey, asset.createdAt, asset.sizeBytes, sizeBytes);
@@ -137,6 +137,7 @@ export async function completeMediaUpload(
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_UPLOAD');
+  await assertGatheringWritable(prisma, groupId);
   const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { eventId });
   if (asset.status === 'READY') return revalidateReady(asset, userId);
   await assertPendingStillValid(asset.storageKey, asset.createdAt, asset.sizeBytes, sizeBytes);
@@ -172,6 +173,7 @@ async function resignOwnedUpload(
   scope: { eventId?: string; folderId?: string },
 ) {
   await requireGroupMember(userId, groupId);
+  await assertGatheringWritable(prisma, groupId);
   const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, scope);
   if (asset.status === 'READY') {
     const checked = await revalidateReady(asset, userId);
@@ -464,14 +466,14 @@ async function requireEvent(groupId: string, eventId: string) {
 }
 
 export async function storageSummary(userId: string, groupId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   const now = new Date();
   const usage = await loadBillableUsage(prisma, groupId, now);
   const subscriptionActive = await isSubscriptionActive(prisma, groupId, now);
   return {
     ...usage,
     usedBytes: billableStorageBytes(usage),
-    quotaBytes: STORAGE_QUOTA_BYTES,
+    quotaBytes: await loadGroupQuotaBytes(prisma, groupId),
     subscriptionActive,
   };
 }

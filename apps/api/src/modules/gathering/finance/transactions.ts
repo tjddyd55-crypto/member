@@ -116,7 +116,7 @@ export async function deleteTransaction(userId: string, groupId: string, transac
 }
 
 export async function listEventTransactions(userId: string, groupId: string, eventId: string) {
-  await requireGroupMember(userId, groupId);
+  await requireGroupMember(userId, groupId, 'read');
   await requireEvent(groupId, eventId);
   const rows = await prisma.gatheringFinanceTransaction.findMany({
     where: { groupId, eventId },

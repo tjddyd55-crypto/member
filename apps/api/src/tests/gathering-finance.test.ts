@@ -44,7 +44,13 @@ async function register(name: string) {
   const res = await app.inject({
     method: 'POST',
     url: '/api/gathering/auth/register',
-    payload: { name, phone, password: 'Passw0rd!', localJcName: '서울테스트', directoryConsent: true },
+    payload: {
+      name,
+      phone,
+      password: 'Passw0rd!',
+      localJcName: '서울테스트',
+      directoryConsent: true,
+    },
   });
   expect(res.statusCode).toBe(200);
   userIds.push(res.json().user.id);
@@ -91,6 +97,247 @@ async function createEvent(token: string, groupId: string, startsAt: string) {
 }
 
 describe('행사 장부와 영수증', () => {
+  it('행사 수정·거래·영수증은 실제 역할별로 서버가 허용하며 일반 회원은 조회만 한다', async () => {
+    const owner = await register('상세권한회장');
+    const group = await createGroup(owner.tokens.accessToken, '상세 권한 모임');
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-05-02T03:00:00.000Z');
+    for (const role of ['PRESIDENT', 'SECRETARY', 'TREASURER', 'EXECUTIVE', 'MEMBER'] as const) {
+      const actor = role === 'PRESIDENT' ? owner : await register(`상세${role}`);
+      if (role !== 'PRESIDENT') {
+        await join(owner.tokens.accessToken, actor.tokens.accessToken, group.id);
+        if (role !== 'MEMBER') {
+          const assigned = await app.inject({
+            method: 'POST',
+            url: `/api/gathering/groups/${group.id}/officers`,
+            headers: auth(owner.tokens.accessToken),
+            payload: {
+              userId: actor.user.id,
+              role,
+              ...(role === 'EXECUTIVE' ? { title: '기획위원' } : {}),
+            },
+          });
+          expect(assigned.statusCode).toBe(200);
+        }
+      }
+      const edit = await app.inject({
+        method: 'PATCH',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}`,
+        headers: auth(actor.tokens.accessToken),
+        payload: {
+          title: '수정된 행사',
+          place: '회의실\n서울시 중구 3층',
+          description: '행사 설명',
+        },
+      });
+      expect(edit.statusCode, role).toBe(role === 'PRESIDENT' || role === 'SECRETARY' ? 200 : 403);
+      const financeAllowed = role === 'PRESIDENT' || role === 'TREASURER';
+      const transaction = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+        headers: auth(actor.tokens.accessToken),
+        payload: {
+          direction: 'EXPENSE',
+          label: '식대',
+          amountWon: 1000,
+          paidAt: '2026-05-02T03:00:00.000Z',
+        },
+      });
+      expect(transaction.statusCode, role).toBe(financeAllowed ? 200 : 403);
+      const upload = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/uploads`,
+        headers: auth(actor.tokens.accessToken),
+        payload: { items: [{ mimeType: 'application/pdf', sizeBytes: 32 }] },
+      });
+      expect(upload.statusCode, role).toBe(financeAllowed ? 200 : 403);
+      for (const path of ['', '/transactions', '/receipts']) {
+        const read = await app.inject({
+          method: 'GET',
+          url: `/api/gathering/groups/${group.id}/events/${event.id}${path}`,
+          headers: auth(actor.tokens.accessToken),
+        });
+        expect(read.statusCode, `${role} ${path}`).toBe(200);
+        if (!path) {
+          expect(read.json().place).toBe('회의실\n서울시 중구 3층');
+          expect(read.json().description).toBe('행사 설명');
+        }
+      }
+    }
+  });
+
+  it('마감연도는 거래 추가·수정·삭제와 영수증 예약·완료·삭제를 거절하고 기존 기록을 보존한다', async () => {
+    const owner = await register('상세마감회장');
+    const group = await createGroup(owner.tokens.accessToken, '상세 마감 모임');
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-05-02T03:00:00.000Z');
+    const payload = {
+      direction: 'EXPENSE',
+      label: '보존 식대',
+      amountWon: 1000,
+      paidAt: '2026-05-02T03:00:00.000Z',
+    };
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+      headers: auth(owner.tokens.accessToken),
+      payload,
+    });
+    expect(created.statusCode).toBe(200);
+    const upload = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/uploads`,
+      headers: auth(owner.tokens.accessToken),
+      payload: {
+        items: Array.from({ length: 3 }, () => ({ mimeType: 'application/pdf', sizeBytes: 32 })),
+      },
+    });
+    expect(upload.statusCode).toBe(200);
+    const [readyId, pendingId, expiredId] = upload
+      .json()
+      .items.map((item: { id: string }) => item.id) as string[];
+    const ready = await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: readyId } });
+    storage.put(ready.storageKey, pdf(32));
+    const complete = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/${readyId}/complete`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { sizeBytes: 32 },
+    });
+    expect(complete.statusCode).toBe(200);
+    await prisma.gatheringReceiptAsset.update({
+      where: { id: expiredId },
+      data: { createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+    });
+    const pending = await prisma.gatheringReceiptAsset.findUniqueOrThrow({
+      where: { id: pendingId },
+    });
+    storage.put(pending.storageKey, Buffer.alloc(33)); // Invalid object must not mark a closed year's row FAILED.
+    const before = await prisma.gatheringReceiptAsset.findMany({
+      where: { groupId: group.id },
+      orderBy: { id: 'asc' },
+    });
+    const originalTransaction = await prisma.gatheringFinanceTransaction.findUniqueOrThrow({
+      where: { id: created.json().id },
+    });
+    await prisma.gatheringFinanceYear.update({
+      where: { id: ready.financeYearId },
+      data: { status: 'CLOSED' },
+    });
+    const next = fiscalYearRange(group.financeYear.year + 1);
+    await prisma.gatheringFinanceYear.create({
+      data: {
+        groupId: group.id,
+        year: group.financeYear.year + 1,
+        startsAt: next.startsAt,
+        endsAt: next.endsAt,
+        status: 'OPEN',
+        openingBalanceWon: 0,
+      },
+    });
+    const deniedWrites = [
+      {
+        method: 'POST' as const,
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+        payload,
+      },
+      {
+        method: 'PUT' as const,
+        url: `/api/gathering/groups/${group.id}/transactions/${created.json().id}`,
+        payload: { ...payload, paidAt: next.startsAt.toISOString(), amountWon: 2000 },
+      },
+      {
+        method: 'DELETE' as const,
+        url: `/api/gathering/groups/${group.id}/transactions/${created.json().id}`,
+      },
+      {
+        method: 'POST' as const,
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/uploads`,
+        payload: { items: [{ mimeType: 'application/pdf', sizeBytes: 32 }] },
+      },
+      ...[pendingId, expiredId].map((id) => ({
+        method: 'POST' as const,
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/${id}/complete`,
+        payload: { sizeBytes: 32 },
+      })),
+    ];
+    for (const write of deniedWrites) {
+      const result = await app.inject({ ...write, headers: auth(owner.tokens.accessToken) });
+      expect(result.statusCode, write.url).toBe(409);
+      expect(result.json().error.code).toBe('FINANCE_YEAR_CLOSED');
+    }
+    for (const id of [readyId, pendingId]) {
+      const deleted = await app.inject({
+        method: 'DELETE',
+        url: `/api/gathering/groups/${group.id}/receipts/${id}`,
+        headers: auth(owner.tokens.accessToken),
+      });
+      expect(deleted.statusCode).toBe(403);
+    }
+    expect(
+      await prisma.gatheringReceiptAsset.findMany({
+        where: { groupId: group.id },
+        orderBy: { id: 'asc' },
+      }),
+    ).toEqual(before);
+    expect(
+      await prisma.gatheringFinanceTransaction.findUniqueOrThrow({
+        where: { id: created.json().id },
+      }),
+    ).toEqual(originalTransaction);
+    expect(storage.objects.has(ready.storageKey)).toBe(true);
+    for (const path of ['transactions', 'receipts']) {
+      const read = await app.inject({
+        method: 'GET',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/${path}`,
+        headers: auth(owner.tokens.accessToken),
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.json().items).toHaveLength(1);
+    }
+  });
+
+  it.each([true, false])(
+    '저장소 확인 도중 마감되면 영수증 상태를 변경하지 않는다 (정상 파일: %s)',
+    async (valid) => {
+      const owner = await register(`마감경쟁${valid}`);
+      const group = await createGroup(owner.tokens.accessToken, '영수증 완료 마감 경쟁');
+      const event = await createEvent(
+        owner.tokens.accessToken,
+        group.id,
+        '2026-05-02T03:00:00.000Z',
+      );
+      const upload = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/uploads`,
+        headers: auth(owner.tokens.accessToken),
+        payload: { items: [{ mimeType: 'application/pdf', sizeBytes: 32 }] },
+      });
+      expect(upload.statusCode).toBe(200);
+      const receipt = await prisma.gatheringReceiptAsset.findUniqueOrThrow({
+        where: { id: upload.json().items[0].id },
+      });
+      storage.put(receipt.storageKey, valid ? pdf(32) : Buffer.alloc(33));
+      const originalHead = storage.head.bind(storage);
+      storage.head = async (key) => {
+        await prisma.gatheringFinanceYear.update({
+          where: { id: receipt.financeYearId },
+          data: { status: 'CLOSED' },
+        });
+        return originalHead(key);
+      };
+      const complete = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/receipts/${receipt.id}/complete`,
+        headers: auth(owner.tokens.accessToken),
+        payload: { sizeBytes: 32 },
+      });
+      expect(complete.statusCode).toBe(409);
+      expect(complete.json().error.code).toBe('FINANCE_YEAR_CLOSED');
+      expect(
+        await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: receipt.id } }),
+      ).toEqual(receipt);
+    },
+  );
+
   it('회장과 재무만 항목을 고치고, 결제일이 행사 다음날이면 같은 행사에 귀속한다', async () => {
     const owner = await register('장부회장');
     const treasurer = await register('장부재무');
@@ -147,7 +394,12 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
       headers: auth(owner.tokens.accessToken),
-      payload: { direction: 'INCOME', label: '회비', amountWon: 100000, paidAt: '2026-10-28T12:00:00.000Z' },
+      payload: {
+        direction: 'INCOME',
+        label: '회비',
+        amountWon: 100000,
+        paidAt: '2026-10-28T12:00:00.000Z',
+      },
     });
     expect(income.statusCode).toBe(200);
     await prisma.gatheringFinanceYear.update({
@@ -167,7 +419,12 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/finance/dues`,
       headers: auth(treasurer.tokens.accessToken),
-      payload: { userId: member.user.id, year: group.financeYear.year, amountWon: 30000, paidAmountWon: 10000 },
+      payload: {
+        userId: member.user.id,
+        year: group.financeYear.year,
+        amountWon: 30000,
+        paidAmountWon: 10000,
+      },
     });
     expect(due.json().status).toBe('PARTIAL');
     const listed = await app.inject({
@@ -187,7 +444,12 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
       headers: auth(owner.tokens.accessToken),
-      payload: { direction: 'EXPENSE', label: '심야 택시', amountWon: 18000, paidAt: '2026-12-23T15:30:00.000Z' },
+      payload: {
+        direction: 'EXPENSE',
+        label: '심야 택시',
+        amountWon: 18000,
+        paidAt: '2026-12-23T15:30:00.000Z',
+      },
     });
     expect(missing.statusCode).toBe(409);
     expect(missing.json().error.code).toBe('FINANCE_YEAR_NOT_OPEN');
@@ -221,7 +483,13 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
       headers: auth(owner.tokens.accessToken),
-      payload: { direction: 'EXPENSE', label: '정정', amountWon: 1000, paidAt: '2026-12-23T15:30:00.000Z', adjustment: true },
+      payload: {
+        direction: 'EXPENSE',
+        label: '정정',
+        amountWon: 1000,
+        paidAt: '2026-12-23T15:30:00.000Z',
+        adjustment: true,
+      },
     });
     expect(noNote.statusCode).toBe(400);
     await prisma.gatheringFinanceYear.update({
@@ -348,7 +616,9 @@ describe('행사 장부와 영수증', () => {
       payload: { sizeBytes: 32 },
     });
     expect(ready.statusCode).toBe(200);
-    const saved = await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: receiptId } });
+    const saved = await prisma.gatheringReceiptAsset.findUniqueOrThrow({
+      where: { id: receiptId },
+    });
     expect(saved.financeYearId).toBe(reservedYear);
     expect(saved.status).toBe('READY');
   });
@@ -374,7 +644,9 @@ describe('행사 장부와 영수증', () => {
       expect(covered?.year).toBe(fiscalYearOf(instant, june));
     }
     expect(shifted.json().financeYear.year).toBe(openYears[openYears.length - 1]?.year);
-    expect(shifted.json().financeYear.startsAt).toBe(openYears[openYears.length - 1]?.startsAt.toISOString());
+    expect(shifted.json().financeYear.startsAt).toBe(
+      openYears[openYears.length - 1]?.startsAt.toISOString(),
+    );
     const invalid = await app.inject({
       method: 'PATCH',
       url: `/api/gathering/groups/${group.id}`,
@@ -387,10 +659,17 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
       headers: auth(owner.tokens.accessToken),
-      payload: { direction: 'INCOME', label: '참가비', amountWon: 4000, paidAt: '2026-03-01T03:00:00.000Z' },
+      payload: {
+        direction: 'INCOME',
+        label: '참가비',
+        amountWon: 4000,
+        paidAt: '2026-03-01T03:00:00.000Z',
+      },
     });
     expect(income.statusCode).toBe(200);
-    expect(income.json().fiscalYear).toBe(fiscalYearOf(new Date('2026-03-01T03:00:00.000Z'), { startMonth: 6, startDay: 1 }));
+    expect(income.json().fiscalYear).toBe(
+      fiscalYearOf(new Date('2026-03-01T03:00:00.000Z'), { startMonth: 6, startDay: 1 }),
+    );
     const listed = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
@@ -406,7 +685,12 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
       headers: auth(owner.tokens.accessToken),
-      payload: { direction: 'INCOME', label: '찬조금', amountWon: 1000, paidAt: '2026-07-01T03:00:00.000Z' },
+      payload: {
+        direction: 'INCOME',
+        label: '찬조금',
+        amountWon: 1000,
+        paidAt: '2026-07-01T03:00:00.000Z',
+      },
     });
     expect(later.statusCode).toBe(200);
     expect(later.json().fiscalYear).toBe(2027);
@@ -424,7 +708,13 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/finance/dues`,
       headers: auth(owner.tokens.accessToken),
-      payload: { displayName: '기간회장', year: group.financeYear.year, amountWon: 10000, paidAmountWon: 10000, paidAt: '2026-03-02T03:00:00.000Z' },
+      payload: {
+        displayName: '기간회장',
+        year: group.financeYear.year,
+        amountWon: 10000,
+        paidAmountWon: 10000,
+        paidAt: '2026-03-02T03:00:00.000Z',
+      },
     });
     expect(due.statusCode).toBe(200);
     const summary = await app.inject({
@@ -471,7 +761,10 @@ describe('행사 장부와 영수증', () => {
       return uploaded.json().items[0].id as string;
     };
     const failedId = await reserve();
-    await prisma.gatheringReceiptAsset.update({ where: { id: failedId }, data: { status: 'FAILED' } });
+    await prisma.gatheringReceiptAsset.update({
+      where: { id: failedId },
+      data: { status: 'FAILED' },
+    });
     const pendingId = await reserve();
     const shifted = await app.inject({
       method: 'PATCH',
@@ -492,7 +785,11 @@ describe('행사 장부와 영수증', () => {
 
     const readyOwner = await register('완료영수증');
     const readyGroup = await createGroup(readyOwner.tokens.accessToken, '완료 영수증');
-    const readyEvent = await createEvent(readyOwner.tokens.accessToken, readyGroup.id, '2026-03-01T03:00:00.000Z');
+    const readyEvent = await createEvent(
+      readyOwner.tokens.accessToken,
+      readyGroup.id,
+      '2026-03-01T03:00:00.000Z',
+    );
     const readyUpload = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${readyGroup.id}/events/${readyEvent.id}/receipts/uploads`,
@@ -500,7 +797,9 @@ describe('행사 장부와 영수증', () => {
       payload: { items: [{ mimeType: 'application/pdf', sizeBytes: 32 }] },
     });
     const readyId = readyUpload.json().items[0].id as string;
-    const readyRow = await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: readyId } });
+    const readyRow = await prisma.gatheringReceiptAsset.findUniqueOrThrow({
+      where: { id: readyId },
+    });
     storage.put(readyRow.storageKey, pdf(32));
     const completed = await app.inject({
       method: 'POST',
@@ -530,14 +829,25 @@ describe('행사 장부와 영수증', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
       headers: auth(owner.tokens.accessToken),
-      payload: { direction: 'INCOME', label: '참가비', amountWon: 5000, paidAt: '2026-03-01T03:00:00.000Z' },
+      payload: {
+        direction: 'INCOME',
+        label: '참가비',
+        amountWon: 5000,
+        paidAt: '2026-03-01T03:00:00.000Z',
+      },
     });
     expect(income.statusCode).toBe(200);
     const due = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/finance/dues`,
       headers: auth(owner.tokens.accessToken),
-      payload: { displayName: '마감잔액', year: year.year, amountWon: 8000, paidAmountWon: 8000, paidAt: '2026-03-02T03:00:00.000Z' },
+      payload: {
+        displayName: '마감잔액',
+        year: year.year,
+        amountWon: 8000,
+        paidAmountWon: 8000,
+        paidAt: '2026-03-02T03:00:00.000Z',
+      },
     });
     expect(due.statusCode).toBe(200);
     const oldBalance = year.openingBalanceWon + 5000;

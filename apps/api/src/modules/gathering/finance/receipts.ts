@@ -21,7 +21,12 @@ import { lockGroupOpenYear, lockOpenYearById, readFiscalPeriod } from './years.j
 
 type ReceiptItem = { mimeType: string; sizeBytes: number; originalName?: string };
 
-export async function createReceiptUploads(userId: string, groupId: string, eventId: string, items: ReceiptItem[]) {
+export async function createReceiptUploads(
+  userId: string,
+  groupId: string,
+  eventId: string,
+  items: ReceiptItem[],
+) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'RECEIPT_WRITE');
   const event = await requireEvent(groupId, eventId);
@@ -45,6 +50,9 @@ export async function completeReceiptUpload(
   await assertGatheringWritable(prisma, groupId);
   const receipt = await requireOwnReceipt(userId, groupId, eventId, receiptId);
   if (receipt.status === 'READY') return presentReceipt(receipt);
+  // Check before validation can mark a pending upload FAILED. The final write and
+  // failure path also lock the year, so closing it during storage I/O stays safe.
+  await prisma.$transaction((tx) => lockOpenYearById(tx, groupId, receipt.financeYearId));
   await assertPending(receipt.id, receipt.createdAt, receipt.sizeBytes, sizeBytes);
   await assertStoredObject({
     storageKey: receipt.storageKey,
@@ -54,6 +62,10 @@ export async function completeReceiptUpload(
   });
   const ready = await prisma.$transaction(async (tx) => {
     await lockOpenYearById(tx, groupId, receipt.financeYearId);
+    const current = await tx.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: receipt.id } });
+    if (current.deletedAt || current.status === 'DELETED' || current.status === 'FAILED') {
+      throw new AppError(409, 'UPLOAD_FAILED', '이 업로드는 이미 종료되었습니다.');
+    }
     return tx.gatheringReceiptAsset.update({
       where: { id: receipt.id },
       data: { status: 'READY' },
@@ -107,7 +119,9 @@ export async function deleteReceipt(userId: string, groupId: string, receiptId: 
     });
     if (!current) throw new AppError(404, 'RECEIPT_NOT_FOUND', '영수증을 찾을 수 없습니다.');
     await lockFinanceYear(tx, current.financeYearId);
-    const year = await tx.gatheringFinanceYear.findUniqueOrThrow({ where: { id: current.financeYearId } });
+    const year = await tx.gatheringFinanceYear.findUniqueOrThrow({
+      where: { id: current.financeYearId },
+    });
     const fresh = await tx.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: current.id } });
     if (
       !canDeleteStoredObject({
@@ -138,7 +152,10 @@ export async function deleteReceipt(userId: string, groupId: string, receiptId: 
 function prepareReceipt(item: ReceiptItem) {
   const decision = validateReceiptUpload(item);
   if (!decision.ok) {
-    const message = decision.code === 'FILE_TOO_LARGE' ? '영수증 크기 제한을 넘었습니다.' : '영수증은 이미지 또는 PDF만 올릴 수 있습니다.';
+    const message =
+      decision.code === 'FILE_TOO_LARGE'
+        ? '영수증 크기 제한을 넘었습니다.'
+        : '영수증은 이미지 또는 PDF만 올릴 수 있습니다.';
     throw new AppError(400, decision.code, message);
   }
   return item;
@@ -189,7 +206,12 @@ async function reserveReceipts(
         uploadedByUserId: userId,
       },
     });
-    reserved.push({ id: created.id, mimeType: created.mimeType, storageKey, sizeBytes: item.sizeBytes });
+    reserved.push({
+      id: created.id,
+      mimeType: created.mimeType,
+      storageKey,
+      sizeBytes: item.sizeBytes,
+    });
   }
   return reserved;
 }
@@ -207,19 +229,32 @@ async function signReceipts(
         sizeBytes: row.sizeBytes,
         expiresInSeconds: SIGNED_URL_TTL_SECONDS,
       });
-      items.push({ id: row.id, uploadUrl: target.url, expiresAt: target.expiresAt, headers: target.headers });
+      items.push({
+        id: row.id,
+        uploadUrl: target.url,
+        expiresAt: target.expiresAt,
+        headers: target.headers,
+      });
     }
     return { items };
   } catch (error) {
-    await prisma.gatheringReceiptAsset.updateMany({
-      where: { id: { in: reserved.map((row) => row.id) }, status: 'PENDING' },
-      data: { status: 'FAILED' },
-    });
+    for (const row of reserved) {
+      try {
+        await failReceipt(row.id);
+      } catch (failure) {
+        if (!(failure instanceof AppError && failure.code === 'FINANCE_YEAR_CLOSED')) throw failure;
+      }
+    }
     throw error;
   }
 }
 
-async function requireOwnReceipt(userId: string, groupId: string, eventId: string, receiptId: string) {
+async function requireOwnReceipt(
+  userId: string,
+  groupId: string,
+  eventId: string,
+  receiptId: string,
+) {
   const receipt = await prisma.gatheringReceiptAsset.findFirst({
     where: { id: receiptId, groupId, eventId, deletedAt: null },
     include: { event: { select: { startsAt: true } } },
@@ -245,9 +280,13 @@ async function assertPending(id: string, createdAt: Date, reserved: bigint, size
 }
 
 async function failReceipt(id: string) {
-  await prisma.gatheringReceiptAsset.updateMany({
-    where: { id, status: 'PENDING' },
-    data: { status: 'FAILED' },
+  await prisma.$transaction(async (tx) => {
+    const receipt = await tx.gatheringReceiptAsset.findUniqueOrThrow({ where: { id } });
+    await lockOpenYearById(tx, receipt.groupId, receipt.financeYearId);
+    await tx.gatheringReceiptAsset.updateMany({
+      where: { id, status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
   });
 }
 

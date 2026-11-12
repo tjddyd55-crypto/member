@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -24,10 +24,23 @@ type FormScroll = {
 
 const FormScrollContext = createContext<FormScroll | null>(null);
 
-export function Screen({ children }: { children: React.ReactNode }) {
+export function Screen({
+  children,
+  header,
+  modal = false,
+  scrollKey,
+}: {
+  children: React.ReactNode;
+  header?: React.ReactNode;
+  modal?: boolean;
+  scrollKey?: string;
+}) {
   const underChrome = useUnderAppChrome();
   const scrollRef = useRef<ScrollView>(null);
   const contentRef = useRef<View>(null);
+  useEffect(() => {
+    if (scrollKey !== undefined) scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [scrollKey]);
   const formScroll = useMemo<FormScroll>(
     () => ({
       contentRef,
@@ -36,8 +49,12 @@ export function Screen({ children }: { children: React.ReactNode }) {
     [],
   );
   return (
-    <SafeAreaView style={styles.safe} edges={underChrome ? ['bottom'] : ['top', 'bottom']}>
+    <SafeAreaView
+      style={styles.safe}
+      edges={underChrome && !modal ? ['bottom'] : ['top', 'bottom']}
+    >
       <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
+        {header ? <View style={styles.header}>{header}</View> : null}
         <FormScrollContext.Provider value={formScroll}>
           <ScrollView
             ref={scrollRef}
@@ -182,6 +199,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg.default },
   flex: { flex: 1 },
   flexGrow: { flexGrow: 1 },
+  header: { paddingHorizontal: theme.layout.horizontalGutter, paddingTop: 8, gap: 8 },
   content: {
     padding: theme.layout.horizontalGutter,
     gap: theme.space[16],

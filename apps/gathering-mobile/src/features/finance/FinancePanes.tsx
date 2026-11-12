@@ -1,15 +1,31 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
-import type { GatheringFinanceSummary, GatheringMemberView, GatheringReceiptView, GatheringTransactionView } from '@member/contracts';
+import type {
+  GatheringFinanceSummary,
+  GatheringMemberView,
+  GatheringReceiptView,
+  GatheringTransactionView,
+} from '@member/contracts';
 import { summarizeLedger } from '@member/gathering-domain';
 import { api } from '../../api/client';
 import { DateTimeField } from '../../design/pickers';
-import { Body, Button, EmptyState, ErrorState, Notice, TextField } from '../../design/ui';
+import {
+  Body,
+  Button,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Notice,
+  Screen,
+  TextField,
+} from '../../design/ui';
 import { paidAtFromCalendarDate } from '../forms/values';
 import { theme } from '../../theme';
 import { MediaViewer } from '../media/MediaViewer';
-import { putPreparedFile } from '../media/prepare';
+import { prepareAsset, putPreparedFile } from '../media/prepare';
+import { eventFinanceActions, financeYearState, type FinanceYear } from '../events/detail';
 
 const WON = new Intl.NumberFormat('ko-KR');
 
@@ -194,27 +210,36 @@ export function EventFinancePane({
   eventId,
   canWrite,
   canAttach,
+  startsAt,
+  active = true,
 }: {
   groupId: string;
   eventId: string;
   canWrite: boolean;
   canAttach: boolean;
+  startsAt: string;
+  active?: boolean;
 }) {
   const [items, setItems] = useState<GatheringTransactionView[]>([]);
   const [receipts, setReceipts] = useState<GatheringReceiptView[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [formError, setFormError] = useState('');
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
   const [paidOn, setPaidOn] = useState(() => new Date());
   const [note, setNote] = useState('');
   const [direction, setDirection] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
-  const [yearOpen, setYearOpen] = useState(true);
-  const [viewer, setViewer] = useState<string | null>(null);
+  const [years, setYears] = useState<FinanceYear[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [attaching, setAttaching] = useState(false);
+  const [progress, setProgress] = useState('');
+  const uploadPending = useRef(false);
+  const [viewer, setViewer] = useState<{ uri: string; receipt: GatheringReceiptView } | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    setStatus('loading');
     try {
       const [ledger, files, summary] = await Promise.all([
         api.eventTransactions(groupId, eventId),
@@ -223,32 +248,59 @@ export function EventFinancePane({
       ]);
       setItems(ledger.items);
       setReceipts(files.items);
-      setYearOpen(summary.status === 'OPEN');
-      const images = files.items.filter((item) => item.mimeType.startsWith('image/'));
+      setYears(summary.years);
+      // A failed/expired thumbnail must not hide the ledger or remaining receipts.
       const urls = await Promise.all(
-        images.map(async (item) => {
-          const download = await api.downloadReceipt(groupId, item.id);
-          return [item.id, download.url] as const;
-        }),
+        files.items
+          .filter((item) => item.mimeType.startsWith('image/'))
+          .map(async (item) => {
+            try {
+              return [item.id, (await api.downloadReceipt(groupId, item.id)).url] as const;
+            } catch {
+              return null;
+            }
+          }),
       );
-      setThumbs(Object.fromEntries(urls));
+      setThumbs(Object.fromEntries(urls.filter((entry) => entry !== null)));
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '재무를 불러오지 못했습니다.');
       setStatus('error');
     }
   }, [eventId, groupId]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  const totals = summarizeLedger(
-    0,
-    items.map((item) => ({ direction: item.direction, amountWon: item.amountWon })),
+    if (active) void load();
+  }, [load, active]);
+  const eventYear = financeYearState(startsAt, years);
+  const { addTransaction: writable, attachReceipt: attachable } = eventFinanceActions(
+    canWrite,
+    canAttach,
+    startsAt,
+    years,
   );
+  const paidYear = financeYearState(paidAtFromCalendarDate(paidOn), years);
+  const totals = summarizeLedger(0, items);
 
   const save = async () => {
+    if (saving) return;
+    setFormError('');
+    if (!label.trim() || label.trim().length > 80) {
+      setFormError('항목명은 1~80자로 입력해 주세요.');
+      return;
+    }
+    if (!/^\d+$/.test(amount) || !Number.isSafeInteger(Number(amount)) || Number(amount) <= 0) {
+      setFormError('금액은 1원 이상의 정수로 입력해 주세요.');
+      return;
+    }
+    if (paidYear !== 'OPEN') {
+      setFormError(
+        paidYear === 'CLOSED'
+          ? '마감된 회계연도의 거래는 추가할 수 없습니다.'
+          : '거래 날짜에 해당하는 회계연도가 열려 있지 않습니다.',
+      );
+      return;
+    }
+    setSaving(true);
     try {
       await api.createTransaction(groupId, eventId, {
         direction,
@@ -257,77 +309,230 @@ export function EventFinancePane({
         paidAt: paidAtFromCalendarDate(paidOn),
         note: note.trim() || null,
       });
-      setLabel('');
-      setAmount('');
-      setNote('');
+      setEditing(false);
+      setMessage('거래를 저장했습니다.');
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '거래를 저장하지 못했습니다.');
+      setFormError(error instanceof Error ? error.message : '거래를 저장하지 못했습니다.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const attach = async () => {
+  const attach = async (photos: boolean) => {
+    if (uploadPending.current) return;
+    uploadPending.current = true;
+    setAttaching(true);
+    setMessage('');
+    let completed = 0;
+    const failures: string[] = [];
     try {
-      const picked = await File.pickFileAsync().catch(() => null);
-      if (!picked) return;
-      for (const pickedFile of Array.isArray(picked) ? picked : [picked]) {
-        const file = new File(pickedFile.uri);
-        if (!file.size) throw new Error('파일 크기를 확인하지 못했습니다.');
-        const originalName = file.name || fileName(file.uri);
-        const mimeType = receiptMime(file);
-        const created = await api.createReceiptUploads(groupId, eventId, [
-          { mimeType, sizeBytes: file.size, originalName },
-        ]);
-        const target = created.items[0];
-        if (!target) continue;
-        await putPreparedFile(file.uri, target.uploadUrl, target.headers, () => undefined);
-        await api.completeReceipt(groupId, eventId, target.id, file.size);
+      let files: Array<{ uri: string; mimeType: string; sizeBytes: number; originalName?: string }>;
+      if (photos) {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) throw new Error('사진 접근을 허용해 주세요.');
+        const picked = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsMultipleSelection: true,
+          quality: 1,
+        });
+        if (picked.canceled) return;
+        files = [];
+        for (const asset of picked.assets) {
+          try {
+            files.push(await prepareAsset(asset));
+          } catch {
+            failures.push(asset.fileName ?? '사진');
+          }
+        }
+      } else {
+        const picked = await File.pickFileAsync().catch(() => null);
+        if (!picked) return;
+        files = (Array.isArray(picked) ? picked : [picked]).map((pickedFile) => {
+          const file = new File(pickedFile.uri);
+          return {
+            uri: file.uri,
+            mimeType: receiptMime(file),
+            sizeBytes: file.size,
+            originalName: file.name || fileName(file.uri),
+          };
+        });
       }
-      await load();
+      for (const [index, file] of files.entries()) {
+        try {
+          if (!file.sizeBytes) throw new Error('파일 크기를 확인하지 못했습니다.');
+          const created = await api.createReceiptUploads(groupId, eventId, [
+            { mimeType: file.mimeType, sizeBytes: file.sizeBytes, originalName: file.originalName },
+          ]);
+          const target = created.items[0];
+          if (!target) throw new Error('업로드 주소를 받지 못했습니다.');
+          await putPreparedFile(file.uri, target.uploadUrl, target.headers, (loaded, total) =>
+            setProgress(
+              `${index + 1}/${files.length} · ${total > 0 ? Math.round((loaded / total) * 100) : 0}%`,
+            ),
+          );
+          await api.completeReceipt(groupId, eventId, target.id, file.sizeBytes);
+          completed += 1;
+        } catch (error) {
+          failures.push(
+            `${file.originalName ?? '영수증'}: ${error instanceof Error ? error.message : '첨부 실패'}`,
+          );
+        }
+      }
+      setMessage(
+        `영수증 ${completed}장 첨부${failures.length ? ` · 실패 ${failures.length}장. 실패한 파일을 다시 선택해 주세요.\n${failures.join('\n')}` : '했습니다.'}`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '영수증을 첨부하지 못했습니다.');
+    } finally {
+      if (completed) await load();
+      setProgress('');
+      setAttaching(false);
+      uploadPending.current = false;
     }
   };
-
+  const showReceipt = async (receipt: GatheringReceiptView) => {
+    try {
+      await openReceipt(groupId, receipt, undefined, (uri) => setViewer({ uri, receipt }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '영수증을 열지 못했습니다.');
+    }
+  };
+  if (status === 'loading') return <LoadingState />;
   if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
   return (
     <View style={styles.stack}>
-      <Notice>{`이 행사 수입 ${WON.format(totals.incomeWon)}원 · 지출 ${WON.format(totals.expenseWon)}원`}</Notice>
+      <View style={styles.eventSummary}>
+        <EventMoney label="수입 합계" value={totals.incomeWon} />
+        <EventMoney label="지출 합계" value={totals.expenseWon} />
+        <EventMoney label="차액" value={totals.incomeWon - totals.expenseWon} />
+      </View>
       {message ? <Notice>{message}</Notice> : null}
-      {items.length === 0 ? <EmptyState title="항목이 없습니다" description="날짜는 실제 결제일입니다. 행사일과 달라도 됩니다." /> : null}
+      {items.length === 0 ? <Body>등록된 거래가 없습니다</Body> : null}
       {items.map((item) => (
-        <Text key={item.id} style={styles.line}>
-          {new Date(item.paidAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })} · {item.direction === 'INCOME' ? '수입' : '지출'} · {item.label} · {WON.format(item.amountWon)}원
-          {item.note ? ` · ${item.note}` : ''}
-        </Text>
+        <View key={item.id} style={styles.transaction}>
+          <Text style={styles.cardLabel}>
+            {new Date(item.paidAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })} ·{' '}
+            {item.direction === 'INCOME' ? '수입' : '지출'}
+          </Text>
+          <Text style={styles.line}>
+            {item.label} · {WON.format(item.amountWon)}원
+          </Text>
+          {item.note ? <Body>{item.note}</Body> : null}
+        </View>
       ))}
-      {canWrite && yearOpen ? (
-        <>
-          <View style={styles.row}>
-            <Button label={direction === 'EXPENSE' ? '지출 선택됨' : '지출'} variant={direction === 'EXPENSE' ? 'primary' : 'secondary'} onPress={() => setDirection('EXPENSE')} />
-            <Button label={direction === 'INCOME' ? '수입 선택됨' : '수입'} variant={direction === 'INCOME' ? 'primary' : 'secondary'} onPress={() => setDirection('INCOME')} />
-          </View>
-          <TextField label="항목" value={label} onChangeText={setLabel} />
-          <TextField label="금액(원)" value={amount} onChangeText={setAmount} keyboardType="number-pad" />
-          <DateTimeField label="결제일" mode="date" value={paidOn} onChange={setPaidOn} />
-          <TextField label="비고" value={note} onChangeText={setNote} />
-          <Button label="항목 저장" onPress={() => void save()} />
-        </>
+      {writable ? (
+        <Button
+          label="수입·지출 추가"
+          variant="secondary"
+          onPress={() => {
+            setLabel('');
+            setAmount('');
+            setNote('');
+            setDirection('EXPENSE');
+            setPaidOn(new Date());
+            setFormError('');
+            setEditing(true);
+          }}
+        />
       ) : null}
+      {writable && editing ? (
+        <Modal
+          visible
+          animationType="slide"
+          onRequestClose={() => {
+            if (!saving) setEditing(false);
+          }}
+        >
+          <Screen modal>
+            <Text style={styles.line}>수입·지출 추가</Text>
+            <View style={styles.row}>
+              <Button
+                label="지출"
+                variant={direction === 'EXPENSE' ? 'primary' : 'secondary'}
+                onPress={() => setDirection('EXPENSE')}
+              />
+              <Button
+                label="수입"
+                variant={direction === 'INCOME' ? 'primary' : 'secondary'}
+                onPress={() => setDirection('INCOME')}
+              />
+            </View>
+            <DateTimeField label="거래 날짜" mode="date" value={paidOn} onChange={setPaidOn} />
+            <TextField label="항목명" value={label} onChangeText={setLabel} maxLength={80} />
+            <TextField
+              label="금액(원)"
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="number-pad"
+            />
+            <TextField label="비고" value={note} onChangeText={setNote} multiline maxLength={500} />
+            {formError ? <Notice>{formError}</Notice> : null}
+            <Button label="저장" loading={saving} onPress={() => void save()} />
+            <Button
+              label="닫기"
+              disabled={saving}
+              variant="text"
+              onPress={() => setEditing(false)}
+            />
+          </Screen>
+        </Modal>
+      ) : null}
+      <Text style={styles.line}>영수증</Text>
+      {receipts.length === 0 ? <Body>등록된 영수증이 없습니다</Body> : null}
       <View style={styles.row}>
         {receipts.map((receipt) => (
-          <Pressable key={receipt.id} accessibilityRole="button" onPress={() => void openReceipt(groupId, receipt, thumbs[receipt.id], setViewer)}>
+          <Pressable
+            key={receipt.id}
+            accessibilityRole="button"
+            accessibilityLabel={receipt.originalName ?? '영수증 전체 보기'}
+            onPress={() => void showReceipt(receipt)}
+          >
             {thumbs[receipt.id] ? (
               <Image source={{ uri: thumbs[receipt.id] }} style={styles.thumb} />
             ) : (
-              <Text style={styles.line}>{receipt.originalName ?? '영수증'}{receipt.immutable ? ' · 보존' : ''}</Text>
+              <Text style={styles.line}>{receipt.originalName ?? '영수증'}</Text>
             )}
           </Pressable>
         ))}
       </View>
-      {canAttach && yearOpen ? <Button label="영수증 여러 장 첨부" variant="secondary" onPress={() => void attach().catch((error: unknown) => setMessage(error instanceof Error ? error.message : '영수증을 첨부하지 못했습니다.'))} /> : null}
-      {!yearOpen ? <Notice>마감된 회계연도의 영수증과 장부는 조회만 됩니다.</Notice> : null}
-      {viewer ? <MediaViewer kind="PHOTO" uri={viewer} onClose={() => setViewer(null)} /> : null}
+      {attachable ? (
+        <>
+          <Button
+            label="영수증 여러 장 첨부"
+            loading={attaching}
+            variant="secondary"
+            onPress={() => void attach(true)}
+          />
+          <Button
+            label="파일 첨부(PDF 등)"
+            disabled={attaching}
+            variant="text"
+            onPress={() => void attach(false)}
+          />
+        </>
+      ) : null}
+      {progress ? <Body>{progress}</Body> : null}
+      {eventYear === 'CLOSED' ? <Notice>행사 연도가 마감되어 영수증은 조회만 가능합니다.</Notice> : null}
+      {eventYear === 'MISSING' && canAttach ? (
+        <Notice>행사 날짜에 해당하는 회계연도가 없어 영수증을 첨부할 수 없습니다.</Notice>
+      ) : null}
+      {viewer ? (
+        <MediaViewer
+          kind="PHOTO"
+          uri={viewer.uri}
+          fileName={viewer.receipt.originalName ?? undefined}
+          onClose={() => setViewer(null)}
+        />
+      ) : null}
+    </View>
+  );
+}
+function EventMoney({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.eventMoney}>
+      <Text style={styles.cardLabel}>{label}</Text>
+      <Text style={styles.eventMoneyValue}>{WON.format(value)}원</Text>
     </View>
   );
 }
@@ -370,7 +575,12 @@ function receiptMime(file: File) {
 
 function allowedReceiptMime(mimeType: string) {
   if (mimeType === 'image/jpg') return 'image/jpeg';
-  if (mimeType === 'application/pdf' || mimeType === 'image/jpeg' || mimeType === 'image/png' || mimeType === 'image/webp') {
+  if (
+    mimeType === 'application/pdf' ||
+    mimeType === 'image/jpeg' ||
+    mimeType === 'image/png' ||
+    mimeType === 'image/webp'
+  ) {
     return mimeType;
   }
   return null;
@@ -386,6 +596,27 @@ function mimeFromExtension(extension: string) {
 }
 
 const styles = StyleSheet.create({
+  eventMoneyValue: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  eventSummary: { flexDirection: 'row', gap: 4 },
+  eventMoney: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+    backgroundColor: theme.colors.bg.default,
+    padding: 8,
+    borderRadius: 8,
+  },
+  transaction: {
+    gap: 4,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border.default,
+  },
   stack: { gap: theme.space[12] },
   row: { gap: theme.space[8], flexDirection: 'row', flexWrap: 'wrap' },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space[8] },

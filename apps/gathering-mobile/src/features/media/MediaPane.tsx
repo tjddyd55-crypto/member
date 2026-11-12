@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { GatheringMediaView } from '@member/contracts';
-import { canRetryTransfer, signedUrlStillFresh, summarizeTransfer, type TransferState } from '@member/gathering-domain';
+import {
+  canRetryTransfer,
+  signedUrlStillFresh,
+  summarizeTransfer,
+  type TransferState,
+} from '@member/gathering-domain';
 import { api, ApiError } from '../../api/client';
 import { Body, Button, EmptyState, ErrorState, Notice } from '../../design/ui';
 import { theme } from '../../theme';
 import { MediaViewer } from './MediaViewer';
 import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
 import { uploadBlockReason } from './upload-block';
+import { mediaGridLayout } from './grid-layout';
 
 type Job = {
   id: string;
@@ -29,19 +36,34 @@ export function MediaPane({
   eventId,
   folderId,
   onTitle,
+  uploadLinks,
+  active = true,
 }: {
   groupId: string;
   eventId?: string;
   folderId?: string;
   onTitle?: (title: string) => void;
+  uploadLinks?: ReactNode;
+  active?: boolean;
 }) {
-  const target = eventId ? { kind: 'event' as const, id: eventId } : { kind: 'folder' as const, id: folderId ?? '' };
+  const target = eventId
+    ? { kind: 'event' as const, id: eventId }
+    : { kind: 'folder' as const, id: folderId ?? '' };
+  const [gridWidth, setGridWidth] = useState(0);
+  const { cellSize } = mediaGridLayout(gridWidth, theme.space[8]);
   const [items, setItems] = useState<GatheringMediaView[]>([]);
   const [writesAllowed, setWritesAllowed] = useState<boolean | undefined>(undefined);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
-  const [viewer, setViewer] = useState<{ uri: string; kind: 'PHOTO' | 'VIDEO' } | null>(null);
+  const [viewer, setViewer] = useState<{
+    uri: string;
+    kind: 'PHOTO' | 'VIDEO';
+    id: string;
+    fileName?: string;
+  } | null>(null);
+  const inFlight = useRef(new Set<string>());
+  const [picking, setPicking] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -75,8 +97,14 @@ export function MediaPane({
   };
 
   useEffect(() => {
+    if (!active) return;
     void load();
-  }, [load]);
+    if (!eventId) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load();
+    });
+    return () => subscription.remove();
+  }, [load, active, eventId]);
 
   const reserveBatch = async (pending: Job[]) => {
     for (let index = 0; index < pending.length; index += 20) {
@@ -95,6 +123,8 @@ export function MediaPane({
   };
 
   const transfer = async (job: Job) => {
+    if (inFlight.current.has(job.id)) return;
+    inFlight.current.add(job.id);
     updateJob(job.id, { state: 'uploading', message: '' });
     try {
       if (!job.assetId) await reserveBatch([job]);
@@ -104,7 +134,11 @@ export function MediaPane({
       if (!uploadUrl || !headers || !signedUrlStillFresh(job.expiresAt)) {
         const fresh = await refreshUpload(job);
         if (fresh === 'ready') {
-          updateJob(job.id, { state: 'done', loaded: job.file.sizeBytes, total: job.file.sizeBytes });
+          updateJob(job.id, {
+            state: 'done',
+            loaded: job.file.sizeBytes,
+            total: job.file.sizeBytes,
+          });
           return;
         }
         uploadUrl = fresh.uploadUrl;
@@ -114,33 +148,53 @@ export function MediaPane({
         updateJob(job.id, { loaded, total, state: 'uploading' });
       });
       updateJob(job.id, { state: 'confirming' });
-      if (target.kind === 'event') await api.completeMedia(groupId, target.id, job.assetId, job.file.sizeBytes);
+      if (target.kind === 'event')
+        await api.completeMedia(groupId, target.id, job.assetId, job.file.sizeBytes);
       else await api.completeFolderMedia(groupId, target.id, job.assetId, job.file.sizeBytes);
       job.uploadUrl = undefined;
-      updateJob(job.id, { state: 'done', loaded: job.file.sizeBytes, total: job.file.sizeBytes, uploadUrl: undefined });
+      updateJob(job.id, {
+        state: 'done',
+        loaded: job.file.sizeBytes,
+        total: job.file.sizeBytes,
+        uploadUrl: undefined,
+      });
     } catch (error) {
       job.uploadUrl = undefined;
       updateJob(job.id, {
         state: 'failed',
         uploadUrl: undefined,
-        message: error instanceof ApiError ? error.message : error instanceof Error ? error.message : '업로드에 실패했습니다.',
+        message:
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : '업로드에 실패했습니다.',
       });
+    } finally {
+      inFlight.current.delete(job.id);
     }
   };
 
   useEffect(() => {
     let active = true;
-    void api.subscription(groupId).then((row) => {
-      if (active) setWritesAllowed(row.uploadsAllowed);
-    }).catch(() => undefined);
+    void api
+      .subscription(groupId)
+      .then((row) => {
+        if (active) setWritesAllowed(row.uploadsAllowed);
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
     };
   }, [groupId]);
 
-  const uploadReason = uploadBlockReason({ destinationCount: 1, destinationChosen: true, writesAllowed });
+  const uploadReason = uploadBlockReason({
+    destinationCount: 1,
+    destinationChosen: true,
+    writesAllowed,
+  });
 
-  const pick = async (kind: 'PHOTO' | 'VIDEO') => {
+  const pickAssets = async (kind: 'PHOTO' | 'VIDEO') => {
     if (uploadReason) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -159,7 +213,7 @@ export function MediaPane({
         const file = await prepareAsset(asset);
         next.push({
           id: `${Date.now()}-${next.length}`,
-          name: file.originalName ?? (file.kind === 'VIDEO' ? '영상' : '사진'),
+          name: file.originalName ?? (file.kind === 'VIDEO' ? '▶ 영상' : '사진'),
           state: 'queued',
           loaded: 0,
           total: file.sizeBytes,
@@ -176,7 +230,12 @@ export function MediaPane({
       try {
         await reserveBatch(chunk.filter((job) => !job.assetId));
       } catch (error) {
-        const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : '예약을 만들지 못했습니다.';
+        const text =
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : '예약을 만들지 못했습니다.';
         setMessage(text);
         for (const job of chunk) {
           if (!job.assetId) updateJob(job.id, { state: 'failed', message: text });
@@ -189,14 +248,40 @@ export function MediaPane({
     await load();
   };
 
+  const pick = async (kind: 'PHOTO' | 'VIDEO') => {
+    if (picking) return;
+    setPicking(true);
+    try {
+      await pickAssets(kind);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '업로드하지 못했습니다.');
+    } finally {
+      setPicking(false);
+    }
+  };
   const progress = summarizeTransfer(jobs);
 
   return (
     <View style={styles.stack}>
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {message ? <Notice>{message}</Notice> : null}
-      <Button label="사진 올리기" disabled={Boolean(uploadReason)} onPress={() => void pick('PHOTO')} />
-      <Button label="영상 올리기" disabled={Boolean(uploadReason)} onPress={() => void pick('VIDEO')} />
+      <View style={eventId ? { flexDirection: 'row', gap: 8 } : styles.stack}>
+        <View style={eventId ? { flex: 1 } : undefined}>
+          <Button
+            label="사진 올리기"
+            disabled={Boolean(uploadReason) || picking}
+            onPress={() => void pick('PHOTO')}
+          />
+        </View>
+        <View style={eventId ? { flex: 1 } : undefined}>
+          <Button
+            label="영상 올리기"
+            disabled={Boolean(uploadReason) || picking}
+            onPress={() => void pick('VIDEO')}
+          />
+        </View>
+      </View>
+      {uploadLinks}
       {uploadReason ? <Notice>{uploadReason}</Notice> : null}
       {jobs.length > 0 ? (
         <Body>
@@ -208,38 +293,82 @@ export function MediaPane({
         <View key={job.id} style={styles.job}>
           <Text style={styles.jobTitle}>{job.name}</Text>
           <Body>
-            {job.state === 'done' ? '완료' : job.state === 'confirming' ? '확인 중' : `${job.loaded}/${job.total}`}
+            {job.state === 'done'
+              ? '완료'
+              : job.state === 'confirming'
+                ? '확인 중'
+                : `${job.total > 0 ? Math.round((job.loaded / job.total) * 100) : 0}%`}
           </Body>
           {job.message ? <Body>{job.message}</Body> : null}
           {canRetryTransfer(job.state) ? (
-            <Button label="다시 시도" variant="secondary" onPress={() => void transfer(job).then(() => load())} />
+            <Button
+              label="다시 시도"
+              disabled={picking}
+              variant="secondary"
+              onPress={() => void transfer(job).then(() => load())}
+            />
           ) : null}
         </View>
       ))}
       {status === 'ready' && items.length === 0 ? (
-        <EmptyState
-          title="아직 올린 사진·영상이 없습니다"
-          description={
-            target.kind === 'folder'
-              ? '사진 올리기나 영상 올리기로 이 폴더에 바로 넣을 수 있습니다.'
-              : '모임 회원이면 이 행사에 여러 장을 올릴 수 있습니다.'
+        eventId ? (
+          <Body>등록된 사진이 없습니다</Body>
+        ) : (
+          <EmptyState
+            title="아직 올린 사진·영상이 없습니다"
+            description="사진 올리기나 영상 올리기로 이 폴더에 바로 넣을 수 있습니다."
+          />
+        )
+      ) : null}
+      {eventId ? <Button label="앨범 새로고침" variant="text" onPress={() => void load()} /> : null}
+      <View style={styles.grid} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
+        {items.map((item) => (
+          <MediaThumb
+            key={item.id}
+            groupId={groupId}
+            cellSize={eventId ? cellSize : undefined}
+            item={item}
+            onOpen={() => void open(item)}
+          />
+        ))}
+      </View>
+      {nextCursor ? (
+        <Button
+          label="이전 사진 더 보기"
+          variant="secondary"
+          onPress={() =>
+            void loadMore().catch((error: unknown) =>
+              setMessage(error instanceof Error ? error.message : '사진을 더 불러오지 못했습니다.'),
+            )
           }
         />
       ) : null}
-      <View style={styles.grid}>
-        {items.map((item) => (
-          <MediaThumb key={item.id} groupId={groupId} item={item} onOpen={() => void open(item)} />
-        ))}
-      </View>
-      {nextCursor ? <Button label="이전 사진 더 보기" variant="secondary" onPress={() => void loadMore()} /> : null}
-      {viewer ? <MediaViewer kind={viewer.kind} uri={viewer.uri} onClose={() => setViewer(null)} /> : null}
+      {viewer ? (
+        <MediaViewer
+          key={viewer.id}
+          kind={viewer.kind}
+          uri={viewer.uri}
+          fileName={viewer.fileName}
+          onPrevious={() => {
+            const index = items.findIndex((item) => item.id === viewer.id);
+            const item = items[index - 1];
+            if (item) void open(item);
+          }}
+          onNext={() => {
+            const index = items.findIndex((item) => item.id === viewer.id);
+            const item = items[index + 1];
+            if (item) void open(item);
+          }}
+          onClose={() => setViewer(null)}
+        />
+      ) : null}
     </View>
   );
 
   async function open(item: GatheringMediaView) {
     try {
       const download = await api.downloadMedia(groupId, item.id);
-      setViewer({ uri: download.url, kind: item.kind });
+      setViewer({ uri: download.url, kind: item.kind, id: item.id });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '파일을 열지 못했습니다.');
     }
@@ -265,7 +394,9 @@ export function MediaPane({
     });
   }
 
-  async function refreshUpload(job: Job): Promise<'ready' | { uploadUrl: string; headers: Record<string, string> }> {
+  async function refreshUpload(
+    job: Job,
+  ): Promise<'ready' | { uploadUrl: string; headers: Record<string, string> }> {
     if (!job.assetId) throw new Error('업로드 주소를 받지 못했습니다.');
     try {
       const resumed =
@@ -276,12 +407,20 @@ export function MediaPane({
       assignUpload(job, resumed);
       return { uploadUrl: resumed.uploadUrl, headers: resumed.headers };
     } catch (error) {
-      if (error instanceof ApiError && (error.code === 'UPLOAD_FAILED' || error.code === 'UPLOAD_EXPIRED')) {
+      if (
+        error instanceof ApiError &&
+        (error.code === 'UPLOAD_FAILED' || error.code === 'UPLOAD_EXPIRED')
+      ) {
         job.assetId = undefined;
         job.uploadUrl = undefined;
         job.headers = undefined;
         job.expiresAt = undefined;
-        updateJob(job.id, { assetId: undefined, uploadUrl: undefined, headers: undefined, expiresAt: undefined });
+        updateJob(job.id, {
+          assetId: undefined,
+          uploadUrl: undefined,
+          headers: undefined,
+          expiresAt: undefined,
+        });
         await reserveBatch([job]);
         if (!job.uploadUrl || !job.headers) throw new Error('업로드 주소를 받지 못했습니다.');
         return { uploadUrl: job.uploadUrl, headers: job.headers };
@@ -307,27 +446,48 @@ function MediaThumb({
   groupId,
   item,
   onOpen,
+  cellSize,
 }: {
   groupId: string;
   item: GatheringMediaView;
   onOpen: () => void;
+  cellSize?: number;
 }) {
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => {
+    // Videos have no poster field in the API. Only the fullscreen viewer creates a player.
     if (item.kind !== 'PHOTO') return;
     let active = true;
-    void api.downloadMedia(groupId, item.id).then((result) => {
-      if (active) setUri(result.url);
-    }).catch(() => {
-      if (active) setUri(null);
-    });
+    void api
+      .downloadMedia(groupId, item.id)
+      .then((result) => {
+        if (active) setUri(result.url);
+      })
+      .catch(() => {
+        if (active) setUri(null);
+      });
     return () => {
       active = false;
     };
   }, [groupId, item.id, item.kind]);
   return (
-    <Pressable accessibilityRole="imagebutton" accessibilityLabel="확대 보기" onPress={onOpen} style={styles.cell}>
-      {uri ? <Image source={{ uri }} style={styles.thumb} /> : <Text style={styles.cellLabel}>{item.kind === 'VIDEO' ? '영상' : '사진'}</Text>}
+    <Pressable
+      accessibilityRole="imagebutton"
+      accessibilityLabel="확대 보기"
+      onPress={onOpen}
+      style={[
+        styles.cell,
+        cellSize !== undefined && { width: cellSize, height: cellSize },
+        item.kind === 'VIDEO' && styles.videoCell,
+      ]}
+    >
+      {item.kind === 'VIDEO' ? (
+        <Text style={styles.playLabel}>▶</Text>
+      ) : uri ? (
+        <Image source={{ uri }} style={styles.thumb} />
+      ) : (
+        <Text style={styles.cellLabel}>사진</Text>
+      )}
     </Pressable>
   );
 }
@@ -337,6 +497,8 @@ const styles = StyleSheet.create({
   job: { gap: theme.space[8], paddingVertical: theme.space[8] },
   jobTitle: { ...theme.typography.body, color: theme.colors.text.primary },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space[8] },
+  videoCell: { backgroundColor: theme.colors.text.primary },
+  playLabel: { color: '#FFFFFF', fontSize: 18 },
   cell: {
     width: 104,
     height: 104,

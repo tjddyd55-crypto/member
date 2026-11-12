@@ -27,6 +27,9 @@ import { MediaViewer } from '../media/MediaViewer';
 import { prepareAsset, putPreparedFile } from '../media/prepare';
 import { eventFinanceActions, financeYearState, type FinanceYear } from '../events/detail';
 
+import { useToast } from '../../design/toast';
+import { formatAmountInput, parseAmountInput, formatWon } from './amount';
+
 const WON = new Intl.NumberFormat('ko-KR');
 
 export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWrite: boolean }) {
@@ -220,6 +223,7 @@ export function EventFinancePane({
   startsAt: string;
   active?: boolean;
 }) {
+  const toast = useToast();
   const [items, setItems] = useState<GatheringTransactionView[]>([]);
   const [receipts, setReceipts] = useState<GatheringReceiptView[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -288,7 +292,7 @@ export function EventFinancePane({
       setFormError('항목명은 1~80자로 입력해 주세요.');
       return;
     }
-    if (!/^\d+$/.test(amount) || !Number.isSafeInteger(Number(amount)) || Number(amount) <= 0) {
+    if (!amount || !Number.isSafeInteger(parseAmountInput(amount)) || parseAmountInput(amount) <= 0) {
       setFormError('금액은 1원 이상의 정수로 입력해 주세요.');
       return;
     }
@@ -305,12 +309,13 @@ export function EventFinancePane({
       await api.createTransaction(groupId, eventId, {
         direction,
         label: label.trim(),
-        amountWon: Number(amount),
+        amountWon: parseAmountInput(amount),
         paidAt: paidAtFromCalendarDate(paidOn),
         note: note.trim() || null,
       });
+      toast('저장되었습니다.');
       setEditing(false);
-      setMessage('거래를 저장했습니다.');
+      setMessage('');
       await load();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : '거래를 저장하지 못했습니다.');
@@ -462,8 +467,8 @@ export function EventFinancePane({
             <TextField label="항목명" value={label} onChangeText={setLabel} maxLength={80} />
             <TextField
               label="금액(원)"
-              value={amount}
-              onChangeText={setAmount}
+              value={formatAmountInput(amount)}
+              onChangeText={(raw) => setAmount(formatAmountInput(raw))}
               keyboardType="number-pad"
             />
             <TextField label="비고" value={note} onChangeText={setNote} multiline maxLength={500} />
@@ -532,7 +537,7 @@ function EventMoney({ label, value }: { label: string; value: number }) {
   return (
     <View style={styles.eventMoney}>
       <Text style={styles.cardLabel}>{label}</Text>
-      <Text style={styles.eventMoneyValue}>{WON.format(value)}원</Text>
+      <Text style={styles.eventMoneyValue}>{formatWon(value)}</Text>
     </View>
   );
 }

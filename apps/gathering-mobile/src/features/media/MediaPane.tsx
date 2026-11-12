@@ -49,6 +49,7 @@ export function MediaPane({
   const target = eventId
     ? { kind: 'event' as const, id: eventId }
     : { kind: 'folder' as const, id: folderId ?? '' };
+  const [albumRevision, setAlbumRevision] = useState(0);
   const [gridWidth, setGridWidth] = useState(0);
   const { cellSize } = mediaGridLayout(gridWidth, theme.space[8]);
   const [items, setItems] = useState<GatheringMediaView[]>([]);
@@ -56,12 +57,7 @@ export function MediaPane({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
-  const [viewer, setViewer] = useState<{
-    uri: string;
-    kind: 'PHOTO' | 'VIDEO';
-    id: string;
-    fileName?: string;
-  } | null>(null);
+  const [viewer, setViewer] = useState<{ items: GatheringMediaView[]; initialIndex: number } | null>(null);
   const inFlight = useRef(new Set<string>());
   const [picking, setPicking] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -79,6 +75,7 @@ export function MediaPane({
         setItems(media.items);
         setNextCursor(media.nextCursor);
       }
+      setAlbumRevision(current => current + 1);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '사진·영상을 불러오지 못했습니다.');
@@ -213,7 +210,7 @@ export function MediaPane({
         const file = await prepareAsset(asset);
         next.push({
           id: `${Date.now()}-${next.length}`,
-          name: file.originalName ?? (file.kind === 'VIDEO' ? '▶ 영상' : '사진'),
+          name: `${file.kind === 'VIDEO' ? '영상' : '사진'} ${next.length + 1}`,
           state: 'queued',
           loaded: 0,
           total: file.sizeBytes,
@@ -322,9 +319,10 @@ export function MediaPane({
       ) : null}
       {eventId ? <Button label="앨범 새로고침" variant="text" onPress={() => void load()} /> : null}
       <View style={styles.grid} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
-        {items.map((item) => (
+        {items.map((item, index) => (
           <MediaThumb
-            key={item.id}
+            key={`${item.id}:${albumRevision}`}
+            label={`${item.kind === 'VIDEO' ? '영상' : '사진'} ${index + 1}`}
             groupId={groupId}
             cellSize={eventId ? cellSize : undefined}
             item={item}
@@ -345,20 +343,9 @@ export function MediaPane({
       ) : null}
       {viewer ? (
         <MediaViewer
-          key={viewer.id}
-          kind={viewer.kind}
-          uri={viewer.uri}
-          fileName={viewer.fileName}
-          onPrevious={() => {
-            const index = items.findIndex((item) => item.id === viewer.id);
-            const item = items[index - 1];
-            if (item) void open(item);
-          }}
-          onNext={() => {
-            const index = items.findIndex((item) => item.id === viewer.id);
-            const item = items[index + 1];
-            if (item) void open(item);
-          }}
+          items={viewer.items}
+          initialIndex={viewer.initialIndex}
+          resolveUri={async (item) => (await api.downloadMedia(groupId, item.id)).url}
           onClose={() => setViewer(null)}
         />
       ) : null}
@@ -366,12 +353,7 @@ export function MediaPane({
   );
 
   async function open(item: GatheringMediaView) {
-    try {
-      const download = await api.downloadMedia(groupId, item.id);
-      setViewer({ uri: download.url, kind: item.kind, id: item.id });
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '파일을 열지 못했습니다.');
-    }
+    setViewer({ items: [...items], initialIndex: items.findIndex(entry => entry.id === item.id) });
   }
 
   function updateJob(id: string, patch: Partial<Job>) {
@@ -445,11 +427,13 @@ function toIntent(file: PreparedUpload) {
 function MediaThumb({
   groupId,
   item,
+  label,
   onOpen,
   cellSize,
 }: {
   groupId: string;
   item: GatheringMediaView;
+  label: string;
   onOpen: () => void;
   cellSize?: number;
 }) {
@@ -473,7 +457,7 @@ function MediaThumb({
   return (
     <Pressable
       accessibilityRole="imagebutton"
-      accessibilityLabel="확대 보기"
+      accessibilityLabel={label}
       onPress={onOpen}
       style={[
         styles.cell,

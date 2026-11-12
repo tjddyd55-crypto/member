@@ -98,7 +98,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         if (file.kind !== kind) continue;
         files.push({
           key: `${destination.kind}:${destination.id}:${files.length}:${file.originalName ?? kind}`,
-          name: file.originalName ?? (kind === 'PHOTO' ? '사진' : '영상'),
+          name: `${kind === 'PHOTO' ? '사진' : '영상'} ${files.length + 1}`,
           file,
           destination,
         });

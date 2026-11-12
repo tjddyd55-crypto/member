@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Image,
   Linking,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   Share,
@@ -12,98 +11,41 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Gallery } from 'react-native-zoom-toolkit';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { downloadFileName } from './viewer-values';
 
-type Transform = { scale: number; x: number; y: number };
-const ORIGINAL: Transform = { scale: 1, x: 0, y: 0 };
-export function MediaViewer({
-  uri,
-  kind,
-  fileName,
-  onClose,
-  onPrevious,
-  onNext,
-}: {
-  uri: string;
-  kind: 'PHOTO' | 'VIDEO';
+export type ViewerItem = { id: string; kind: 'PHOTO' | 'VIDEO'; uri?: string; fileName?: string };
+
+// A single-item invocation is retained for the existing receipt preview.
+export function MediaViewer(props: {
+  uri?: string;
+  kind?: 'PHOTO' | 'VIDEO';
   fileName?: string;
+  items?: ViewerItem[];
+  initialIndex?: number;
+  resolveUri?: (item: ViewerItem) => Promise<string>;
   onClose: () => void;
-  onPrevious?: () => void;
-  onNext?: () => void;
 }) {
-  const [transform, setTransform] = useState(ORIGINAL);
-  const current = useRef(ORIGINAL);
-  const base = useRef(ORIGINAL);
-  const size = useRef({ width: 1, height: 1 });
-  const pinch = useRef(0);
-  const wasPinch = useRef(false);
-  const callbacks = useRef({ onPrevious, onNext });
-  callbacks.current = { onPrevious, onNext };
+  const items = props.items ?? [
+    { id: 'receipt', uri: props.uri, kind: props.kind ?? 'PHOTO', fileName: props.fileName },
+  ];
+  const [index, setIndex] = useState(props.initialIndex ?? 0);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const item = items[index];
+  const uri = item.uri ?? urls[item.id] ?? '';
+  const { kind, fileName } = item;
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const update = (next: Transform) => {
-    current.current = next;
-    setTransform(next);
-  };
+  const [size, setSize] = useState({ width: 1, height: 1 });
   useEffect(() => {
-    update(ORIGINAL);
     setMessage('');
-  }, [uri]);
-  const gestures = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (event, gesture) =>
-          event.nativeEvent.touches.length > 1 ||
-          (current.current.scale > 1 && Math.abs(gesture.dx) + Math.abs(gesture.dy) > 5) ||
-          (Math.abs(gesture.dx) > 25 && Math.abs(gesture.dx) > Math.abs(gesture.dy)),
-        onPanResponderGrant: (event) => {
-          const [a, b] = event.nativeEvent.touches;
-          pinch.current = a && b ? Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY) : 0;
-          wasPinch.current = pinch.current > 0;
-          base.current = current.current;
-        },
-        onPanResponderMove: (event, gesture) => {
-          const [a, b] = event.nativeEvent.touches;
-          if (a && b) {
-            const distance = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
-            if (!pinch.current) {
-              pinch.current = distance;
-              base.current = current.current;
-            }
-            wasPinch.current = true;
-            const scale = Math.max(
-              1,
-              Math.min(4, (base.current.scale * distance) / (pinch.current || 1)),
-            );
-            update({ scale, x: 0, y: 0 });
-          } else if (current.current.scale > 1 && !wasPinch.current) {
-            const maxX = (size.current.width * (current.current.scale - 1)) / 2;
-            const maxY = (size.current.height * (current.current.scale - 1)) / 2;
-            update({
-              scale: current.current.scale,
-              x: Math.max(-maxX, Math.min(maxX, base.current.x + gesture.dx)),
-              y: Math.max(-maxY, Math.min(maxY, base.current.y + gesture.dy)),
-            });
-          }
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          if (!wasPinch.current && current.current.scale === 1) {
-            if (gesture.dx < -60) callbacks.current.onNext?.();
-            if (gesture.dx > 60) callbacks.current.onPrevious?.();
-          }
-          pinch.current = 0;
-          wasPinch.current = false;
-        },
-        onPanResponderTerminate: () => {
-          pinch.current = 0;
-          wasPinch.current = false;
-        },
-      }),
-    [],
-  );
+  }, [index]);
+  const remember = (id: string, url: string) =>
+    setUrls((current) => (current[id] === url ? current : { ...current, [id]: url }));
   const download = async () => {
     if (savingRef.current) return;
     if (Platform.OS === 'web') {
@@ -154,74 +96,133 @@ export function MediaViewer({
     }
   };
   return (
-    <Modal animationType="fade" visible onRequestClose={onClose}>
-      <SafeAreaView style={styles.backdrop}>
-        <View style={styles.toolbar}>
-          <Control label="닫기" onPress={onClose} />
-          <Control
-            label={saving ? '저장 중' : '다운로드'}
-            disabled={saving}
-            onPress={() => void download()}
-          />
-        </View>
-        {message ? (
-          <Text accessibilityLiveRegion="polite" style={styles.label}>
-            {message}
-          </Text>
-        ) : null}
-        <View
-          style={styles.stage}
-          onLayout={(event) => {
-            size.current = event.nativeEvent.layout;
-          }}
-          {...(kind === 'PHOTO' ? gestures.panHandlers : {})}
-        >
-          {kind === 'PHOTO' ? (
-            <Image
-              accessibilityLabel="사진 확대 보기"
-              resizeMode="contain"
-              source={{ uri }}
-              style={[
-                styles.photo,
-                {
-                  transform: [
-                    { translateX: transform.x },
-                    { translateY: transform.y },
-                    { scale: transform.scale },
-                  ],
-                },
-              ]}
+    <Modal animationType="fade" visible onRequestClose={props.onClose}>
+      <GestureHandlerRootView style={styles.backdrop}>
+        <SafeAreaView style={styles.backdrop}>
+          <View style={styles.toolbar}>
+            <Text style={styles.label}>
+              {index + 1} / {items.length}
+            </Text>
+            <View style={styles.actions}>
+              <Control
+                label={saving ? '저장 중' : '↓'}
+                accessibilityLabel="다운로드"
+                disabled={saving || !uri}
+                onPress={() => void download()}
+              />
+              <Control label="✕" accessibilityLabel="닫기" onPress={props.onClose} />
+            </View>
+          </View>
+          <View style={styles.stage} onLayout={(event) => setSize(event.nativeEvent.layout)}>
+            <Gallery
+              data={items}
+              initialIndex={props.initialIndex ?? 0}
+              keyExtractor={(entry) => entry.id}
+              onIndexChange={setIndex}
+              zoomEnabled={kind === 'PHOTO'}
+              tapOnEdgeToItem={false}
+              maxScale={4}
+              windowSize={3}
+              renderItem={(entry, position) => (
+                <GalleryAsset
+                  item={entry}
+                  position={position}
+                  size={size}
+                  resolveUri={props.resolveUri}
+                  remember={remember}
+                />
+              )}
             />
-          ) : (
-            <ClipPlayer uri={uri} />
-          )}
-        </View>
-        <View style={styles.toolbar}>
-          {onPrevious ? <Control label="이전" onPress={onPrevious} /> : null}
-          {kind === 'PHOTO' ? (
-            <Control
-              label={transform.scale > 1 ? '원래 크기' : '확대'}
-              onPress={() => update(transform.scale > 1 ? ORIGINAL : { ...ORIGINAL, scale: 2 })}
-            />
+            {kind === 'VIDEO' && uri ? <ClipPlayer key={item.id} uri={uri} /> : null}
+          </View>
+          {message ? (
+            <Text accessibilityLiveRegion="polite" style={styles.message}>
+              {message}
+            </Text>
           ) : null}
-          {onNext ? <Control label="다음" onPress={onNext} /> : null}
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </GestureHandlerRootView>
     </Modal>
+  );
+}
+
+function GalleryAsset({
+  item,
+  position,
+  size,
+  resolveUri,
+  remember,
+}: {
+  item: ViewerItem;
+  position: number;
+  size: { width: number; height: number };
+  resolveUri?: (item: ViewerItem) => Promise<string>;
+  remember: (id: string, uri: string) => void;
+}) {
+  const [uri, setUri] = useState(item.uri ?? '');
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (item.uri) {
+      remember(item.id, item.uri);
+      return;
+    }
+    void resolveUri?.(item)
+      .then((url) => {
+        if (active) {
+          setUri(url);
+          remember(item.id, url);
+        }
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+    // URI requests belong to an item, not render callback identities.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, item.uri]);
+  return (
+    <View style={size}>
+      {item.kind === 'PHOTO' && uri ? (
+        <Image
+          source={{ uri }}
+          accessibilityLabel={`사진 ${position + 1}`}
+          resizeMode="contain"
+          style={styles.photo}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Text style={styles.message}>
+          {failed
+            ? '미디어를 열지 못했습니다. 닫고 다시 시도해 주세요.'
+            : item.kind === 'VIDEO'
+              ? `영상 ${position + 1}`
+              : '불러오는 중…'}
+        </Text>
+      )}
+      {failed && item.kind === 'PHOTO' ? (
+        <Text style={styles.message}>사진을 열지 못했습니다. 닫고 다시 시도해 주세요.</Text>
+      ) : null}
+    </View>
   );
 }
 function Control({
   label,
+  accessibilityLabel = label,
   onPress,
   disabled,
 }: {
   label: string;
+  accessibilityLabel?: string;
   onPress: () => void;
   disabled?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       disabled={disabled}
       onPress={onPress}
       style={styles.control}
@@ -234,14 +235,60 @@ function ClipPlayer({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
   });
-  return <VideoView nativeControls player={player} style={styles.video} />;
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    const subscription = player.addListener('playingChange', (event) =>
+      setPlaying(event.isPlaying),
+    );
+    return () => subscription.remove();
+  }, [player]);
+  // The video surface passes gestures through to Gallery; only playback buttons consume touches.
+  // Unmounting on index change releases the player via useVideoPlayer.
+  return (
+    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+      <View pointerEvents="none" style={styles.stage}>
+        <VideoView
+          nativeControls={false}
+          player={player}
+          style={styles.photo}
+          contentFit="contain"
+        />
+      </View>
+      <View pointerEvents="box-none" style={styles.playback}>
+        <Control
+          label="−10초"
+          onPress={() => {
+            player.currentTime = Math.max(0, player.currentTime - 10);
+          }}
+        />
+        <Control
+          label={playing ? '일시정지' : '재생'}
+          onPress={() => (playing ? player.pause() : player.play())}
+        />
+        <Control
+          label="+10초"
+          onPress={() => {
+            player.currentTime = Math.min(player.duration, player.currentTime + 10);
+          }}
+        />
+      </View>
+    </View>
+  );
 }
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: '#0E1A2B' },
-  toolbar: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12 },
-  control: { padding: 12, minHeight: 48 },
-  label: { color: '#FFFFFF', fontSize: 16 },
-  stage: { flex: 1, justifyContent: 'center', overflow: 'hidden' },
+  backdrop: { flex: 1, backgroundColor: '#000' },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 20,
+    paddingRight: 4,
+  },
+  actions: { flexDirection: 'row' },
+  control: { padding: 12, minHeight: 48, minWidth: 48, alignItems: 'center' },
+  label: { color: '#fff', fontSize: 16 },
+  message: { color: '#fff', textAlign: 'center', padding: 8 },
+  stage: { flex: 1, overflow: 'hidden' },
   photo: { width: '100%', height: '100%' },
-  video: { width: '100%', height: 280 },
+  playback: { flexDirection: 'row', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
 });

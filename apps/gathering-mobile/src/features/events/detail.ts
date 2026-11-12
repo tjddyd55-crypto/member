@@ -40,6 +40,18 @@ export function financeYearState(
   )?.status;
   return state === 'OPEN' || state === 'CLOSED' ? state : 'MISSING';
 }
+/** Transactions belong to the payment year; receipts belong to the event year. */
+export function eventFinanceActions(
+  canWrite: boolean,
+  canAttach: boolean,
+  startsAt: string,
+  years: readonly FinanceYear[],
+) {
+  return {
+    addTransaction: canWrite && years.some((year) => year.status === 'OPEN'),
+    attachReceipt: canAttach && financeYearState(startsAt, years) === 'OPEN',
+  };
+}
 /** Keep the existing API's single, human-readable place field (120 characters). */
 export function eventLocation(place: string, address: string) {
   return [place.trim(), address.trim()].filter(Boolean).join('\n');

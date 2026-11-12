@@ -5,6 +5,7 @@ import {
   EVENT_TABS,
   attendanceSummary,
   eventActions,
+  eventFinanceActions,
   eventLocation,
   eventMapQuery,
   eventTabLabelSize,
@@ -79,6 +80,55 @@ describe('행사 상세 조회 로직', () => {
     expect(financeYearState('invalid', years)).toBe('MISSING');
     expect(financeYearState('2026-06-01T03:00:00.000Z', [])).toBe('MISSING');
   });
+  it('마감된 행사는 열린 결제 연도에 거래를 추가할 수 있고 영수증은 첨부할 수 없다', () => {
+    const years = [
+      {
+        startsAt: '2025-12-23T15:00:00.000Z',
+        endsAt: '2026-12-23T14:59:59.999Z',
+        status: 'CLOSED',
+      },
+      { startsAt: '2026-12-23T15:00:00.000Z', endsAt: '2027-12-23T14:59:59.999Z', status: 'OPEN' },
+    ];
+    const startsAt = '2026-06-01T03:00:00.000Z';
+    expect(eventFinanceActions(true, true, startsAt, years)).toEqual({
+      addTransaction: true,
+      attachReceipt: false,
+    });
+    expect(financeYearState('2026-12-24T03:00:00.000Z', years)).toBe('OPEN');
+    // The modal must still reject closed or missing payment years before sending.
+    expect(financeYearState(startsAt, years)).toBe('CLOSED');
+    expect(financeYearState('2028-01-01T03:00:00.000Z', years)).toBe('MISSING');
+    expect(eventFinanceActions(true, true, '2024-06-01T03:00:00.000Z', years)).toEqual({
+      addTransaction: true,
+      attachReceipt: false,
+    });
+    expect(eventFinanceActions(true, true, startsAt, years.slice(0, 1)).addTransaction).toBe(false);
+    expect(eventFinanceActions(true, true, startsAt, []).addTransaction).toBe(false);
+  });
+  it.each(['PRESIDENT', 'SECRETARY', 'TREASURER', 'EXECUTIVE', 'MEMBER'] as const)(
+    '%s의 거래·영수증 입력은 열린 연도에서도 기존 권한으로 제한한다',
+    (role) => {
+      const permissions = eventActions(permissionsForRoles([role]));
+      const years = [
+        {
+          startsAt: '2026-12-23T15:00:00.000Z',
+          endsAt: '2027-12-23T14:59:59.999Z',
+          status: 'OPEN',
+        },
+      ];
+      expect(
+        eventFinanceActions(
+          permissions.finance,
+          permissions.receipt,
+          '2027-01-01T03:00:00.000Z',
+          years,
+        ),
+      ).toEqual({
+        addTransaction: role === 'PRESIDENT' || role === 'TREASURER',
+        attachReceipt: role === 'PRESIDENT' || role === 'TREASURER',
+      });
+    },
+  );
   it('기존 장소는 그대로 읽고 장소·주소는 한 필드에 읽을 수 있는 문자열로 보존한다', () => {
     expect(splitEventLocation(null)).toEqual({ place: '', address: '' });
     expect(splitEventLocation('기존 회의실')).toEqual({ place: '기존 회의실', address: '' });

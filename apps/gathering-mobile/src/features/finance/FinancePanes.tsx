@@ -25,7 +25,7 @@ import { paidAtFromCalendarDate } from '../forms/values';
 import { theme } from '../../theme';
 import { MediaViewer } from '../media/MediaViewer';
 import { prepareAsset, putPreparedFile } from '../media/prepare';
-import { financeYearState, type FinanceYear } from '../events/detail';
+import { eventFinanceActions, financeYearState, type FinanceYear } from '../events/detail';
 
 const WON = new Intl.NumberFormat('ko-KR');
 
@@ -272,8 +272,12 @@ export function EventFinancePane({
     if (active) void load();
   }, [load, active]);
   const eventYear = financeYearState(startsAt, years);
-  const writable = canWrite && eventYear === 'OPEN';
-  const attachable = canAttach && eventYear === 'OPEN';
+  const { addTransaction: writable, attachReceipt: attachable } = eventFinanceActions(
+    canWrite,
+    canAttach,
+    startsAt,
+    years,
+  );
   const paidYear = financeYearState(paidAtFromCalendarDate(paidOn), years);
   const totals = summarizeLedger(0, items);
 
@@ -426,7 +430,7 @@ export function EventFinancePane({
             setAmount('');
             setNote('');
             setDirection('EXPENSE');
-            setPaidOn(new Date(startsAt));
+            setPaidOn(new Date());
             setFormError('');
             setEditing(true);
           }}
@@ -509,9 +513,9 @@ export function EventFinancePane({
         </>
       ) : null}
       {progress ? <Body>{progress}</Body> : null}
-      {eventYear === 'CLOSED' ? <Notice>마감된 회계연도는 조회만 가능합니다.</Notice> : null}
-      {eventYear === 'MISSING' && (canWrite || canAttach) ? (
-        <Notice>행사 날짜에 해당하는 회계연도가 열려 있지 않습니다.</Notice>
+      {eventYear === 'CLOSED' ? <Notice>행사 연도가 마감되어 영수증은 조회만 가능합니다.</Notice> : null}
+      {eventYear === 'MISSING' && canAttach ? (
+        <Notice>행사 날짜에 해당하는 회계연도가 없어 영수증을 첨부할 수 없습니다.</Notice>
       ) : null}
       {viewer ? (
         <MediaViewer

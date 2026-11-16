@@ -14,6 +14,13 @@ import { startDevStorageIfEnabled, stopDevStorage } from './modules/gathering/st
 export async function buildApp() {
   const app = Fastify({ logger: env.NODE_ENV !== 'test' });
 
+  // Older mobile clients send JSON headers even when the request has no body.
+  const parseJson = app.getDefaultJsonParser('error', 'error');
+  app.addContentTypeParser<string>('application/json', { parseAs: 'string' }, (request, body, done) => {
+    if (body.length === 0) return done(null, undefined);
+    parseJson(request, body, done);
+  });
+
   app.setErrorHandler((err, _request, reply) => {
     if (err instanceof ZodError) {
       return reply.status(400).send({

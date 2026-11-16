@@ -81,8 +81,8 @@ describe('모임 화면 배치', () => {
     expect(handoverInProgress('CONFIRMED')).toBe(true);
     expect(handoverInProgress('FINALIZED')).toBe(false);
     expect(uploadBlockReason({ destinationCount: 1, destinationChosen: true })).toBeNull();
-    expect(uploadBlockReason({ writesAllowed: false })).toContain('이미 올린 자료');
-    expect(uploadBlockReason({ destinationCount: 0, destinationChosen: false })).toContain('행사나 폴더');
+    expect(uploadBlockReason({ writesAllowed: false })).toContain('올릴 수 없습니다');
+    expect(uploadBlockReason({ destinationCount: 0, destinationChosen: false })).toBe('업로드 대상 없음');
   });
 
   it('한 파일 실패 뒤 재시도는 같은 예약을 다시 쓰지 새 예약을 만들지 않는다', async () => {

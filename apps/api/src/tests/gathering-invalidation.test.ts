@@ -23,6 +23,8 @@ describe('모임 데이터 무효화', () => {
     expect(calls).toBe(1);
   });
   it.each([
+    ['events', 'POST', 'schedule'], ['events/e', 'PATCH', 'schedule'], ['events/e', 'DELETE', 'schedule'],
+    ['events/e/attendance', 'PUT', 'schedule'],
     ['folders', 'POST', 'media'],
     ['folders/f', 'POST', 'media'],
     ['folders/f', 'DELETE', 'media'],
@@ -74,7 +76,7 @@ describe('모임 데이터 무효화', () => {
       albums.indexOf('{events.map('),
       albums.indexOf('async function sendAlbumFiles'),
     );
-    expect(events).toContain('행사 앨범은 일정에서 관리됩니다');
+    expect(events).not.toContain('행사 앨범은 일정에서 관리됩니다');
     expect(events).not.toContain('⋯');
     expect(events).not.toContain('confirmDeleteFolder');
     expect(albums).toContain('folder.canManage ?');

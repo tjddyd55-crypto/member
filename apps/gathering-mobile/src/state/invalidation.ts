@@ -1,4 +1,4 @@
-export type DataKind = 'media' | 'finance';
+export type DataKind = 'media' | 'finance' | 'schedule';
 const versions = new Map<string, number>();
 const listeners = new Set<() => void>();
 export const dataVersion = (groupId: string, kind: DataKind) =>
@@ -12,6 +12,8 @@ export function subscribeInvalidation(listener: () => void) {
 export function invalidate(groupId: string, kind: DataKind) {
   const key = `${groupId}:${kind}`;
   versions.set(key, dataVersion(groupId, kind) + 1);
+  if (kind === 'schedule' && groupId !== '*')
+    versions.set('*:schedule', dataVersion('*', 'schedule') + 1);
   for (const listener of listeners) listener();
 }
 
@@ -21,6 +23,11 @@ export function invalidateMutation(path: string, method: string) {
   const match = path.match(/^\/api\/gathering\/groups\/([^/]+)\/(.+)$/);
   if (!match) return;
   const [, groupId, resource] = match;
+  if (/^events(?:\/[^/]+)?$/.test(resource)) {
+    invalidate(groupId, 'schedule');
+    invalidate(groupId, 'media');
+  }
+  if (/^events\/[^/]+\/attendance$/.test(resource)) invalidate(groupId, 'schedule');
   if (
     /^(folders(?:\/[^/]+)?|media\/[^/]+)$/.test(resource) ||
     /(?:media\/[^/]+\/complete|media\/delete)$/.test(resource)

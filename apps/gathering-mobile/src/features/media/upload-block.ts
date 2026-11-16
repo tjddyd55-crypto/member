@@ -22,13 +22,13 @@ export function uploadBlockReason(input: {
   writesAllowed?: boolean;
 }) {
   if (input.writesAllowed === false) {
-    return '이용 기간이 끝나거나 모임이 정지되어 새 사진·영상을 올릴 수 없습니다. 이미 올린 자료는 볼 수 있습니다.';
+    return '이용 기간이 끝나거나 모임이 정지되어 새 사진·영상을 올릴 수 없습니다.';
   }
   if (input.destinationCount === 0) {
-    return '올릴 행사나 폴더가 없습니다. 행사를 만들거나 폴더를 만든 뒤 올리세요.';
+    return '업로드 대상 없음';
   }
   if (input.destinationChosen === false) {
-    return '사진이나 영상을 올릴 행사 또는 폴더를 고르세요.';
+    return '업로드 대상 미선택';
   }
   return null;
 }

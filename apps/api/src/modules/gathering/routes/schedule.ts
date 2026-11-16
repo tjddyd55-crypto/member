@@ -14,6 +14,7 @@ import {
   createGatheringEvent,
   getGatheringEvent,
   listGroupEvents,
+  listEventsTimeline,
   listMyEvents,
   setEventAttendance,
   updateGatheringEvent,
@@ -22,6 +23,12 @@ import { listGatheringOfficers } from '../officers/service.js';
 import { dispatchEventReminders, registerGatheringPush } from '../push/service.js';
 import { assignGatheringRole, revokeGatheringRole } from '../role-service.js';
 import { requireGatheringUserId } from '../http.js';
+
+const timelineQuery = z.object({
+  direction: z.enum(['upcoming', 'past']).default('upcoming'),
+  cursor: z.string().min(1).max(2048).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 
 const groupParams = z.object({ groupId: z.string().min(1) });
 const eventParams = z.object({ groupId: z.string().min(1), eventId: z.string().min(1) });
@@ -33,7 +40,11 @@ export const gatheringScheduleRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/gathering/calendar', auth, async (request) => {
     const query = gatheringRangeQuerySchema.parse(request.query);
-    const items = await listMyEvents(requireGatheringUserId(request), new Date(query.from), new Date(query.to));
+    const items = await listMyEvents(
+      requireGatheringUserId(request),
+      new Date(query.from),
+      new Date(query.to),
+    );
     return { items };
   });
 
@@ -50,6 +61,29 @@ export const gatheringScheduleRoutes: FastifyPluginAsync = async (app) => {
     return { items };
   });
 
+  app.get('/api/gathering/groups/:groupId/events/timeline', auth, async (request) => {
+    const { groupId } = groupParams.parse(request.params);
+    const query = timelineQuery.parse(request.query);
+    return listEventsTimeline(
+      requireGatheringUserId(request),
+      groupId,
+      query.direction,
+      query.cursor,
+      query.limit,
+    );
+  });
+
+  app.get('/api/gathering/calendar/timeline', auth, async (request) => {
+    const query = timelineQuery.parse(request.query);
+    return listEventsTimeline(
+      requireGatheringUserId(request),
+      undefined,
+      query.direction,
+      query.cursor,
+      query.limit,
+    );
+  });
+
   app.post('/api/gathering/groups/:groupId/events', auth, async (request) => {
     const params = groupParams.parse(request.params);
     const body = gatheringEventWriteSchema.parse(request.body);
@@ -64,13 +98,23 @@ export const gatheringScheduleRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/api/gathering/groups/:groupId/events/:eventId', auth, async (request) => {
     const params = eventParams.parse(request.params);
     const body = gatheringEventUpdateSchema.parse(request.body);
-    return updateGatheringEvent(requireGatheringUserId(request), params.groupId, params.eventId, body);
+    return updateGatheringEvent(
+      requireGatheringUserId(request),
+      params.groupId,
+      params.eventId,
+      body,
+    );
   });
 
   app.put('/api/gathering/groups/:groupId/events/:eventId/attendance', auth, async (request) => {
     const params = eventParams.parse(request.params);
     const body = gatheringAttendanceSchema.parse(request.body);
-    return setEventAttendance(requireGatheringUserId(request), params.groupId, params.eventId, body.status);
+    return setEventAttendance(
+      requireGatheringUserId(request),
+      params.groupId,
+      params.eventId,
+      body.status,
+    );
   });
 
   app.get('/api/gathering/groups/:groupId/officers', auth, async (request) => {
@@ -84,10 +128,18 @@ export const gatheringScheduleRoutes: FastifyPluginAsync = async (app) => {
     return assignGatheringRole(requireGatheringUserId(request), params.groupId, body);
   });
 
-  app.post('/api/gathering/groups/:groupId/officers/:assignmentId/revoke', auth, async (request) => {
-    const params = roleParams.parse(request.params);
-    return revokeGatheringRole(requireGatheringUserId(request), params.groupId, params.assignmentId);
-  });
+  app.post(
+    '/api/gathering/groups/:groupId/officers/:assignmentId/revoke',
+    auth,
+    async (request) => {
+      const params = roleParams.parse(request.params);
+      return revokeGatheringRole(
+        requireGatheringUserId(request),
+        params.groupId,
+        params.assignmentId,
+      );
+    },
+  );
 
   app.post('/api/gathering/push/tokens', auth, async (request) => {
     const body = gatheringPushSchema.parse(request.body);

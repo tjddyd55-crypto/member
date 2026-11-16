@@ -258,6 +258,12 @@ export const api = {
       `/api/gathering/groups/${groupId}/events?${params}`,
     );
   },
+  eventsTimeline(groupId: string | undefined, direction: 'upcoming' | 'past', cursor?: string) {
+    const params = new URLSearchParams({ direction });
+    if (cursor) params.set('cursor', cursor);
+    const path = groupId ? `/api/gathering/groups/${groupId}/events/timeline` : '/api/gathering/calendar/timeline';
+    return request<{ items: GatheringEventView[]; nextCursor: string | null }>(`${path}?${params}`);
+  },
   calendar(from: string, to: string) {
     const params = new URLSearchParams({ from, to });
     return request<{ items: GatheringEventView[] }>(`/api/gathering/calendar?${params}`);

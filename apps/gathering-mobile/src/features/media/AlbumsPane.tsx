@@ -1,3 +1,4 @@
+import { formatAlbumDate } from '../schedule/range';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -187,7 +188,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           />
         </>
       ) : null}
-      {blockReason ? <Notice>{blockReason}</Notice> : null}
+      {writesAllowed === false ? <Notice>{blockReason}</Notice> : null}
       {failedUploads.map((item) => (
         <View key={item.key} style={styles.card}>
           <Text style={styles.title}>{item.name}</Text>
@@ -200,11 +201,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           />
         </View>
       ))}
-      {destination ? (
-        <Body>{`올리는 곳: ${destination.title}`}</Body>
-      ) : (
-        <Body>아래에서 행사나 폴더를 고르세요.</Body>
-      )}
       {folderError ? <Body>{folderError}</Body> : null}
       {message ? <Notice>{message}</Notice> : null}
       <View style={styles.years}>
@@ -239,7 +235,10 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
                 justifyContent: 'space-between',
               }}
             >
-              <Text style={styles.title}>{folder.title}</Text>
+              <View style={styles.heading}>
+                <Text style={[styles.badge, styles.folderBadge]}>폴더</Text>
+                <Text style={styles.title}>{folder.title}</Text>
+              </View>
               {folder.canManage ? (
                 <Pressable
                   accessibilityRole="button"
@@ -282,10 +281,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         );
       })}
       {status === 'ready' && events.length === 0 && folders.length === 0 ? (
-        <EmptyState
-          title="앨범이 비어 있습니다"
-          description="행사나 폴더를 만든 뒤 사진과 영상을 올릴 수 있습니다."
-        />
+        <EmptyState title="앨범이 비어 있습니다" />
       ) : null}
       {renaming ? (
         <Modal
@@ -329,8 +325,11 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
             onPress={() => setDestination({ kind: 'event', id: event.eventId, title: event.title })}
             style={[styles.card, selected && styles.cardOn]}
           >
-            <Text style={styles.title}>{event.title}</Text>
-            <Text style={styles.hint}>행사 앨범은 일정에서 관리됩니다</Text>
+            <View style={styles.heading}>
+              <Text style={[styles.badge, styles.eventBadge]}>행사</Text>
+              <Text style={styles.title}>{event.title}</Text>
+            </View>
+            <Text style={styles.hint}>{formatAlbumDate(event.startsAt)}</Text>
             <Body>
               사진 {event.photoCount} · 영상 {event.videoCount}
             </Body>
@@ -525,6 +524,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg.subtle,
   },
   cardOn: { borderWidth: 2, borderColor: '#1B3A6B' },
+  heading: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.space[8],
+    flexShrink: 1,
+  },
+  badge: {
+    ...theme.typography.caption,
+    paddingHorizontal: theme.space[8],
+    paddingVertical: theme.space[4],
+    borderRadius: theme.radius[8],
+  },
+  eventBadge: { backgroundColor: theme.colors.primary.soft, color: theme.colors.primary.default },
+  folderBadge: { backgroundColor: theme.colors.bg.default, color: theme.colors.text.secondary },
   hint: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
   title: { ...theme.typography.sectionTitle, color: theme.colors.text.primary },
 });

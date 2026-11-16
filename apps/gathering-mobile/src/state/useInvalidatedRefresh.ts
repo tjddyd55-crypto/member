@@ -12,7 +12,7 @@ export function useInvalidatedRefresh(
 ) {
   const version = useSyncExternalStore(subscribeInvalidation, () =>
     kind === 'all'
-      ? `${dataVersion(groupId, 'media')}:${dataVersion(groupId, 'finance')}`
+      ? `${dataVersion(groupId, 'media')}:${dataVersion(groupId, 'finance')}:${dataVersion(groupId, 'schedule')}`
       : dataVersion(groupId, kind),
   );
   useFocusEffect(

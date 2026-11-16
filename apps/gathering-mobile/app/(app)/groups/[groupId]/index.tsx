@@ -59,7 +59,7 @@ export default function GroupDetailScreen() {
   }, [load]);
 
   return (
-    <Screen>
+    <Screen scroll={tab !== 'schedule'}>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' && group ? (

@@ -29,11 +29,13 @@ export function Screen({
   header,
   modal = false,
   scrollKey,
+  scroll = true,
 }: {
   children: React.ReactNode;
   header?: React.ReactNode;
   modal?: boolean;
   scrollKey?: string;
+  scroll?: boolean;
 }) {
   const underChrome = useUnderAppChrome();
   const scrollRef = useRef<ScrollView>(null);
@@ -56,16 +58,22 @@ export function Screen({
       <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
         {header ? <View style={styles.header}>{header}</View> : null}
         <FormScrollContext.Provider value={formScroll}>
-          <ScrollView
-            ref={scrollRef}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            contentContainerStyle={styles.flexGrow}
-          >
-            <View ref={contentRef} collapsable={false} style={styles.content}>
+          {scroll ? (
+            <ScrollView
+              ref={scrollRef}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              contentContainerStyle={styles.flexGrow}
+            >
+              <View ref={contentRef} collapsable={false} style={styles.content}>
+                {children}
+              </View>
+            </ScrollView>
+          ) : (
+            <View style={[styles.content, styles.flex, { paddingBottom: theme.space[16] }]}>
               {children}
             </View>
-          </ScrollView>
+          )}
         </FormScrollContext.Provider>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -166,11 +174,11 @@ export function Notice({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function EmptyState({ title, description }: { title: string; description: string }) {
+export function EmptyState({ title, description }: { title: string; description?: string }) {
   return (
     <View style={styles.stack}>
       <Text style={styles.section}>{title}</Text>
-      <Body>{description}</Body>
+      {description ? <Body>{description}</Body> : null}
     </View>
   );
 }

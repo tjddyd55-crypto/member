@@ -72,6 +72,72 @@ async function createGroup(token: string, name: string) {
 }
 
 describe('행사, 캘린더, 참석, 알림', () => {
+  it('timeline은 KST 오늘 경계·양방향 복합 커서·권한·격리·삭제 제외를 보장한다', async () => {
+    const owner = await register('연속일정회장');
+    const member = await register('연속일정회원');
+    const outsider = await register('연속일정외부');
+    const group = await createGroup(owner.tokens.accessToken, '연속일정');
+    const other = await createGroup(outsider.tokens.accessToken, '외부연속일정');
+    const invite = await app.inject({ method: 'POST', url: `/api/gathering/groups/${group.id}/invites`, headers: auth(owner.tokens.accessToken), payload: {} });
+    expect((await app.inject({ method: 'POST', url: `/api/gathering/invites/${invite.json().token}/accept`, headers: auth(member.tokens.accessToken), payload: { directoryConsent: true } })).statusCode).toBe(200);
+    const offset = 9 * 60 * 60 * 1000;
+    const kst = new Date(Date.now() + offset);
+    const boundary = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - offset;
+    const make = (suffix: string, startsAt: number, groupId = group.id, deletedAt: Date | null = null) => ({
+      id: `${group.id}-${suffix}`, groupId, title: suffix, startsAt: new Date(startsAt), createdByUserId: owner.user.id, deletedAt,
+    });
+    const future = Array.from({ length: 105 }, (_, i) => make(`future-${String(i).padStart(3, '0')}`, boundary + 60_000));
+    await prisma.gatheringEvent.createMany({ data: [
+      make('midnight', boundary), ...future, make('far-future', boundary + 800 * 86400_000),
+      make('past-a', boundary - 1), make('past-b', boundary - 1), make('past-c', boundary - 1),
+      make('far-past', boundary - 800 * 86400_000),
+      make('deleted-future', boundary + 1, group.id, new Date()), make('deleted-past', boundary - 2, group.id, new Date()),
+      make('foreign', boundary + 1, other.id),
+    ] });
+    const list = (query = '', token = owner.tokens.accessToken, id = group.id) => app.inject({
+      method: 'GET', url: `/api/gathering/groups/${id}/events/timeline${query ? `?${query}` : ''}`, headers: auth(token),
+    });
+    const first = await list();
+    expect(first.statusCode).toBe(200);
+    expect(first.json().items).toHaveLength(50);
+    expect(first.json().items[0].title).toBe('midnight');
+    expect(first.json().items[1].title).toBe('future-000');
+    expect(first.json().items[0]).toMatchObject({ groupName: '연속일정', myAttendance: null, counts: { attending: 0 } });
+    const second = await list(`cursor=${first.json().nextCursor}`);
+    const third = await list(`cursor=${second.json().nextCursor}`);
+    expect(third.json().nextCursor).toBeNull();
+    const all = [...first.json().items, ...second.json().items, ...third.json().items];
+    expect(all).toHaveLength(107);
+    expect(new Set(all.map((row: { id: string }) => row.id)).size).toBe(107);
+    expect(all.at(-1).title).toBe('far-future');
+    expect(all.every((row: { groupId: string }) => row.groupId === group.id)).toBe(true);
+    const past = await list('direction=past&limit=2');
+    expect(past.json().items.map((row: { title: string }) => row.title)).toEqual(['past-c', 'past-b']);
+    const older = await list(`direction=past&limit=2&cursor=${past.json().nextCursor}`);
+    expect(older.json().items.map((row: { title: string }) => row.title)).toEqual(['past-a', 'far-past']);
+    expect(older.json().nextCursor).toBeNull();
+    expect((await list('limit=100')).json().items).toHaveLength(100);
+    for (const query of ['limit=101', 'limit=0', 'limit=1.5', 'direction=wrong', 'cursor=invalid', `direction=past&cursor=${first.json().nextCursor}`]) expect((await list(query)).statusCode).toBe(400);
+    expect((await list('', member.tokens.accessToken)).statusCode).toBe(200);
+    expect((await list('', outsider.tokens.accessToken)).statusCode).toBe(404);
+    expect((await list('', owner.tokens.accessToken, other.id)).statusCode).toBe(404);
+    expect((await list(`cursor=${first.json().nextCursor}`, outsider.tokens.accessToken, other.id)).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: `/api/gathering/groups/${group.id}/events/timeline` })).statusCode).toBe(401);
+    await prisma.gatheringMembership.update({ where: { groupId_userId: { groupId: group.id, userId: member.user.id } }, data: { status: 'SUSPENDED' } });
+    expect((await list('', member.tokens.accessToken)).statusCode).toBe(403);
+    await prisma.gatheringMembership.update({ where: { groupId_userId: { groupId: group.id, userId: member.user.id } }, data: { status: 'PENDING' } });
+    expect((await list('', member.tokens.accessToken)).statusCode).toBe(403);
+    const calendar = await app.inject({ method: 'GET', url: '/api/gathering/calendar/timeline?limit=100', headers: auth(owner.tokens.accessToken) });
+    expect(calendar.statusCode).toBe(200);
+    expect(calendar.json().items).toHaveLength(100);
+    expect(calendar.json().items.every((row: { groupId: string }) => row.groupId === group.id)).toBe(true);
+    expect(calendar.json().items.some((row: { title: string }) => row.title.startsWith('deleted'))).toBe(false);
+    // The cursor stores values, so deleting its event does not break continuation.
+    const last = first.json().items.at(-1);
+    await prisma.gatheringEvent.update({ where: { id: last.id }, data: { deletedAt: new Date() } });
+    expect((await list(`cursor=${first.json().nextCursor}`)).json().items[0].id).toBe(second.json().items[0].id);
+  });
+
   it('총무와 회장만 행사를 만들고, 회원은 참석만 바꾼다', async () => {
     const owner = await register('행사회장');
     const member = await register('행사회원');

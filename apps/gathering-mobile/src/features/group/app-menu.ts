@@ -1,4 +1,4 @@
-export const GATHERING_TABS = ['홈', '회원', '일정', '사진', '재무'] as const;
+export const GATHERING_TABS = ['홈', '회원', '일정', '사진', '회계'] as const;
 
 export const GLOBAL_MENU_ROUTES = [
   { id: 'groups', label: '내 모임', href: '/(app)/groups' },

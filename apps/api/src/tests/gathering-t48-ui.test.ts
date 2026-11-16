@@ -6,7 +6,7 @@ const source = (path: string) =>
 const group = source('app/(app)/groups/[groupId]/index.tsx');
 describe('t48 화면 구조', () => {
   it('다섯 탭은 스크롤 밖 footer에 있고 safe area 안에 놓인다', () => {
-    for (const label of ['홈', '회원', '일정', '사진', '재무'])
+    for (const label of ['홈', '회원', '일정', '사진', '회계'])
       expect(group).toContain(`label: '${label}'`);
     expect(group).toContain('footer={');
     expect(group).not.toContain('회계연도');
@@ -81,7 +81,9 @@ describe('t48 화면 구조', () => {
       event.indexOf('    <Screen header={header}'),
     );
     expect(header).toContain('EVENT_TABS.map');
-    expect(header).not.toContain('{event.title}');
+    expect(header).toContain('{event.title}');
+    expect(header).toContain('numberOfLines={1}');
+    expect(header).toContain('accessibilityLabel="뒤로"');
     expect(header).not.toContain('event.startsAt');
     const info = event.slice(
       event.indexOf("<View style={[styles.stack, tab !== 'info'"),
@@ -90,5 +92,37 @@ describe('t48 화면 구조', () => {
     expect(info.indexOf('{event.title}')).toBeGreaterThan(0);
     expect(info.indexOf('{event.title}')).toBeLessThan(info.indexOf('location.place'));
     expect(info).toContain('new Date(event.startsAt)');
+  });
+  it('t49 앨범은 세 버튼과 긴 누르기 선택을 사용한다', () => {
+    const media = source('src/features/media/MediaPane.tsx');
+    const albums = source('src/features/media/AlbumsPane.tsx');
+    expect(albums).not.toContain('폴더 열기');
+    expect(albums).not.toContain('앨범 열기');
+    expect(albums).toContain('style={styles.card}');
+    expect(media).not.toContain('앨범 새로고침');
+    expect(media).not.toContain('label="선택"');
+    expect(media).toContain("['사진 올리기', '영상 올리기', '업로드 링크']");
+    expect(media).toContain('style={styles.uploadRow}');
+    expect(media).toContain('onLongPress={onLongPress}');
+    expect(media).toContain('!selecting && item.canDelete && !deleting');
+    expect(media).toContain('setSelected([item.id])');
+    expect(media).toContain('const selecting = selected.length > 0');
+    expect(media).toContain('current.filter((id) => id !== item.id)');
+    expect(media).toContain('<SelectCheckbox');
+    expect(media).toContain("useInvalidatedRefresh(groupId, 'media', load, active)");
+    expect(media).toContain('await load()');
+    expect(source('src/features/group/AppChrome.tsx')).toContain('eventDetail ?');
+  });
+  it('t49 회원 행은 이름·소속·역할·전화와 작은 연락 버튼, 차단 메뉴를 유지한다', () => {
+    expect(group).toContain('style={styles.memberRow}');
+    expect(group).toContain('member.localJcName, visibleRoleLabels(member.roles)');
+    expect(group).toContain('<Text style={styles.memberMeta}>{member.phone}</Text>');
+    expect(group).toContain("['전화', '문자']");
+    expect(group).toContain("'tel' : 'sms'");
+    expect(group).toContain('setMemberMenu(member)');
+    expect(group).toContain('⋯');
+    expect(group).toContain('<Modal transparent visible');
+    expect(group).toContain('label="차단"');
+    expect(group).toContain('void block(userId)');
   });
 });

@@ -325,7 +325,7 @@ export function EventFinancePane({
       setThumbs(Object.fromEntries(urls.filter((entry) => entry !== null)));
       setStatus('ready');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '재무를 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '회계를 불러오지 못했습니다.');
       setStatus('error');
     }
   }, [eventId, groupId]);

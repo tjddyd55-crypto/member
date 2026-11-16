@@ -35,6 +35,8 @@ export function useUnderAppChrome() {
 export function AppChrome({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
+  const eventDetail =
+    /\/groups\/[^/]+\/events\/[^/]+$/.test(pathname) && !pathname.endsWith('/new');
   const params = useGlobalSearchParams<{ groupId?: string }>();
   const groupId =
     typeof params.groupId === 'string' && params.groupId !== 'create' ? params.groupId : undefined;
@@ -84,20 +86,24 @@ export function AppChrome({ children }: { children: ReactNode }) {
   return (
     <ChromeContext.Provider value>
       <View style={styles.root}>
-        <View style={[styles.bar, { paddingTop: insets.top }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="메뉴"
-            accessibilityState={{ expanded: open }}
-            onPress={showMenu}
-            style={styles.menuButton}
-          >
-            <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
-          </Pressable>
-          <Text accessibilityRole="header" numberOfLines={2} style={styles.title}>
-            {title}
-          </Text>
-        </View>
+        {eventDetail ? (
+          <View style={{ height: insets.top }} />
+        ) : (
+          <View style={[styles.bar, { paddingTop: insets.top }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="메뉴"
+              accessibilityState={{ expanded: open }}
+              onPress={showMenu}
+              style={styles.menuButton}
+            >
+              <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
+            </Pressable>
+            <Text accessibilityRole="header" numberOfLines={2} style={styles.title}>
+              {title}
+            </Text>
+          </View>
+        )}
         <View style={styles.body}>{children}</View>
         <Modal
           transparent

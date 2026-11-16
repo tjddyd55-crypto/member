@@ -1,4 +1,3 @@
-import { formatAlbumDate } from '../schedule/range';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -94,7 +93,9 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
             >
               <View style={styles.heading}>
                 <Text style={[styles.badge, styles.folderBadge]}>폴더</Text>
-                <Text style={styles.title}>{folder.title}</Text>
+                <Text numberOfLines={1} style={[styles.title, { flexShrink: 1 }]}>
+                  {folder.title}
+                </Text>
               </View>
               {folder.canManage ? (
                 <Pressable
@@ -129,11 +130,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
             <Body>
               사진 {folder.photoCount} · 영상 {folder.videoCount}
             </Body>
-            <Button
-              label="폴더 열기"
-              variant="text"
-              onPress={() => router.push(`/(app)/groups/${groupId}/folders/${folder.folderId}`)}
-            />
           </Pressable>
         );
       })}
@@ -182,17 +178,13 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           >
             <View style={styles.heading}>
               <Text style={[styles.badge, styles.eventBadge]}>행사</Text>
-              <Text style={styles.title}>{event.title}</Text>
+              <Text numberOfLines={1} style={[styles.title, { flexShrink: 1 }]}>
+                {event.title}
+              </Text>
             </View>
-            <Text style={styles.hint}>{formatAlbumDate(event.startsAt)}</Text>
             <Body>
               사진 {event.photoCount} · 영상 {event.videoCount}
             </Body>
-            <Button
-              label="앨범 열기"
-              variant="text"
-              onPress={() => router.push(`/(app)/groups/${groupId}/albums/event/${event.eventId}`)}
-            />
           </Pressable>
         );
       })}
@@ -290,7 +282,7 @@ const styles = StyleSheet.create({
   cardOn: { borderWidth: 2, borderColor: '#1B3A6B' },
   heading: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    minHeight: 44,
     alignItems: 'center',
     gap: theme.space[8],
     flexShrink: 1,

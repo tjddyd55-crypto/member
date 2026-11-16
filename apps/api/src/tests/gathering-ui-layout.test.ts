@@ -23,7 +23,7 @@ describe('모임 화면 배치', () => {
   });
 
   it('모임 안 제목은 헤더에 바로 보이고 전역 메뉴는 모임 목록으로 간다', () => {
-    expect(GATHERING_TABS).toEqual(['홈', '회원', '일정', '사진', '재무']);
+    expect(GATHERING_TABS).toEqual(['홈', '회원', '일정', '사진', '회계']);
     expect(compactHeaderTitle({ groupName: '2023년 한국JC 위원장 협의회', routeTitle: '내 모임' })).toBe(
       '2023년 한국JC 위원장 협의회',
     );

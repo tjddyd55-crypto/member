@@ -175,20 +175,24 @@ function EventDetail({
         <View style={styles.heading}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="뒤로 가기"
+            accessibilityLabel="뒤로"
             style={styles.back}
             onPress={() =>
               router.canGoBack() ? router.back() : router.replace(`/(app)/groups/${groupId}`)
             }
           >
-            <Text style={styles.backLabel}>‹</Text>
+            <Text style={styles.backLabel}>←</Text>
           </Pressable>
-          <View style={{ flex: 1 }} />
+          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.headerTitle}>
+            {event.title}
+          </Text>
           {actions.edit && event.status === 'SCHEDULED' ? (
             <Pressable accessibilityRole="button" style={styles.edit} onPress={edit}>
               <Text style={styles.editLabel}>수정</Text>
             </Pressable>
-          ) : null}
+          ) : (
+            <View style={{ width: 44 }} />
+          )}
         </View>
 
         <View style={styles.tabs}>
@@ -305,7 +309,7 @@ function EventDetail({
                 active={tab === 'media'}
                 uploadLinks={
                   actions.uploadLink ? (
-                    <UploadLinkPanel groupId={groupId} eventId={eventId} compact />
+                    <UploadLinkPanel groupId={groupId} eventId={eventId} />
                   ) : undefined
                 }
               />
@@ -368,7 +372,15 @@ function EventDetail({
   );
 }
 const styles = StyleSheet.create({
-  heading: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+  },
   title: {
     flex: 1,
     fontSize: 24,
@@ -377,7 +389,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
   },
   date: { fontSize: 14, color: theme.colors.text.secondary, marginBottom: 4 },
-  back: { width: 28, minHeight: 44, justifyContent: 'center' },
+  back: { width: 44, minHeight: 44, justifyContent: 'center' },
   backLabel: { fontSize: 22, color: theme.colors.text.secondary },
   edit: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
   editLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.primary.default },

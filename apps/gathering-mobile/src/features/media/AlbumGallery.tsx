@@ -58,7 +58,7 @@ export function AlbumGallery(props: Target) {
         eventId={eventId}
         folderId={folderId}
         onTitle={onTitle}
-        uploadLinks={canManage ? <UploadLinkPanel {...props} compact /> : undefined}
+        uploadLinks={canManage ? <UploadLinkPanel {...props} /> : undefined}
       />
     </Screen>
   );

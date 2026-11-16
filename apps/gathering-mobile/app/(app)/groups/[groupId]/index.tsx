@@ -1,6 +1,14 @@
 import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState, type ComponentProps } from 'react';
-import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Linking,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import type {
@@ -34,7 +42,7 @@ const TABS: Array<{ id: Tab; label: string; icon: ComponentProps<typeof Ionicons
   { id: 'members', label: '회원', icon: 'people' },
   { id: 'schedule', label: '일정', icon: 'calendar' },
   { id: 'photos', label: '사진', icon: 'images' },
-  { id: 'finance', label: '재무', icon: 'wallet' },
+  { id: 'finance', label: '회계', icon: 'wallet' },
 ];
 
 export default function GroupDetailScreen() {
@@ -177,6 +185,7 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
 }
 
 function MembersPane({ groupId }: { groupId: string }) {
+  const [memberMenu, setMemberMenu] = useState<GatheringMemberView | null>(null);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<GatheringMemberView[]>([]);
   const [selfId, setSelfId] = useState<string | null>(null);
@@ -235,34 +244,98 @@ function MembersPane({ groupId }: { groupId: string }) {
       ) : null}
       {blockError ? <Body>{blockError}</Body> : null}
       {items.map((member) => (
-        <View key={member.membershipId} style={styles.card}>
-          <Text style={styles.name}>{member.displayName}</Text>
-          <Text style={styles.meta}>{member.localJcName || '소속 없음'}</Text>
-          <Text style={styles.meta}>{visibleRoleLabels(member.roles)}</Text>
+        <View key={member.membershipId} style={styles.memberRow}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.memberName}>
+              {member.displayName}{' '}
+              <Text style={styles.memberMeta}>
+                {[member.localJcName, visibleRoleLabels(member.roles)].filter(Boolean).join(' ')}
+              </Text>
+            </Text>
+            {member.phone ? <Text style={styles.memberMeta}>{member.phone}</Text> : null}
+          </View>
+          {member.phone
+            ? (['전화', '문자'] as const).map((label) => (
+                <Pressable
+                  key={label}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${member.displayName} ${label}`}
+                  style={styles.contactButton}
+                  onPress={() =>
+                    void Linking.openURL(`${label === '전화' ? 'tel' : 'sms'}:${member.phone}`)
+                  }
+                >
+                  <Text style={styles.contactLabel}>{label}</Text>
+                </Pressable>
+              ))
+            : null}
           {member.userId === selfId ? null : (
-            <Button label="차단" variant="text" onPress={() => void block(member.userId)} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${member.displayName} 메뉴`}
+              style={styles.memberMenu}
+              onPress={() => setMemberMenu(member)}
+            >
+              <Text style={styles.memberName}>⋯</Text>
+            </Pressable>
           )}
-          {member.phone ? (
-            <View style={styles.row}>
-              <Button
-                label="전화"
-                variant="secondary"
-                onPress={() => void Linking.openURL(`tel:${member.phone}`)}
-              />
-              <Button
-                label="문자"
-                variant="secondary"
-                onPress={() => void Linking.openURL(`sms:${member.phone}`)}
-              />
-            </View>
-          ) : null}
         </View>
       ))}
+      {memberMenu ? (
+        <Modal transparent visible animationType="fade" onRequestClose={() => setMemberMenu(null)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="메뉴 닫기"
+            style={styles.menuBackdrop}
+            onPress={() => setMemberMenu(null)}
+          >
+            <View style={styles.memberActions}>
+              <Button
+                label="차단"
+                variant="text"
+                onPress={() => {
+                  const userId = memberMenu.userId;
+                  setMemberMenu(null);
+                  void block(userId);
+                }}
+              />
+              <Button label="취소" variant="text" onPress={() => setMemberMenu(null)} />
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border.default,
+  },
+  memberName: { fontSize: 14, fontWeight: '600', color: theme.colors.text.primary },
+  memberMeta: { fontSize: 12, fontWeight: '400', color: theme.colors.text.secondary },
+  contactButton: {
+    minHeight: 36,
+    paddingHorizontal: 7,
+    justifyContent: 'center',
+    borderRadius: 6,
+    backgroundColor: theme.colors.primary.soft,
+  },
+  contactLabel: { fontSize: 12, color: theme.colors.primary.default },
+  memberMenu: { width: 32, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  menuBackdrop: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  memberActions: { padding: 12, borderRadius: 12, backgroundColor: theme.colors.bg.default },
   tabs: {
     flexDirection: 'row',
     flexWrap: 'nowrap',

@@ -18,7 +18,7 @@ import { downloadFileName } from '../../../gathering-mobile/src/features/media/v
 
 describe('행사 상세 조회 로직', () => {
   it('탭은 요청된 세 개이며 알 수 없는 링크는 안내 탭을 연다', () => {
-    expect(EVENT_TABS.map(([, label]) => label)).toEqual(['안내', '사진·영상', '재무·영수증']);
+    expect(EVENT_TABS.map(([, label]) => label)).toEqual(['안내', '갤러리', '회계']);
     expect(initialEventTab('finance')).toBe('finance');
     expect(initialEventTab('media')).toBe('media');
     expect(initialEventTab(['finance'])).toBe('info');

@@ -2,7 +2,7 @@ import { SelectCheckbox } from '../../design/SelectCheckbox';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { GatheringMediaView } from '@member/contracts';
 import {
@@ -12,7 +12,7 @@ import {
   type TransferState,
 } from '@member/gathering-domain';
 import { api, ApiError } from '../../api/client';
-import { Body, Button, EmptyState, ErrorState, Notice } from '../../design/ui';
+import { Body, Button, EmptyState, ErrorState, Notice, Screen } from '../../design/ui';
 import { theme } from '../../theme';
 import { MediaViewer } from './MediaViewer';
 import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
@@ -54,8 +54,9 @@ export function MediaPane({
     ? { kind: 'event' as const, id: eventId }
     : { kind: 'folder' as const, id: folderId ?? '' };
   const toast = useToast();
-  const [selecting, setSelecting] = useState(false);
+  const [linksOpen, setLinksOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const selecting = selected.length > 0;
   const [deleting, setDeleting] = useState(false);
   const deletePending = useRef(false);
   const [albumRevision, setAlbumRevision] = useState(0);
@@ -109,12 +110,11 @@ export function MediaPane({
 
   useEffect(() => {
     if (!active) return;
-    if (!eventId) return;
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void load();
     });
     return () => subscription.remove();
-  }, [load, active, eventId]);
+  }, [load, active]);
 
   useInvalidatedRefresh(groupId, 'media', load, active);
 
@@ -297,7 +297,6 @@ export function MediaPane({
           : null;
       });
       setItems((current) => current.filter((item) => !ids.has(item.id)));
-      setSelecting(false);
       setSelected([]);
       setMessage('');
       toast('삭제되었습니다.');
@@ -319,22 +318,34 @@ export function MediaPane({
     <View style={styles.stack}>
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {message ? <Notice>{message}</Notice> : null}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Button
-            label="사진 올리기"
-            disabled={Boolean(uploadReason) || picking}
-            onPress={() => void pick('PHOTO')}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Button
-            label="영상 올리기"
-            disabled={Boolean(uploadReason) || picking}
-            onPress={() => void pick('VIDEO')}
-          />
-        </View>
+      <View style={styles.uploadRow}>
+        {(['사진 올리기', '영상 올리기', '업로드 링크'] as const).map((label, index) => (
+          <Pressable
+            key={label}
+            accessibilityRole="button"
+            disabled={index === 2 ? !uploadLinks : Boolean(uploadReason) || picking}
+            style={[
+              styles.uploadButton,
+              (index === 2 ? !uploadLinks : Boolean(uploadReason) || picking) && { opacity: 0.4 },
+            ]}
+            onPress={() =>
+              index === 2 ? setLinksOpen(true) : void pick(index === 0 ? 'PHOTO' : 'VIDEO')
+            }
+          >
+            <Text numberOfLines={1} style={styles.uploadLabel}>
+              {label}
+            </Text>
+          </Pressable>
+        ))}
       </View>
+      {linksOpen ? (
+        <Modal visible animationType="slide" onRequestClose={() => setLinksOpen(false)}>
+          <Screen modal>
+            {uploadLinks}
+            <Button label="닫기" variant="text" onPress={() => setLinksOpen(false)} />
+          </Screen>
+        </Modal>
+      ) : null}
       {uploadReason ? <Notice>{uploadReason}</Notice> : null}
       {jobs.length > 0 ? (
         <Body>
@@ -370,37 +381,28 @@ export function MediaPane({
           <EmptyState title="아직 올린 사진·영상이 없습니다" />
         )
       ) : null}
-      {eventId ? <Button label="앨범 새로고침" variant="text" onPress={() => void load()} /> : null}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-        {uploadLinks}
-        {selecting ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Body>{selected.length}개 선택됨</Body>
-            <Button
-              label="삭제"
-              disabled={deleting || selected.length === 0}
-              onPress={() => confirmRemove(items.filter((item) => selected.includes(item.id)))}
-            />
-            <Button
-              label="취소"
-              disabled={deleting}
-              onPress={() => {
-                setSelecting(false);
-                setSelected([]);
-              }}
-            />
-          </View>
-        ) : (
-          <Button label="선택" variant="text" onPress={() => setSelecting(true)} />
-        )}
-      </View>
+      {selecting ? (
+        <View style={styles.selectionBar}>
+          <Body>{selected.length}개 선택 ·</Body>
+          <Button
+            label="삭제"
+            variant="text"
+            disabled={deleting}
+            onPress={() =>
+              confirmRemove(items.filter((item) => item.canDelete && selected.includes(item.id)))
+            }
+          />
+          <Body>·</Body>
+          <Button label="취소" variant="text" disabled={deleting} onPress={() => setSelected([])} />
+        </View>
+      ) : null}
       <View style={styles.grid} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
         {items.map((item, index) => (
           <MediaThumb
             key={`${item.id}:${albumRevision}`}
             label={`${item.kind === 'VIDEO' ? '영상' : '사진'} ${index + 1}`}
             groupId={groupId}
-            cellSize={eventId ? cellSize : undefined}
+            cellSize={cellSize}
             item={item}
             selecting={selecting}
             selected={selected.includes(item.id)}
@@ -409,6 +411,9 @@ export function MediaPane({
               (selecting &&
                 (!item.canDelete || (!selected.includes(item.id) && selected.length >= 100)))
             }
+            onLongPress={() => {
+              if (!selecting && item.canDelete && !deleting) setSelected([item.id]);
+            }}
             onOpen={() =>
               selecting
                 ? setSelected((current) =>
@@ -531,6 +536,7 @@ function MediaThumb({
   item,
   label,
   onOpen,
+  onLongPress,
   cellSize,
   selecting,
   selected,
@@ -540,6 +546,7 @@ function MediaThumb({
   item: GatheringMediaView;
   label: string;
   onOpen: () => void;
+  onLongPress: () => void;
   cellSize?: number;
   selecting?: boolean;
   selected?: boolean;
@@ -567,6 +574,7 @@ function MediaThumb({
       accessibilityRole="imagebutton"
       accessibilityLabel={label}
       onPress={onOpen}
+      onLongPress={onLongPress}
       disabled={disabled}
       accessibilityState={{ disabled, selected }}
       style={[
@@ -589,6 +597,18 @@ function MediaThumb({
 }
 
 const styles = StyleSheet.create({
+  uploadRow: { flexDirection: 'row', gap: 6 },
+  uploadButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: theme.colors.primary.soft,
+  },
+  uploadLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.primary.default },
+  selectionBar: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   stack: { gap: theme.space[12] },
   job: { gap: theme.space[8], paddingVertical: theme.space[8] },
   jobTitle: { ...theme.typography.body, color: theme.colors.text.primary },

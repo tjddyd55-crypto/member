@@ -5,6 +5,7 @@ import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { gatheringAuthLimiter, gatheringUploadLimiter } from '../modules/gathering/rate-limit.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
+import { loadBillableUsage } from '../modules/gathering/storage/usage.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
 
 let app: FastifyInstance;
@@ -118,6 +119,107 @@ async function createEvent(token: string, groupId: string, startsAt: string) {
 }
 
 describe('행사 사진·영상', () => {
+  it('단건·다중·폴더 삭제 후 행사/폴더/연도 카드와 목록·저장공간에서 즉시 제외한다', async () => {
+    const owner = await register('삭제집계');
+    const token = owner.tokens.accessToken;
+    const group = await createGroup(token, '삭제집계모임');
+    const event = await createEvent(token, group.id, '2026-04-01T00:00:00.000Z');
+    const folder = await prisma.gatheringMediaFolder.create({
+      data: { groupId: group.id, title: '집계폴더', createdByUserId: owner.user.id },
+    });
+    const base = `/api/gathering/groups/${group.id}`;
+    const get = async (path: string) => {
+      const res = await app.inject({ method: 'GET', url: `${base}${path}`, headers: auth(token) });
+      expect(res.statusCode).toBe(200);
+      return res.json();
+    };
+    const make = (
+      kind: 'PHOTO' | 'VIDEO',
+      status: 'READY' | 'DELETED' = 'READY',
+      deletedAt: Date | null = null,
+    ) =>
+      prisma.gatheringMediaAsset.create({
+        data: {
+          groupId: group.id,
+          eventId: event.id,
+          folderId: folder.id,
+          uploaderUserId: owner.user.id,
+          kind,
+          mimeType: kind === 'PHOTO' ? 'image/jpeg' : 'video/mp4',
+          sizeBytes: 32n,
+          storageKey: `test/count/${Math.random()}`,
+          status,
+          deletedAt,
+        },
+      });
+    const photo = await make('PHOTO');
+    const video = await make('VIDEO');
+    // Legacy inconsistent deletion markers must each exclude an asset.
+    await make('PHOTO', 'DELETED');
+    await make('VIDEO', 'READY', new Date());
+    const check = async (photos: number, videos: number) => {
+      expect((await loadBillableUsage(prisma, group.id, new Date())).mediaBytes).toBe(
+        (photos + videos) * 32,
+      );
+      const albums = await get('/albums');
+      expect(
+        albums.events.find((row: { eventId: string }) => row.eventId === event.id),
+      ).toMatchObject({ photoCount: photos, videoCount: videos });
+      expect(albums.folders[0]).toMatchObject({
+        photoCount: photos,
+        videoCount: videos,
+        canManage: true,
+      });
+      const contents = await get(`/folders/${folder.id}/media`);
+      expect(contents.folder).toMatchObject({ photoCount: photos, videoCount: videos });
+      expect(contents.items).toHaveLength(photos + videos);
+      expect((await get(`/events/${event.id}/media`)).items).toHaveLength(photos + videos);
+      expect(
+        albums.years.reduce(
+          (n: number, row: { photoCount: number; videoCount: number }) =>
+            n + row.photoCount + row.videoCount,
+          0,
+        ),
+      ).toBe(photos + videos);
+    };
+    await check(1, 1);
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `${base}/media/${photo.id}`,
+          headers: auth(token),
+        })
+      ).statusCode,
+    ).toBe(200);
+    await check(0, 1);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `${base}/events/${event.id}/media/delete`,
+          headers: auth(token),
+          payload: { assetIds: [video.id] },
+        })
+      ).statusCode,
+    ).toBe(200);
+    await check(0, 0);
+    await make('PHOTO');
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `${base}/folders/${folder.id}`,
+          headers: auth(token),
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await loadBillableUsage(prisma, group.id, new Date())).mediaBytes).toBe(0);
+    expect((await get('/albums')).folders).toEqual([]);
+    expect((await get(`/events/${event.id}/media`)).items).toEqual([]);
+    expect((await get('/albums')).events[0]).toMatchObject({ photoCount: 0, videoCount: 0 });
+  });
+
   it('빈 JSON 본문 DELETE를 허용하고 잘못된 JSON과 필수 본문 누락은 거부한다', async () => {
     const owner = await register('빈본문삭제');
     const token = owner.tokens.accessToken;

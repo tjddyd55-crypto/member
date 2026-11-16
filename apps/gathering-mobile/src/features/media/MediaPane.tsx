@@ -1,3 +1,4 @@
+import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -72,7 +73,8 @@ export function MediaPane({
   const [picking, setPicking] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const read = useCallback(async () => {
+    setMessage('');
     setStatus('loading');
     try {
       if (target.kind === 'folder') {
@@ -92,6 +94,7 @@ export function MediaPane({
       setStatus('error');
     }
   }, [groupId, onTitle, target.id, target.kind]);
+  const load = useRefreshLoad(read);
 
   const loadMore = async () => {
     if (!nextCursor) return;
@@ -105,13 +108,14 @@ export function MediaPane({
 
   useEffect(() => {
     if (!active) return;
-    void load();
     if (!eventId) return;
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void load();
     });
     return () => subscription.remove();
   }, [load, active, eventId]);
+
+  useInvalidatedRefresh(groupId, 'media', load, active);
 
   const reserveBatch = async (pending: Job[]) => {
     for (let index = 0; index < pending.length; index += 20) {

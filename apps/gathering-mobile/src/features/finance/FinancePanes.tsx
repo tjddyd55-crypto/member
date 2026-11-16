@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
@@ -44,12 +45,15 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   const [paid, setPaid] = useState('0');
   const [paidOn, setPaidOn] = useState<Date | null>(null);
 
-  const load = useCallback(
+  const selectedYear = useRef<number | undefined>(undefined);
+  const read = useCallback(
     async (year?: number) => {
+      if (year !== undefined) selectedYear.current = year;
       setPaidOn(null);
+      setMessage('');
       setStatus('loading');
       try {
-        setSummary(await api.finance(groupId, year));
+        setSummary(await api.finance(groupId, selectedYear.current));
         setStatus('ready');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : '장부를 불러오지 못했습니다.');
@@ -58,10 +62,9 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
     },
     [groupId],
   );
+  const load = useRefreshLoad(read);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useInvalidatedRefresh(groupId, 'finance', load);
 
   if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
   if (!summary) return null;
@@ -294,7 +297,9 @@ export function EventFinancePane({
   const [viewer, setViewer] = useState<{ uri: string; receipt: GatheringReceiptView } | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
+  const read = useCallback(async () => {
+    setMessage('');
+    setFormError('');
     try {
       const [ledger, files, summary] = await Promise.all([
         api.eventTransactions(groupId, eventId),
@@ -323,9 +328,8 @@ export function EventFinancePane({
       setStatus('error');
     }
   }, [eventId, groupId]);
-  useEffect(() => {
-    if (active) void load();
-  }, [load, active]);
+  const load = useRefreshLoad(read);
+  useInvalidatedRefresh(groupId, 'finance', load, active);
   const eventYear = financeYearState(startsAt, years);
   const { addTransaction: writable, attachReceipt: attachable } = eventFinanceActions(
     canWrite,

@@ -1,3 +1,4 @@
+import { invalidateMutation } from '../state/invalidation';
 import Constants from 'expo-constants';
 import { SharedRefreshGate } from '@member/gathering-domain';
 import type {
@@ -66,7 +67,9 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
       body.error?.code,
     );
   }
-  return response.json() as Promise<T>;
+  const result = (await response.json()) as T;
+  invalidateMutation(path, init.method ?? 'GET');
+  return result;
 }
 
 async function performRefresh() {

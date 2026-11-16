@@ -1,3 +1,4 @@
+import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -55,7 +56,10 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [failedUploads, setFailedUploads] = useState<FailedUpload[]>([]);
   const [writesAllowed, setWritesAllowed] = useState<boolean | undefined>(undefined);
 
-  const load = useCallback(async () => {
+  const read = useCallback(async () => {
+    setMessage('');
+    setFolderError(null);
+    setRenameError('');
     setStatus('loading');
     try {
       const result = await api.albums(groupId, year ?? undefined);
@@ -68,10 +72,12 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
       setStatus('error');
     }
   }, [groupId, year]);
+  const load = useRefreshLoad(read);
 
+  useInvalidatedRefresh(groupId, 'media', load);
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, year]);
 
   useEffect(() => {
     let active = true;
@@ -324,6 +330,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
             style={[styles.card, selected && styles.cardOn]}
           >
             <Text style={styles.title}>{event.title}</Text>
+            <Text style={styles.hint}>행사 앨범은 일정에서 관리됩니다</Text>
             <Body>
               사진 {event.photoCount} · 영상 {event.videoCount}
             </Body>
@@ -518,5 +525,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg.subtle,
   },
   cardOn: { borderWidth: 2, borderColor: '#1B3A6B' },
+  hint: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
   title: { ...theme.typography.sectionTitle, color: theme.colors.text.primary },
 });

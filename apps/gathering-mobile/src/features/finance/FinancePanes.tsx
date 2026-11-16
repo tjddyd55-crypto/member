@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 import type {
@@ -44,17 +44,20 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   const [paid, setPaid] = useState('0');
   const [paidOn, setPaidOn] = useState<Date | null>(null);
 
-  const load = useCallback(async (year?: number) => {
-    setPaidOn(null);
-    setStatus('loading');
-    try {
-      setSummary(await api.finance(groupId, year));
-      setStatus('ready');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '장부를 불러오지 못했습니다.');
-      setStatus('error');
-    }
-  }, [groupId]);
+  const load = useCallback(
+    async (year?: number) => {
+      setPaidOn(null);
+      setStatus('loading');
+      try {
+        setSummary(await api.finance(groupId, year));
+        setStatus('ready');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : '장부를 불러오지 못했습니다.');
+        setStatus('error');
+      }
+    },
+    [groupId],
+  );
 
   useEffect(() => {
     void load();
@@ -90,8 +93,12 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
               onPress={() => void load(item.year)}
               style={[styles.year, selected && styles.yearOn]}
             >
-              <Text style={[styles.yearTitle, selected && styles.yearOnText]}>{item.year} 회계연도</Text>
-              <Text style={[styles.yearRange, selected && styles.yearOnText]}>{fiscalRange(item.startsAt, item.endsAt)}</Text>
+              <Text style={[styles.yearTitle, selected && styles.yearOnText]}>
+                {item.year} 회계연도
+              </Text>
+              <Text style={[styles.yearRange, selected && styles.yearOnText]}>
+                {fiscalRange(item.startsAt, item.endsAt)}
+              </Text>
             </Pressable>
           );
         })}
@@ -104,7 +111,9 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
           onPress={() => setTab('events')}
           style={[styles.segmentItem, tab === 'events' && styles.segmentOn]}
         >
-          <Text style={[styles.segmentLabel, tab === 'events' && styles.segmentOnText]}>행사별 장부</Text>
+          <Text style={[styles.segmentLabel, tab === 'events' && styles.segmentOnText]}>
+            행사별 장부
+          </Text>
         </Pressable>
         <Pressable
           accessibilityRole="tab"
@@ -112,25 +121,37 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
           onPress={() => setTab('dues')}
           style={[styles.segmentItem, tab === 'dues' && styles.segmentOn]}
         >
-          <Text style={[styles.segmentLabel, tab === 'dues' && styles.segmentOnText]}>회원 회비</Text>
+          <Text style={[styles.segmentLabel, tab === 'dues' && styles.segmentOnText]}>
+            회원 회비
+          </Text>
         </Pressable>
       </View>
       {tab === 'events' ? (
         summary.events.length === 0 ? (
-          <EmptyState title="기록된 행사가 없습니다" description="행사 화면에서 수입과 지출을 남깁니다." />
+          <EmptyState
+            title="기록된 행사가 없습니다"
+            description="행사 화면에서 수입과 지출을 남깁니다."
+          />
         ) : (
           summary.events.map((event) => (
             <Text key={event.eventId} style={styles.line}>
-              {event.title} · 수입 {WON.format(event.incomeWon)} · 지출 {WON.format(event.expenseWon)} · 순액 {WON.format(event.netWon)}
+              {event.title} · 수입 {WON.format(event.incomeWon)} · 지출{' '}
+              {WON.format(event.expenseWon)} · 순액 {WON.format(event.netWon)}
             </Text>
           ))
         )
       ) : (
         <>
-          {summary.dues.length === 0 ? <EmptyState title="회비가 없습니다" description="이름으로 회원을 찾아 청구액과 납부액을 남깁니다." /> : null}
+          {summary.dues.length === 0 ? (
+            <EmptyState
+              title="회비가 없습니다"
+              description="이름으로 회원을 찾아 청구액과 납부액을 남깁니다."
+            />
+          ) : null}
           {summary.dues.map((due) => (
             <Text key={due.id} style={styles.line}>
-              {due.displayName} · {dueLabel(due.status)} · {WON.format(due.paidAmountWon)}/{WON.format(due.amountWon)}원
+              {due.displayName} · {dueLabel(due.status)} · {WON.format(due.paidAmountWon)}/
+              {WON.format(due.amountWon)}원
             </Text>
           ))}
           {writable ? (
@@ -140,23 +161,41 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
               {matches.map((member) => (
                 <Button
                   key={member.userId}
-                  label={picked?.userId === member.userId ? `${member.displayName} 선택됨` : member.displayName}
+                  label={
+                    picked?.userId === member.userId
+                      ? `${member.displayName} 선택됨`
+                      : member.displayName
+                  }
                   variant={picked?.userId === member.userId ? 'primary' : 'secondary'}
                   onPress={() => {
-                  setPicked(member);
-                  setPaidOn(null);
-                }}
+                    setPicked(member);
+                    setPaidOn(null);
+                  }}
                 />
               ))}
-              <TextField label="청구액(원)" value={amount} onChangeText={setAmount} keyboardType="number-pad" />
-              <TextField label="납부액(원)" value={paid} onChangeText={setPaid} keyboardType="number-pad" />
+              <TextField
+                label="청구액(원)"
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="number-pad"
+              />
+              <TextField
+                label="납부액(원)"
+                value={paid}
+                onChangeText={setPaid}
+                keyboardType="number-pad"
+              />
               {paidOn ? (
                 <>
                   <DateTimeField label="납부일" mode="date" value={paidOn} onChange={setPaidOn} />
                   <Button label="납부일 지우기" variant="text" onPress={() => setPaidOn(null)} />
                 </>
               ) : (
-                <Button label="납부일 고르기" variant="secondary" onPress={() => setPaidOn(new Date())} />
+                <Button
+                  label="납부일 고르기"
+                  variant="secondary"
+                  onPress={() => setPaidOn(new Date())}
+                />
               )}
               <Button
                 label="회비 저장"
@@ -174,7 +213,11 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
                       paidAt: paidOn ? paidAtFromCalendarDate(paidOn) : null,
                     })
                     .then(() => load(summary.year))
-                    .catch((error: unknown) => setMessage(error instanceof Error ? error.message : '회비를 저장하지 못했습니다.'));
+                    .catch((error: unknown) =>
+                      setMessage(
+                        error instanceof Error ? error.message : '회비를 저장하지 못했습니다.',
+                      ),
+                    );
                 }}
               />
             </>
@@ -197,7 +240,12 @@ function MoneyCard({ label, value }: { label: string; value: number }) {
 
 function fiscalRange(startsAt: string, endsAt: string) {
   const format = (iso: string) =>
-    new Date(iso).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'numeric', day: 'numeric' });
+    new Date(iso).toLocaleDateString('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
   return `${format(startsAt)} ~ ${format(endsAt)}`;
 }
 
@@ -236,6 +284,9 @@ export function EventFinancePane({
   const [direction, setDirection] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [years, setYears] = useState<FinanceYear[]>([]);
   const [editing, setEditing] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<GatheringTransactionView | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [progress, setProgress] = useState('');
@@ -286,13 +337,17 @@ export function EventFinancePane({
   const totals = summarizeLedger(0, items);
 
   const save = async () => {
-    if (saving) return;
+    if (saving || !canWrite || selectedTransaction?.locked) return;
     setFormError('');
     if (!label.trim() || label.trim().length > 80) {
       setFormError('항목명은 1~80자로 입력해 주세요.');
       return;
     }
-    if (!amount || !Number.isSafeInteger(parseAmountInput(amount)) || parseAmountInput(amount) <= 0) {
+    if (
+      !amount ||
+      !Number.isSafeInteger(parseAmountInput(amount)) ||
+      parseAmountInput(amount) <= 0
+    ) {
       setFormError('금액은 1원 이상의 정수로 입력해 주세요.');
       return;
     }
@@ -306,13 +361,16 @@ export function EventFinancePane({
     }
     setSaving(true);
     try {
-      await api.createTransaction(groupId, eventId, {
+      const body = {
         direction,
         label: label.trim(),
         amountWon: parseAmountInput(amount),
         paidAt: paidAtFromCalendarDate(paidOn),
         note: note.trim() || null,
-      });
+        adjustment: selectedTransaction?.adjustment,
+      };
+      if (selectedTransaction) await api.updateTransaction(groupId, selectedTransaction.id, body);
+      else await api.createTransaction(groupId, eventId, body);
       toast('저장되었습니다.');
       setEditing(false);
       setMessage('');
@@ -415,7 +473,26 @@ export function EventFinancePane({
       {message ? <Notice>{message}</Notice> : null}
       {items.length === 0 ? <Body>등록된 거래가 없습니다</Body> : null}
       {items.map((item) => (
-        <View key={item.id} style={styles.transaction}>
+        <Pressable
+          key={item.id}
+          style={styles.transaction}
+          disabled={!canWrite || saving}
+          onPress={() => {
+            if (item.locked) {
+              Alert.alert('안내', '마감된 회계연도의 거래는 수정·삭제할 수 없습니다.');
+              return;
+            }
+            setSelectedTransaction(item);
+            setLabel(item.label);
+            setAmount(formatAmountInput(String(item.amountWon)));
+            setNote(item.note ?? '');
+            setDirection(item.direction);
+            setPaidOn(new Date(item.paidAt));
+            setFormError('');
+            setEditing(true);
+          }}
+        >
+          {item.locked ? <Body>마감</Body> : null}
           <Text style={styles.cardLabel}>
             {new Date(item.paidAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })} ·{' '}
             {item.direction === 'INCOME' ? '수입' : '지출'}
@@ -424,13 +501,14 @@ export function EventFinancePane({
             {item.label} · {WON.format(item.amountWon)}원
           </Text>
           {item.note ? <Body>{item.note}</Body> : null}
-        </View>
+        </Pressable>
       ))}
       {writable ? (
         <Button
           label="수입·지출 추가"
           variant="secondary"
           onPress={() => {
+            setSelectedTransaction(null);
             setLabel('');
             setAmount('');
             setNote('');
@@ -441,7 +519,7 @@ export function EventFinancePane({
           }}
         />
       ) : null}
-      {writable && editing ? (
+      {canWrite && editing ? (
         <Modal
           visible
           animationType="slide"
@@ -450,7 +528,9 @@ export function EventFinancePane({
           }}
         >
           <Screen modal>
-            <Text style={styles.line}>수입·지출 추가</Text>
+            <Text style={styles.line}>
+              {selectedTransaction ? '수입·지출 수정' : '수입·지출 추가'}
+            </Text>
             <View style={styles.row}>
               <Button
                 label="지출"
@@ -473,7 +553,51 @@ export function EventFinancePane({
             />
             <TextField label="비고" value={note} onChangeText={setNote} multiline maxLength={500} />
             {formError ? <Notice>{formError}</Notice> : null}
-            <Button label="저장" loading={saving} onPress={() => void save()} />
+            <Button
+              label="저장"
+              loading={saving}
+              disabled={selectedTransaction?.locked || paidYear !== 'OPEN'}
+              onPress={() => void save()}
+            />
+            {selectedTransaction ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="삭제"
+                disabled={saving || selectedTransaction.locked}
+                style={{
+                  padding: 12,
+                  alignItems: 'center',
+                  opacity: saving || selectedTransaction.locked ? 0.4 : 1,
+                }}
+                onPress={() =>
+                  Alert.alert('이 거래를 삭제할까요?', undefined, [
+                    { text: '취소', style: 'cancel' },
+                    {
+                      text: '삭제',
+                      style: 'destructive',
+                      onPress: () => {
+                        setSaving(true);
+                        void api
+                          .deleteTransaction(groupId, selectedTransaction.id)
+                          .then(async () => {
+                            toast('삭제되었습니다.');
+                            setEditing(false);
+                            await load();
+                          })
+                          .catch((error: unknown) =>
+                            setFormError(
+                              error instanceof Error ? error.message : '삭제하지 못했습니다.',
+                            ),
+                          )
+                          .finally(() => setSaving(false));
+                      },
+                    },
+                  ])
+                }
+              >
+                <Text style={{ color: '#B42318', fontWeight: '600' }}>삭제</Text>
+              </Pressable>
+            ) : null}
             <Button
               label="닫기"
               disabled={saving}
@@ -518,7 +642,9 @@ export function EventFinancePane({
         </>
       ) : null}
       {progress ? <Body>{progress}</Body> : null}
-      {eventYear === 'CLOSED' ? <Notice>행사 연도가 마감되어 영수증은 조회만 가능합니다.</Notice> : null}
+      {eventYear === 'CLOSED' ? (
+        <Notice>행사 연도가 마감되어 영수증은 조회만 가능합니다.</Notice>
+      ) : null}
       {eventYear === 'MISSING' && canAttach ? (
         <Notice>행사 날짜에 해당하는 회계연도가 없어 영수증을 첨부할 수 없습니다.</Notice>
       ) : null}

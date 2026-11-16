@@ -91,7 +91,16 @@ export async function createFolderMediaUploads(
     if (!decision.allowed) rejectUploadDecision(decision);
     const rows: ReservedUpload[] = [];
     for (const item of prepared) {
-      rows.push(await insertPending(tx, userId, groupId, { eventId: null, folderId }, storage.prefixEnv, item));
+      rows.push(
+        await insertPending(
+          tx,
+          userId,
+          groupId,
+          { eventId: null, folderId },
+          storage.prefixEnv,
+          item,
+        ),
+      );
     }
     return rows;
   });
@@ -158,11 +167,21 @@ export async function completeMediaUpload(
   return { media: presentMedia(ready, userId) };
 }
 
-export async function resumeFolderMediaUpload(userId: string, groupId: string, folderId: string, assetId: string) {
+export async function resumeFolderMediaUpload(
+  userId: string,
+  groupId: string,
+  folderId: string,
+  assetId: string,
+) {
   return resignOwnedUpload(userId, groupId, assetId, { folderId });
 }
 
-export async function resumeMediaUpload(userId: string, groupId: string, eventId: string, assetId: string) {
+export async function resumeMediaUpload(
+  userId: string,
+  groupId: string,
+  eventId: string,
+  assetId: string,
+) {
   return resignOwnedUpload(userId, groupId, assetId, { eventId });
 }
 
@@ -202,15 +221,51 @@ async function resignOwnedUpload(
 export async function deleteMedia(userId: string, groupId: string, assetId: string) {
   const access = await requireGroupMember(userId, groupId);
   const asset = await prisma.gatheringMediaAsset.findFirst({
-    where: { id: assetId, groupId, deletedAt: null, status: { in: ['PENDING', 'READY', 'FAILED'] } },
+    where: {
+      id: assetId,
+      groupId,
+      deletedAt: null,
+      status: { in: ['PENDING', 'READY', 'FAILED'] },
+    },
   });
   if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
   assertCanDelete(access, asset.uploaderUserId);
-  const storage = currentObjectStorage();
-  await storage.remove(asset.storageKey);
-  await storage.remove(pendingObjectKey(asset.storageKey));
-  await markDeleted(asset.id, groupId, access.userId);
+  await removeMediaAssets([asset], groupId, access.userId);
   return { ok: true as const };
+}
+
+export async function deleteEventMedia(
+  userId: string,
+  groupId: string,
+  eventId: string,
+  assetIds: string[],
+) {
+  const access = await requireGroupMember(userId, groupId);
+  await requireEvent(groupId, eventId);
+  const ids = [...new Set(assetIds)];
+  const assets = await prisma.gatheringMediaAsset.findMany({
+    where: { id: { in: ids }, groupId, eventId, deletedAt: null },
+  });
+  if (assets.length !== ids.length)
+    throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
+  for (const asset of assets) assertCanDelete(access, asset.uploaderUserId);
+  await removeMediaAssets(assets, groupId, access.userId);
+  return { ok: true as const, deleted: assets.length };
+}
+
+async function removeMediaAssets(
+  assets: GatheringMediaAsset[],
+  groupId: string,
+  actorUserId: string,
+) {
+  const storage = currentObjectStorage();
+  for (const asset of assets) {
+    await storage.remove(asset.storageKey);
+    await storage.remove(pendingObjectKey(asset.storageKey));
+  }
+  await prisma.$transaction(async (tx) => {
+    for (const asset of assets) await markDeleted(tx, asset.id, groupId, actorUserId);
+  });
 }
 
 function prepareItem(item: UploadItem) {
@@ -241,7 +296,9 @@ async function reserveUploads(
     if (!decision.allowed) rejectUploadDecision(decision);
     const reserved: ReservedUpload[] = [];
     for (const item of items) {
-      reserved.push(await insertPending(tx, userId, groupId, { eventId, folderId: null }, prefixEnv, item));
+      reserved.push(
+        await insertPending(tx, userId, groupId, { eventId, folderId: null }, prefixEnv, item),
+      );
     }
     return reserved;
   });
@@ -347,7 +404,12 @@ async function requireOwnedPendingOrReady(
   return asset;
 }
 
-async function assertPendingStillValid(storageKey: string, createdAt: Date, reserved: bigint, sizeBytes: number) {
+async function assertPendingStillValid(
+  storageKey: string,
+  createdAt: Date,
+  reserved: bigint,
+  sizeBytes: number,
+) {
   if (!isPendingUploadLive(createdAt, new Date())) {
     await discardPending(storageKey);
     throw new AppError(409, 'UPLOAD_EXPIRED', '업로드 확인 시간이 지났습니다. 다시 시도하세요.');
@@ -439,21 +501,24 @@ function deleteActor(access: GroupAccess, uploaderUserId: string) {
   return 'OTHER' as const;
 }
 
-async function markDeleted(assetId: string, groupId: string, actorUserId: string) {
+async function markDeleted(
+  tx: Prisma.TransactionClient,
+  assetId: string,
+  groupId: string,
+  actorUserId: string,
+) {
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    const updated = await tx.gatheringMediaAsset.updateMany({
-      where: { id: assetId, deletedAt: null },
-      data: { status: 'DELETED', deletedAt: now },
-    });
-    if (updated.count !== 1) throw new AppError(409, 'MEDIA_GONE', '이미 삭제된 파일입니다.');
-    await writeGatheringAudit(tx, {
-      groupId,
-      actorUserId,
-      action: GatheringAuditAction.MEDIA_DELETE,
-      targetType: 'GatheringMediaAsset',
-      targetId: assetId,
-    });
+  const updated = await tx.gatheringMediaAsset.updateMany({
+    where: { id: assetId, deletedAt: null },
+    data: { status: 'DELETED', deletedAt: now },
+  });
+  if (updated.count !== 1) throw new AppError(409, 'MEDIA_GONE', '이미 삭제된 파일입니다.');
+  await writeGatheringAudit(tx, {
+    groupId,
+    actorUserId,
+    action: GatheringAuditAction.MEDIA_DELETE,
+    targetType: 'GatheringMediaAsset',
+    targetId: assetId,
   });
 }
 

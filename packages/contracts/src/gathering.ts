@@ -372,6 +372,7 @@ export type GatheringMediaView = {
   createdAt: string;
   uploaderUserId: string;
   mine: boolean;
+  canDelete?: boolean;
 };
 
 export type GatheringMediaUploadItem = {
@@ -407,6 +408,7 @@ export type GatheringTransactionView = {
   note: string | null;
   adjustment: boolean;
   fiscalYear: number;
+  locked?: boolean;
 };
 
 export type GatheringReceiptView = {

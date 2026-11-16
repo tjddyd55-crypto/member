@@ -1,6 +1,6 @@
 import { createElement, useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { WebView } from 'react-native-webview';
 import { theme } from '../theme';
@@ -67,7 +67,7 @@ export function DateTimeField({
         <Modal transparent visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
           <View style={styles.sheetBackdrop}>
             <Pressable accessibilityRole="button" accessibilityLabel="닫기" style={styles.sheetDismiss} onPress={() => setOpen(false)} />
-            <View style={[styles.sheet, { paddingBottom: theme.space[16] + insets.bottom }]}>
+            <View style={[styles.sheet, { paddingBottom: theme.space[16] + insets.bottom, paddingLeft: theme.layout.horizontalGutter + insets.left, paddingRight: theme.layout.horizontalGutter + insets.right }]}>
               <DateTimePicker value={value} mode={mode} display="spinner" locale="ko-KR" onChange={change} />
               <Button label="완료" variant="secondary" onPress={() => setOpen(false)} />
             </View>
@@ -118,7 +118,7 @@ export function AddressField({
         placeholder="동, 호수"
       />
       <Modal animationType="slide" visible={open} onRequestClose={() => setOpen(false)}>
-        <View style={styles.modal}>
+        <SafeAreaView style={styles.modal}>
           <Button label="닫기" variant="text" onPress={() => setOpen(false)} />
           {Platform.OS === 'web' ? (
             <WebPostcode
@@ -139,7 +139,7 @@ export function AddressField({
               originWhitelist={['*']}
             />
           )}
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );
@@ -171,17 +171,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border.default,
     borderRadius: theme.radius[12],
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
     justifyContent: 'center',
     backgroundColor: theme.colors.bg.default,
   },
   value: { ...theme.typography.body, color: theme.colors.text.primary },
-  modal: { flex: 1, backgroundColor: theme.colors.bg.default, paddingTop: theme.space[16] },
+  modal: { flex: 1, backgroundColor: theme.colors.bg.default, padding: theme.layout.horizontalGutter },
   sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
   sheetDismiss: { flex: 1 },
   sheet: {
     gap: theme.space[12],
-    padding: theme.space[16],
+    padding: theme.layout.horizontalGutter,
     backgroundColor: theme.colors.bg.default,
     borderTopLeftRadius: theme.radius[12],
     borderTopRightRadius: theme.radius[12],
@@ -194,8 +194,8 @@ const webInputStyle = {
   borderStyle: 'solid',
   borderColor: theme.colors.border.default,
   borderRadius: theme.radius[12],
-  paddingLeft: theme.space[16],
-  paddingRight: theme.space[16],
+  paddingLeft: theme.layout.horizontalGutter,
+  paddingRight: theme.layout.horizontalGutter,
   fontSize: 16,
   color: theme.colors.text.primary,
   backgroundColor: theme.colors.bg.default,

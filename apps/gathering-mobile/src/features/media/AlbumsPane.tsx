@@ -1,7 +1,8 @@
+import { useAppAlert } from '../../design/dialog';
 import { albumCardDate } from './album-date';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import type {
   GatheringAlbumEvent,
@@ -20,6 +21,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [years, setYears] = useState<GatheringAlbumYear[]>([]);
   const [events, setEvents] = useState<GatheringAlbumEvent[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const { alert, dialog } = useAppAlert();
   const toast = useToast();
   const [renaming, setRenaming] = useState<Folder | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
@@ -56,6 +58,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
   return (
     <View style={styles.stack}>
+      {dialog}
       {folderError ? <Body>{folderError}</Body> : null}
       {message ? <Notice>{message}</Notice> : null}
       <View style={styles.years}>
@@ -104,7 +107,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
                   style={{ padding: 8 }}
                   onPress={(event) => {
                     event.stopPropagation();
-                    Alert.alert(folder.title, undefined, [
+                    alert(folder.title, undefined, [
                       {
                         text: '이름 변경',
                         onPress: () => {
@@ -208,7 +211,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   }
 
   function confirmDeleteFolder(folder: Folder) {
-    Alert.alert(folderDeletePrompt(folder), undefined, [
+    alert(folderDeletePrompt(folder), undefined, [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',

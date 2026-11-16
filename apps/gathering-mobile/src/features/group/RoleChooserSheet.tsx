@@ -1,3 +1,4 @@
+import { theme } from '../../theme';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,8 +27,10 @@ export function RoleChooserSheet({
         <ScrollView
           style={{ maxHeight: '80%', backgroundColor: '#fff' }}
           contentContainerStyle={{
-            padding: 16,
-            paddingBottom: Math.max(16, insets.bottom),
+            padding: theme.layout.horizontalGutter,
+            paddingLeft: theme.layout.horizontalGutter + insets.left,
+            paddingRight: theme.layout.horizontalGutter + insets.right,
+            paddingBottom: Math.max(theme.layout.horizontalGutter, insets.bottom),
             gap: 8,
           }}
           keyboardShouldPersistTaps="handled"

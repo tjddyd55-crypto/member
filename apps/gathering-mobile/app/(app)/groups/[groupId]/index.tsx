@@ -1,5 +1,5 @@
 import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
-import { useCallback, useEffect, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   Linking,
   Modal,
@@ -206,16 +206,21 @@ function MembersPane({ groupId }: { groupId: string }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
+  const requestVersion = useRef(0);
   const load = useCallback(
     async (q?: string) => {
+      const version = ++requestVersion.current;
       setStatus('loading');
       try {
         const result = await api.members(groupId, 'ACTIVE', q);
-        setItems(result.items);
+        if (version !== requestVersion.current) return;
         const group = await api.group(groupId);
+        if (version !== requestVersion.current) return;
+        setItems(result.items);
         setCanAssign(group.permissions.includes('ROLE_ASSIGN'));
         if (group.permissions.includes('ROLE_ASSIGN')) {
           const officers = await api.officers(groupId);
+          if (version !== requestVersion.current) return;
           setTitles([
             ...new Set(
               officers.current
@@ -226,6 +231,7 @@ function MembersPane({ groupId }: { groupId: string }) {
         }
         setStatus('ready');
       } catch (error) {
+        if (version !== requestVersion.current) return;
         setMessage(error instanceof Error ? error.message : '명부를 불러오지 못했습니다.');
         setStatus('error');
       }
@@ -234,7 +240,14 @@ function MembersPane({ groupId }: { groupId: string }) {
   );
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => void load(query.trim() || undefined), 300);
+    return () => {
+      clearTimeout(timer);
+      requestVersion.current += 1;
+    };
+  }, [load, query]);
+
+  useEffect(() => {
     void api
       .me()
       .then((me) => setSelfId(me.user.id))
@@ -256,10 +269,11 @@ function MembersPane({ groupId }: { groupId: string }) {
       <TextField
         label="회원 검색"
         value={query}
-        onChangeText={setQuery}
-        onSubmitEditing={() => void load(query)}
+        onChangeText={(value) => {
+          requestVersion.current += 1;
+          setQuery(value);
+        }}
       />
-      <Button label="검색" variant="secondary" onPress={() => void load(query)} />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? (
         <ErrorState message={message} onRetry={() => void load(query)} />
@@ -377,7 +391,7 @@ const styles = StyleSheet.create({
   memberMenu: { width: 32, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   menuBackdrop: {
     flex: 1,
-    padding: 24,
+    padding: theme.layout.horizontalGutter,
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
@@ -405,14 +419,14 @@ const styles = StyleSheet.create({
   stack: { gap: theme.space[12] },
   card: {
     gap: theme.space[8],
-    padding: theme.space[16],
+    padding: theme.space[12],
     borderRadius: theme.radius[12],
     backgroundColor: theme.colors.bg.subtle,
   },
   cardQuiet: {
     gap: theme.space[4],
     paddingVertical: theme.space[8],
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   row: { flexDirection: 'row', gap: theme.space[8], alignItems: 'center' },
   name: { ...theme.typography.cardTitle, color: theme.colors.text.primary },

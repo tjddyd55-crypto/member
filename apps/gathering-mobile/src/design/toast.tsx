@@ -7,12 +7,15 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { theme } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 
 const ToastContext = createContext<(message: string) => void>(() => undefined);
 export const useToast = () => useContext(ToastContext);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
   const [message, setMessage] = useState('');
   const opacity = useRef(new Animated.Value(0)).current;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -38,7 +41,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={show}>
       {children}
-      <View pointerEvents="none" style={styles.layer}>
+      <View pointerEvents="none" style={[styles.layer, { paddingLeft: theme.layout.horizontalGutter + insets.left, paddingRight: theme.layout.horizontalGutter + insets.right }]}>
         <Animated.View
           style={[
             styles.toast,
@@ -62,7 +65,8 @@ const styles = StyleSheet.create({
   layer: { ...StyleSheet.absoluteFillObject, top: '56%', alignItems: 'center', zIndex: 1000 },
   toast: {
     backgroundColor: 'rgba(20,24,30,0.85)',
-    paddingHorizontal: 20,
+    maxWidth: '100%',
+    paddingHorizontal: theme.space[12],
     paddingVertical: 12,
     borderRadius: 20,
     elevation: 3,

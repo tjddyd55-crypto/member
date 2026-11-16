@@ -1,5 +1,7 @@
+import { theme } from '../../theme';
+
 /** 화면 너비에서 좌우 여백을 뺀 뒤 탭 개수로 나눈 칸 너비. */
-export function tabSlotWidth(screenWidth: number, gutter = 20, count = 5) {
+export function tabSlotWidth(screenWidth: number, gutter: number = theme.layout.horizontalGutter, count = 5) {
   return Math.max(0, screenWidth - gutter * 2) / count;
 }
 

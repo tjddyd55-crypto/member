@@ -3,12 +3,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 
 // The tile owns the hit target and accessibility state; this overlay never intercepts touches.
-export function SelectCheckbox({ selected }: { selected: boolean }) {
+export function SelectCheckbox({ selected, size = 24 }: { selected: boolean; size?: number }) {
   return (
-    <View pointerEvents="none" accessible={false} style={styles.outline}>
+    <View pointerEvents="none" accessible={false} style={[styles.outline, { width: size, height: size }]}>
       <View style={[styles.box, selected && styles.selected]}>
         {selected ? (
-          <Ionicons name="checkmark" size={20} color={theme.colors.text.primary} />
+          <Ionicons name="checkmark" size={size - 4} color={theme.colors.text.primary} />
         ) : null}
       </View>
     </View>

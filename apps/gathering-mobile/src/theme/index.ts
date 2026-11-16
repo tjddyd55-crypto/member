@@ -16,5 +16,5 @@ export const theme = {
   space,
   radius,
   typography,
-  layout,
+  layout: { ...layout, horizontalGutter: 12 },
 } as const;

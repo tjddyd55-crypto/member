@@ -15,8 +15,8 @@ import { chunkForReserve, handoverInProgress, uploadBlockReason } from '../../..
 
 describe('모임 화면 배치', () => {
   it('320dp와 360dp에서 다섯 탭이 한 칸씩 들어간다', () => {
-    expect(tabSlotWidth(320)).toBeCloseTo(56);
-    expect(tabSlotWidth(360)).toBeCloseTo(64);
+    expect(tabSlotWidth(320)).toBeCloseTo(59.2);
+    expect(tabSlotWidth(360)).toBeCloseTo(67.2);
     expect(tabSlotWidth(412)).toBeGreaterThan(70);
     expect(tabLabelSize(320)).toBeLessThanOrEqual(tabLabelSize(412));
     expect(tabIconSize(320)).toBeLessThanOrEqual(tabIconSize(412));

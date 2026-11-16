@@ -1,6 +1,7 @@
+import { useAppAlert } from '../../design/dialog';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 import type {
@@ -265,6 +266,7 @@ export function EventFinancePane({
   startsAt: string;
   active?: boolean;
 }) {
+  const { alert, dialog } = useAppAlert();
   const toast = useToast();
   const [items, setItems] = useState<GatheringTransactionView[]>([]);
   const [receipts, setReceipts] = useState<GatheringReceiptView[]>([]);
@@ -465,12 +467,14 @@ export function EventFinancePane({
   if (status === 'error')
     return (
       <View style={styles.stack}>
+      {!editing && !viewer ? dialog : null}
         <ErrorState message={message} onRetry={() => void load()} />
         {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
       </View>
     );
   return (
     <View style={styles.stack}>
+      {!editing && !viewer ? dialog : null}
       <View style={styles.eventSummary}>
         <EventMoney label="수입 합계" value={totals.incomeWon} />
         <EventMoney label="지출 합계" value={totals.expenseWon} />
@@ -486,7 +490,7 @@ export function EventFinancePane({
           disabled={!canWrite || saving}
           onPress={() => {
             if (item.locked) {
-              Alert.alert('안내', '마감된 회계연도의 거래는 수정·삭제할 수 없습니다.');
+              alert('안내', '마감된 회계연도의 거래는 수정·삭제할 수 없습니다.');
               return;
             }
             setSelectedTransaction(item);
@@ -535,6 +539,7 @@ export function EventFinancePane({
           }}
         >
           <Screen modal>
+            {dialog}
             <Text style={styles.line}>
               {selectedTransaction ? '수입·지출 수정' : '수입·지출 추가'}
             </Text>
@@ -577,7 +582,7 @@ export function EventFinancePane({
                   opacity: saving || selectedTransaction.locked ? 0.4 : 1,
                 }}
                 onPress={() =>
-                  Alert.alert('이 거래를 삭제할까요?', undefined, [
+                  alert('이 거래를 삭제할까요?', undefined, [
                     { text: '취소', style: 'cancel' },
                     {
                       text: '삭제',
@@ -654,6 +659,7 @@ export function EventFinancePane({
       {eventYear === 'MISSING' && canAttach ? <Notice>회계연도 없음</Notice> : null}
       {viewer ? (
         <MediaViewer
+          overlay={dialog}
           kind="PHOTO"
           uri={viewer.uri}
           fileName={viewer.receipt.originalName ?? undefined}

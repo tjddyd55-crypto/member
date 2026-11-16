@@ -46,7 +46,7 @@ describe('앨범·선택·연속 일정 UI', () => {
     ])
       expect(checkbox).toContain(pattern);
     const media = source('src/features/media/MediaPane.tsx');
-    expect(media).toContain('<SelectCheckbox selected={Boolean(selected)} />');
+    expect(media).toContain('<SelectCheckbox selected={Boolean(selected)} size={20} />');
     expect(media).toContain('selecting && item.canDelete ?');
     expect(media).toContain('selecting && !item.canDelete && { opacity: 0.35 }');
     expect(media).not.toContain("selected ? '✓' : '○'");

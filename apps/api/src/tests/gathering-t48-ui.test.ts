@@ -15,7 +15,7 @@ describe('t48 화면 구조', () => {
       screen.indexOf('</FormScrollContext.Provider>'),
     );
     expect(screen.indexOf('{footer}')).toBeLessThan(screen.indexOf('</SafeAreaView>'));
-    expect(screen).toContain("['bottom']");
+    expect(screen).toContain("['left', 'right', 'bottom']");
   });
   it('홈은 현재 임원진과 다음 행사 하나만 표시한다', () => {
     const home = group.slice(

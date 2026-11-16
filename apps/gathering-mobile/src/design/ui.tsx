@@ -55,7 +55,7 @@ export function Screen({
   return (
     <SafeAreaView
       style={styles.safe}
-      edges={underChrome && !modal ? ['bottom'] : ['top', 'bottom']}
+      edges={underChrome && !modal ? ['left', 'right', 'bottom'] : ['top', 'left', 'right', 'bottom']}
     >
       <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
         {header ? <View style={styles.header}>{header}</View> : null}
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius[12],
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   buttonSecondary: { backgroundColor: theme.colors.primary.soft },
   buttonText: { backgroundColor: 'transparent' },
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border.default,
     borderRadius: theme.radius[12],
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
     ...theme.typography.body,
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.bg.default,
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
   notice: {
     backgroundColor: theme.colors.bg.subtle,
     borderRadius: theme.radius[12],
-    padding: theme.space[16],
+    padding: theme.space[12],
   },
   noticeText: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
   stack: { gap: theme.space[12] },

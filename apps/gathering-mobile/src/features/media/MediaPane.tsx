@@ -1,8 +1,9 @@
+import { useAppAlert } from '../../design/dialog';
 import { SelectCheckbox } from '../../design/SelectCheckbox';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { GatheringMediaView } from '@member/contracts';
 import {
@@ -53,6 +54,7 @@ export function MediaPane({
   const target = eventId
     ? { kind: 'event' as const, id: eventId }
     : { kind: 'folder' as const, id: folderId ?? '' };
+  const { alert, dialog } = useAppAlert();
   const toast = useToast();
   const [linksOpen, setLinksOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -61,7 +63,7 @@ export function MediaPane({
   const deletePending = useRef(false);
   const [albumRevision, setAlbumRevision] = useState(0);
   const [gridWidth, setGridWidth] = useState(0);
-  const { cellSize } = mediaGridLayout(gridWidth, theme.space[8]);
+  const { cellSize } = mediaGridLayout(gridWidth);
   const [items, setItems] = useState<GatheringMediaView[]>([]);
   const [writesAllowed, setWritesAllowed] = useState<boolean | undefined>(undefined);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -302,20 +304,21 @@ export function MediaPane({
       toast('삭제되었습니다.');
       await load();
     } catch (error) {
-      Alert.alert('삭제 실패', error instanceof Error ? error.message : '삭제하지 못했습니다.');
+      alert('삭제 실패', error instanceof Error ? error.message : '삭제하지 못했습니다.');
     } finally {
       deletePending.current = false;
       setDeleting(false);
     }
   };
   const confirmRemove = (assets: GatheringMediaView[], index?: number) =>
-    Alert.alert(mediaDeletePrompt(assets), undefined, [
+    alert(mediaDeletePrompt(assets), undefined, [
       { text: '취소', style: 'cancel' },
       { text: '삭제', style: 'destructive', onPress: () => void remove(assets, index) },
     ]);
 
   return (
     <View style={styles.stack}>
+      {!viewer ? dialog : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {message ? <Notice>{message}</Notice> : null}
       <View style={styles.uploadRow}>
@@ -439,6 +442,7 @@ export function MediaPane({
       ) : null}
       {viewer ? (
         <MediaViewer
+          overlay={dialog}
           key={viewer.items.map((item) => item.id).join(',')}
           items={viewer.items}
           deleting={deleting}
@@ -591,7 +595,7 @@ function MediaThumb({
       ) : (
         <Text style={styles.cellLabel}>사진</Text>
       )}
-      {selecting && item.canDelete ? <SelectCheckbox selected={Boolean(selected)} /> : null}
+      {selecting && item.canDelete ? <SelectCheckbox selected={Boolean(selected)} size={20} /> : null}
     </Pressable>
   );
 }
@@ -612,7 +616,7 @@ const styles = StyleSheet.create({
   stack: { gap: theme.space[12] },
   job: { gap: theme.space[8], paddingVertical: theme.space[8] },
   jobTitle: { ...theme.typography.body, color: theme.colors.text.primary },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space[8] },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginHorizontal: 6 - theme.layout.horizontalGutter },
   videoCell: { backgroundColor: theme.colors.text.primary },
   playLabel: { color: '#FFFFFF', fontSize: 18 },
   cell: {

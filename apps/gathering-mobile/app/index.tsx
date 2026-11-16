@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
 import { APP_NAME, DISCLAIMER } from '../src/copy';
 import { useAuth } from '../src/auth/AuthProvider';
@@ -17,12 +18,12 @@ export default function SplashScreen() {
 
   if (booting || pendingInvite === undefined) {
     return (
-      <View style={styles.screen}>
+      <SafeAreaView style={styles.screen}>
         <Text style={styles.mark}>{APP_NAME}</Text>
         <Text style={styles.sub}>모임</Text>
         <ActivityIndicator color={theme.colors.primary.default} />
         <Text style={styles.note}>{DISCLAIMER}</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -38,7 +39,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg.default,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: theme.space[24],
+    padding: theme.layout.horizontalGutter,
     gap: theme.space[12],
   },
   mark: { ...theme.typography.display, color: theme.colors.text.primary },

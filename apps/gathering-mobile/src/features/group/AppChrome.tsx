@@ -89,7 +89,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
         {eventDetail ? (
           <View style={{ height: insets.top }} />
         ) : (
-          <View style={[styles.bar, { paddingTop: insets.top }]}>
+          <View style={[styles.bar, { paddingTop: insets.top, paddingLeft: theme.layout.horizontalGutter + insets.left, paddingRight: theme.layout.horizontalGutter + insets.right }]}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="메뉴"
@@ -115,7 +115,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
             <View
               style={[
                 styles.drawer,
-                { width: Math.min(320, Math.round(width * 0.86)), paddingTop: insets.top },
+                { width: Math.min(320, width - 2 * theme.layout.horizontalGutter), paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left },
               ]}
             >
               <Pressable
@@ -200,6 +200,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg.default },
   body: { flex: 1 },
   bar: {
+    paddingHorizontal: theme.layout.horizontalGutter,
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
@@ -215,7 +216,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    marginRight: theme.space[16],
+    marginRight: 0,
     fontSize: 17,
     lineHeight: 22,
     fontWeight: '700',
@@ -229,13 +230,13 @@ const styles = StyleSheet.create({
   close: {
     minHeight: theme.layout.buttonMinHeight,
     justifyContent: 'center',
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   closeLabel: { fontSize: 16, color: theme.colors.text.primary },
   item: {
     minHeight: theme.layout.buttonMinHeight,
     justifyContent: 'center',
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   itemLabel: { fontSize: 16, lineHeight: 22, color: theme.colors.text.primary },
 });

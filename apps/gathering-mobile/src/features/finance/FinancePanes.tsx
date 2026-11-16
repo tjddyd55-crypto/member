@@ -21,7 +21,7 @@ import {
   Screen,
   TextField,
 } from '../../design/ui';
-import { paidAtFromCalendarDate } from '../forms/values';
+import { calendarDateFromPaidAt, paidAtFromCalendarDate } from '../forms/values';
 import { theme } from '../../theme';
 import { MediaViewer } from '../media/MediaViewer';
 import { prepareAsset, putPreparedFile } from '../media/prepare';
@@ -487,7 +487,7 @@ export function EventFinancePane({
             setAmount(formatAmountInput(String(item.amountWon)));
             setNote(item.note ?? '');
             setDirection(item.direction);
-            setPaidOn(new Date(item.paidAt));
+            setPaidOn(calendarDateFromPaidAt(item.paidAt));
             setFormError('');
             setEditing(true);
           }}

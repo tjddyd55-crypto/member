@@ -78,6 +78,7 @@ export async function createFolderMediaUploads(
   const storage = currentObjectStorage();
   const reserved = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
+    await requireFolder(tx, groupId, folderId);
     const now = new Date();
     await assertGatheringWritable(tx, groupId, now);
     const usage = await loadBillableUsage(tx, groupId, now);
@@ -116,25 +117,27 @@ export async function completeFolderMediaUpload(
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'MEDIA_UPLOAD');
-  await assertGatheringWritable(prisma, groupId);
-  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { folderId });
-  if (asset.status === 'READY') return revalidateReady(asset, userId);
-  await assertPendingStillValid(asset.storageKey, asset.createdAt, asset.sizeBytes, sizeBytes);
-  if (await recoverPromotedObject(asset, sizeBytes)) {
-    return { media: presentMedia(await markReady(asset.id), userId) };
-  }
-  await confirmStoredObject(pendingObjectKey(asset.storageKey), asset.mimeType, sizeBytes);
-  await promotePendingObject(asset.storageKey, sizeBytes);
-  const ready = await markReady(asset.id);
-  await writeGatheringAudit(prisma, {
-    groupId,
-    actorUserId: access.userId,
-    action: GatheringAuditAction.MEDIA_UPLOAD,
-    targetType: 'GatheringMediaAsset',
-    targetId: asset.id,
-    meta: { bytes: sizeBytes, folderId },
+  return withFolderUpload(userId, groupId, folderId, assetId, async (tx) => {
+    await assertGatheringWritable(tx, groupId);
+    const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, { folderId }, tx);
+    if (asset.status === 'READY') return revalidateReady(asset, userId);
+    await assertPendingStillValid(asset.storageKey, asset.createdAt, asset.sizeBytes, sizeBytes);
+    if (await recoverPromotedObject(asset, sizeBytes)) {
+      return { media: presentMedia(await markReady(asset.id, tx), userId) };
+    }
+    await confirmStoredObject(pendingObjectKey(asset.storageKey), asset.mimeType, sizeBytes);
+    await promotePendingObject(asset.storageKey, sizeBytes);
+    const ready = await markReady(asset.id, tx);
+    await writeGatheringAudit(tx, {
+      groupId,
+      actorUserId: access.userId,
+      action: GatheringAuditAction.MEDIA_UPLOAD,
+      targetType: 'GatheringMediaAsset',
+      targetId: asset.id,
+      meta: { bytes: sizeBytes, folderId },
+    });
+    return { media: presentMedia(ready, userId) };
   });
-  return { media: presentMedia(ready, userId) };
 }
 
 export async function completeMediaUpload(
@@ -173,7 +176,10 @@ export async function resumeFolderMediaUpload(
   folderId: string,
   assetId: string,
 ) {
-  return resignOwnedUpload(userId, groupId, assetId, { folderId });
+  await requireGroupMember(userId, groupId);
+  return withFolderUpload(userId, groupId, folderId, assetId, (tx) =>
+    resignOwnedUpload(userId, groupId, assetId, { folderId }, tx),
+  );
 }
 
 export async function resumeMediaUpload(
@@ -190,10 +196,11 @@ async function resignOwnedUpload(
   groupId: string,
   assetId: string,
   scope: { eventId?: string; folderId?: string },
+  db: Prisma.TransactionClient = prisma,
 ) {
   await requireGroupMember(userId, groupId);
-  await assertGatheringWritable(prisma, groupId);
-  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, scope);
+  await assertGatheringWritable(db, groupId);
+  const asset = await requireOwnedPendingOrReady(userId, groupId, assetId, scope, db);
   if (asset.status === 'READY') {
     const checked = await revalidateReady(asset, userId);
     return { status: 'READY' as const, media: checked.media };
@@ -388,13 +395,55 @@ async function signUploads(
   }
 }
 
+async function requireFolder(tx: Prisma.TransactionClient, groupId: string, folderId: string) {
+  const folder = await tx.gatheringMediaFolder.findFirst({
+    where: { id: folderId, groupId, deletedAt: null },
+  });
+  if (!folder) throw new AppError(404, 'FOLDER_NOT_FOUND', '사진 폴더를 찾을 수 없습니다.');
+}
+
+async function withFolderUpload<T>(
+  userId: string,
+  groupId: string,
+  folderId: string,
+  assetId: string,
+  run: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  const outcome = await prisma.$transaction(
+    async (tx) => {
+      await lockGroup(tx, groupId);
+      const folder = await tx.gatheringMediaFolder.findFirst({
+        where: { id: folderId, groupId, deletedAt: null },
+      });
+      if (!folder) {
+        // A previously signed PUT can arrive after deletion. Commit cleanup before returning 404.
+        const asset = await tx.gatheringMediaAsset.findFirst({
+          where: { id: assetId, groupId, folderId, uploaderUserId: userId },
+        });
+        if (asset) {
+          const storage = currentObjectStorage();
+          await storage.remove(asset.storageKey);
+          await storage.remove(pendingObjectKey(asset.storageKey));
+          if (!asset.deletedAt) await markDeleted(tx, asset.id, groupId, userId);
+        }
+        return { missing: true as const };
+      }
+      return { missing: false as const, result: await run(tx) };
+    },
+    { timeout: 120_000 },
+  );
+  if (outcome.missing) throw new AppError(404, 'FOLDER_NOT_FOUND', '사진 폴더를 찾을 수 없습니다.');
+  return outcome.result;
+}
+
 async function requireOwnedPendingOrReady(
   userId: string,
   groupId: string,
   assetId: string,
   scope: { eventId?: string; folderId?: string },
+  db: Prisma.TransactionClient = prisma,
 ) {
-  const asset = await prisma.gatheringMediaAsset.findFirst({
+  const asset = await db.gatheringMediaAsset.findFirst({
     where: { id: assetId, groupId, deletedAt: null, ...scope },
   });
   if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
@@ -476,8 +525,8 @@ function finalKeyFromPending(pendingKey: string) {
   return pendingKey.endsWith('-pending') ? pendingKey.slice(0, -'-pending'.length) : pendingKey;
 }
 
-async function markReady(assetId: string) {
-  return prisma.gatheringMediaAsset.update({
+async function markReady(assetId: string, db: Prisma.TransactionClient = prisma) {
+  return db.gatheringMediaAsset.update({
     where: { id: assetId },
     data: { status: 'READY' },
   });

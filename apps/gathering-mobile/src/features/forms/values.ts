@@ -56,6 +56,18 @@ export function eventStartsAt(date: Date, time: Date) {
   return toIsoFromLocal(`${date.getFullYear()}-${month}-${day}`, `${hours}:${minutes}`);
 }
 
+/** 기존 결제 시각의 한국 달력 날짜를 기기 로컬 피커 값으로 옮긴다. */
+export function calendarDateFromPaidAt(paidAt: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(paidAt));
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  return new Date(value('year'), value('month') - 1, value('day'), 12);
+}
+
 /** 납부일·결제일은 한국 시각 정오로 저장한다. */
 export function paidAtFromCalendarDate(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');

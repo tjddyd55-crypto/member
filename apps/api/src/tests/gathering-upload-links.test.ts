@@ -651,4 +651,132 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       200,
     );
   });
+  it('삭제 락을 기다린 폴더 예약을 거절하고 삭제 뒤 완료·재개 요청의 늦은 객체를 정리한다', async () => {
+    const owner = await register('경합회장');
+    const headers = auth(owner.tokens.accessToken);
+    const group = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/groups',
+      headers,
+      payload: { name: '폴더 경합' },
+    });
+    expect(group.statusCode).toBe(200);
+    const groupId = group.json().id as string;
+    groupIds.push(groupId);
+    const folder = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/folders`,
+      headers,
+      payload: { title: '경합 폴더' },
+    });
+    const folderId = folder.json().id as string;
+    const base = `/api/gathering/groups/${groupId}/folders/${folderId}`;
+    const payload = { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] };
+    const reserved = await app.inject({
+      method: 'POST',
+      url: `${base}/media/uploads`,
+      headers,
+      payload,
+    });
+    expect(reserved.statusCode).toBe(200);
+    const assetId = reserved.json().items[0].id as string;
+    const asset = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: assetId } });
+    storage.put(`${asset.storageKey}-pending`, jpeg(32));
+    let entered!: () => void;
+    let release!: () => void;
+    const deleting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const unblock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalRemove = storage.remove.bind(storage);
+    const remove = vi.spyOn(storage, 'remove').mockImplementationOnce(async (key) => {
+      entered();
+      await unblock;
+      await originalRemove(key);
+    });
+    const deletion = app.inject({ method: 'DELETE', url: base, headers }).then((result) => result);
+    let reservation: Promise<unknown> | undefined;
+    try {
+      await deleting; // deleteMediaFolder already owns the real PostgreSQL group lock.
+      let checked!: () => void;
+      const prechecked = new Promise<void>((resolve) => {
+        checked = resolve;
+      });
+      const originalFind = prisma.gatheringMediaFolder.findFirst.bind(prisma.gatheringMediaFolder);
+      const find = vi
+        .spyOn(prisma.gatheringMediaFolder, 'findFirst')
+        .mockImplementationOnce(async (args) => {
+          const row = await originalFind(args);
+          checked();
+          return row;
+        });
+      try {
+        reservation = app
+          .inject({ method: 'POST', url: `${base}/media/uploads`, headers, payload })
+          .then((result) => result);
+        await prechecked; // Reservation saw the folder before deletion committed.
+      } finally {
+        find.mockRestore();
+        release();
+      }
+      expect((await deletion).statusCode).toBe(200);
+      const rejected = (await reservation) as Awaited<ReturnType<typeof app.inject>>;
+      expect(rejected.statusCode).toBe(404);
+      expect(rejected.json().error.code).toBe('FOLDER_NOT_FOUND');
+      expect(await prisma.gatheringMediaAsset.count({ where: { folderId, deletedAt: null } })).toBe(
+        0,
+      );
+      for (const operation of ['complete', 'resume']) {
+        // A signed R2 PUT can finish after the deletion transaction.
+        storage.put(asset.storageKey, jpeg(32));
+        storage.put(`${asset.storageKey}-pending`, jpeg(32));
+        const late = await app.inject({
+          method: 'POST',
+          url: `${base}/media/${assetId}/${operation}`,
+          headers,
+          payload: operation === 'complete' ? { sizeBytes: 32 } : {},
+        });
+        expect(late.statusCode).toBe(404);
+        expect(late.json().error.code).toBe('FOLDER_NOT_FOUND');
+        expect(storage.objects.has(asset.storageKey)).toBe(false);
+        expect(storage.objects.has(`${asset.storageKey}-pending`)).toBe(false);
+        expect(
+          (await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: assetId } })).status,
+        ).toBe('DELETED');
+      }
+      // Also clean up assets left in an already deleted folder by the former race.
+      const orphan = await prisma.gatheringMediaAsset.create({
+        data: {
+          groupId,
+          folderId,
+          uploaderUserId: owner.user.id,
+          kind: 'PHOTO',
+          status: 'PENDING',
+          mimeType: 'image/jpeg',
+          sizeBytes: 32n,
+          storageKey: `test/orphan/${assetId}`,
+        },
+      });
+      storage.put(`${orphan.storageKey}-pending`, jpeg(32));
+      const orphanComplete = await app.inject({
+        method: 'POST',
+        url: `${base}/media/${orphan.id}/complete`,
+        headers,
+        payload: { sizeBytes: 32 },
+      });
+      expect(orphanComplete.statusCode).toBe(404);
+      expect(
+        (await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: orphan.id } }))
+          .deletedAt,
+      ).not.toBeNull();
+      expect(storage.objects.has(`${orphan.storageKey}-pending`)).toBe(false);
+    } finally {
+      release();
+      await deletion;
+      if (reservation) await reservation;
+      remove.mockRestore();
+    }
+  });
 });

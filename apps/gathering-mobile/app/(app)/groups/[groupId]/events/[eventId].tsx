@@ -304,6 +304,7 @@ function EventDetail({
           {visited.includes('media') ? (
             <View style={tab !== 'media' && styles.hidden}>
               <MediaPane
+                contentInset={12}
                 eventId={eventId}
                 groupId={groupId}
                 active={tab === 'media'}

@@ -32,7 +32,7 @@ describe('t51 화면 구조', () => {
     expect(ui).toContain('paddingBottom: 120');
     expect(ui).toContain("['top', 'left', 'right', 'bottom']");
     const media = source('src/features/media/MediaPane.tsx');
-    expect(media).toContain('gap: 3, marginHorizontal: 6 - theme.layout.horizontalGutter');
+    expect(media).toContain('marginHorizontal: 6 - theme.layout.horizontalGutter - contentInset');
     expect(theme.layout.horizontalGutter + (6 - theme.layout.horizontalGutter)).toBe(6);
     expect(ui).toContain('padding: theme.space[12]');
     expect(source('app/(app)/groups/index.tsx')).toContain('padding: theme.space[12]');

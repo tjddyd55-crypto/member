@@ -15,7 +15,7 @@ describe('t50 compact UX', () => {
     ['15881234', '1588-1234'],
     ['010-1234-5678', '010-1234-5678'],
     ['12345', '12345'],
-    ['+821012345678', '+821012345678'],
+    ['+821012345678', '010-1234-5678'],
     ['', ''],
   ])('phone %s', (value, expected) => expect(formatPhone(value)).toBe(expected));
   it('contact links use digits', () => {

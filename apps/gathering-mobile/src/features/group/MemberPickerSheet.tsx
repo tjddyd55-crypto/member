@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } fr
 import type { GatheringMemberView } from '@member/contracts';
 import { Body, Button, TextField } from '../../design/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { phoneDigits } from '../../utils/phone';
 import { CompactMemberRow } from './CompactMemberRow';
 
 export type AssignableRole = {
@@ -90,8 +91,8 @@ export function MemberPickerSheet({
                       `${item.displayName} ${item.phone ?? ''} ${item.localJcName}`
                         .toLocaleLowerCase()
                         .includes(query.trim().toLocaleLowerCase()) ||
-                      (!!query.replace(/\D/g, '') &&
-                        (item.phone ?? '').replace(/\D/g, '').includes(query.replace(/\D/g, ''))),
+                      (!!phoneDigits(query) &&
+                        phoneDigits(item.phone ?? '').includes(phoneDigits(query))),
                   )
                   .map((item) => (
                     <Pressable

@@ -43,6 +43,7 @@ export function MediaPane({
   onTitle,
   uploadLinks,
   active = true,
+  contentInset = 0,
 }: {
   groupId: string;
   eventId?: string;
@@ -50,6 +51,7 @@ export function MediaPane({
   onTitle?: (title: string) => void;
   uploadLinks?: ReactNode;
   active?: boolean;
+  contentInset?: number;
 }) {
   const target = eventId
     ? { kind: 'event' as const, id: eventId }
@@ -399,7 +401,13 @@ export function MediaPane({
           <Button label="취소" variant="text" disabled={deleting} onPress={() => setSelected([])} />
         </View>
       ) : null}
-      <View style={styles.grid} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
+      <View
+        style={[
+          styles.grid,
+          { marginHorizontal: 6 - theme.layout.horizontalGutter - contentInset },
+        ]}
+        onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}
+      >
         {items.map((item, index) => (
           <MediaThumb
             key={`${item.id}:${albumRevision}`}
@@ -595,7 +603,9 @@ function MediaThumb({
       ) : (
         <Text style={styles.cellLabel}>사진</Text>
       )}
-      {selecting && item.canDelete ? <SelectCheckbox selected={Boolean(selected)} size={20} /> : null}
+      {selecting && item.canDelete ? (
+        <SelectCheckbox selected={Boolean(selected)} size={20} />
+      ) : null}
     </Pressable>
   );
 }
@@ -616,7 +626,12 @@ const styles = StyleSheet.create({
   stack: { gap: theme.space[12] },
   job: { gap: theme.space[8], paddingVertical: theme.space[8] },
   jobTitle: { ...theme.typography.body, color: theme.colors.text.primary },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginHorizontal: 6 - theme.layout.horizontalGutter },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 3,
+    marginHorizontal: 6 - theme.layout.horizontalGutter,
+  },
   videoCell: { backgroundColor: theme.colors.text.primary },
   playLabel: { color: '#FFFFFF', fontSize: 18 },
   cell: {

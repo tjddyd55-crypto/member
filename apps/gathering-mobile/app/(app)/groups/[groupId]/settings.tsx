@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
+import { useCallback, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringFinanceSummary, GatheringGroupDetail } from '@member/contracts';
 import { api } from '../../../../src/api/client';
@@ -20,10 +21,13 @@ export default function GroupSettingsScreen() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
-  const load = useCallback(async (year?: number) => {
+  const selectedYear = useRef<number | undefined>(undefined);
+  const read = useCallback(async (year?: number) => {
+    if (year !== undefined) selectedYear.current = year;
+    setMessage('');
     setStatus('loading');
     try {
-      const [nextGroup, nextSummary] = await Promise.all([api.group(groupId), api.finance(groupId, year)]);
+      const [nextGroup, nextSummary] = await Promise.all([api.group(groupId), api.finance(groupId, selectedYear.current)]);
       setGroup(nextGroup);
       setSummary(nextSummary);
       setStart(dateForMonthDay(nextGroup.fiscalStartMonth, nextGroup.fiscalStartDay));
@@ -34,9 +38,8 @@ export default function GroupSettingsScreen() {
     }
   }, [groupId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const load = useRefreshLoad(read);
+  useInvalidatedRefresh(groupId, 'finance', load);
 
   const savePeriod = async () => {
     setMessage('');

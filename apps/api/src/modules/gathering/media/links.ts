@@ -167,7 +167,7 @@ export async function deleteMediaFolder(userId: string, groupId: string, folderI
       });
       if (!folder) throw new AppError(404, 'FOLDER_NOT_FOUND', '사진 폴더를 찾을 수 없습니다.');
       const assets = await tx.gatheringMediaAsset.findMany({
-        where: { groupId, folderId, deletedAt: null },
+        where: { groupId, folderId, eventId: null, deletedAt: null },
       });
       await removeMediaAssets(assets, groupId, access.userId, tx);
       const now = new Date();

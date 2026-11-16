@@ -1,3 +1,5 @@
+import { SelectCheckbox } from '../../design/SelectCheckbox';
+import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -72,7 +74,8 @@ export function MediaPane({
   const [picking, setPicking] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const read = useCallback(async () => {
+    setMessage('');
     setStatus('loading');
     try {
       if (target.kind === 'folder') {
@@ -92,6 +95,7 @@ export function MediaPane({
       setStatus('error');
     }
   }, [groupId, onTitle, target.id, target.kind]);
+  const load = useRefreshLoad(read);
 
   const loadMore = async () => {
     if (!nextCursor) return;
@@ -105,13 +109,14 @@ export function MediaPane({
 
   useEffect(() => {
     if (!active) return;
-    void load();
     if (!eventId) return;
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void load();
     });
     return () => subscription.remove();
   }, [load, active, eventId]);
+
+  useInvalidatedRefresh(groupId, 'media', load, active);
 
   const reserveBatch = async (pending: Job[]) => {
     for (let index = 0; index < pending.length; index += 20) {
@@ -279,6 +284,7 @@ export function MediaPane({
           eventId,
           assets.map((item) => item.id),
         );
+      else for (const asset of assets) await api.deleteMedia(groupId, asset.id);
       const ids = new Set(assets.map((item) => item.id));
       setViewer((current) => {
         if (!current) return null;
@@ -362,35 +368,30 @@ export function MediaPane({
         eventId ? (
           <Body>등록된 사진이 없습니다</Body>
         ) : (
-          <EmptyState
-            title="아직 올린 사진·영상이 없습니다"
-            description="사진 올리기나 영상 올리기로 이 폴더에 바로 넣을 수 있습니다."
-          />
+          <EmptyState title="아직 올린 사진·영상이 없습니다" />
         )
       ) : null}
       {eventId ? <Button label="앨범 새로고침" variant="text" onPress={() => void load()} /> : null}
-      {eventId ? (
-        selecting ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Body>{selected.length}개 선택됨</Body>
-            <Button
-              label="삭제"
-              disabled={deleting || selected.length === 0}
-              onPress={() => confirmRemove(items.filter((item) => selected.includes(item.id)))}
-            />
-            <Button
-              label="취소"
-              disabled={deleting}
-              onPress={() => {
-                setSelecting(false);
-                setSelected([]);
-              }}
-            />
-          </View>
-        ) : (
-          <Button label="선택" variant="text" onPress={() => setSelecting(true)} />
-        )
-      ) : null}
+      {selecting ? (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Body>{selected.length}개 선택됨</Body>
+          <Button
+            label="삭제"
+            disabled={deleting || selected.length === 0}
+            onPress={() => confirmRemove(items.filter((item) => selected.includes(item.id)))}
+          />
+          <Button
+            label="취소"
+            disabled={deleting}
+            onPress={() => {
+              setSelecting(false);
+              setSelected([]);
+            }}
+          />
+        </View>
+      ) : (
+        <Button label="선택" variant="text" onPress={() => setSelecting(true)} />
+      )}
       <View style={styles.grid} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
         {items.map((item, index) => (
           <MediaThumb
@@ -580,20 +581,7 @@ function MediaThumb({
       ) : (
         <Text style={styles.cellLabel}>사진</Text>
       )}
-      {selecting && item.canDelete ? (
-        <Text
-          style={{
-            position: 'absolute',
-            top: 4,
-            right: 4,
-            color: 'white',
-            backgroundColor: '#1B3A6B',
-            padding: 4,
-          }}
-        >
-          {selected ? '✓' : '○'}
-        </Text>
-      ) : null}
+      {selecting && item.canDelete ? <SelectCheckbox selected={Boolean(selected)} /> : null}
     </Pressable>
   );
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { API_BASE, api, type UploadLinkView } from '../../api/client';
-import { Body, Button, Notice } from '../../design/ui';
+import { Button, Notice } from '../../design/ui';
 import { theme } from '../../theme';
 import { formatKoreanDateTime, uploadLinkStatus } from '../forms/values';
 
@@ -84,15 +84,8 @@ export function UploadLinkPanel(props: Target & { compact?: boolean }) {
   return (
     <View style={{ gap: theme.space[8] }}>
       <Button label="업로드 링크 만들기" variant="secondary" onPress={() => void create()} />
-      {!props.compact ? (
-        <Body>
-          이 링크는 이 {props.folderId ? '폴더' : '행사'}에만 사진과 영상을 올립니다. 주소는 만들 때
-          한 번만 보입니다.
-        </Body>
-      ) : null}
       {fresh ? (
         <>
-          <Notice>이 주소는 지금만 전체 표시됩니다. 복사하거나 공유해 두세요.</Notice>
           <Text selectable style={{ color: theme.colors.text.primary }}>
             {fresh.url}
           </Text>

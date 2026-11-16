@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
+import * as invalidation from '../../../gathering-mobile/src/state/invalidation';
 
 const source = readFileSync(
   new URL('../../../gathering-mobile/src/api/client.ts', import.meta.url),
@@ -14,6 +15,7 @@ function loadClient() {
   const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
   const exports: Record<string, any> = {};
   const require = (name: string) => {
+    if (name === '../state/invalidation') return invalidation;
     if (name === 'expo-constants') return { default: {} };
     if (name === '@member/gathering-domain') return { SharedRefreshGate: class {} };
     if (name === '../storage/secure') {
@@ -49,4 +51,14 @@ describe('모바일 요청 Content-Type', () => {
       }),
     );
   });
+  it('성공한 변경만 무효화하고 실패한 삭제는 버전을 바꾸지 않는다', async () => {
+    const { api, fetch } = loadClient();
+    const before = invalidation.dataVersion('client-test', 'media');
+    await api.deleteFolder('client-test', 'folder');
+    expect(invalidation.dataVersion('client-test', 'media')).toBe(before + 1);
+    fetch.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: { message: '권한 없음' } }) });
+    await expect(api.deleteMedia('client-test', 'asset')).rejects.toThrow('권한 없음');
+    expect(invalidation.dataVersion('client-test', 'media')).toBe(before + 1);
+  });
+
 });

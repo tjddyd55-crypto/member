@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
@@ -44,12 +45,15 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   const [paid, setPaid] = useState('0');
   const [paidOn, setPaidOn] = useState<Date | null>(null);
 
-  const load = useCallback(
+  const selectedYear = useRef<number | undefined>(undefined);
+  const read = useCallback(
     async (year?: number) => {
+      if (year !== undefined) selectedYear.current = year;
       setPaidOn(null);
+      setMessage('');
       setStatus('loading');
       try {
-        setSummary(await api.finance(groupId, year));
+        setSummary(await api.finance(groupId, selectedYear.current));
         setStatus('ready');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : '장부를 불러오지 못했습니다.');
@@ -58,10 +62,9 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
     },
     [groupId],
   );
+  const load = useRefreshLoad(read);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useInvalidatedRefresh(groupId, 'finance', load);
 
   if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
   if (!summary) return null;
@@ -276,6 +279,7 @@ export function EventFinancePane({
   const [receipts, setReceipts] = useState<GatheringReceiptView[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [receiptUploadMessage, setReceiptUploadMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
@@ -294,7 +298,9 @@ export function EventFinancePane({
   const [viewer, setViewer] = useState<{ uri: string; receipt: GatheringReceiptView } | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
+  const read = useCallback(async () => {
+    setMessage('');
+    setFormError('');
     try {
       const [ledger, files, summary] = await Promise.all([
         api.eventTransactions(groupId, eventId),
@@ -323,9 +329,8 @@ export function EventFinancePane({
       setStatus('error');
     }
   }, [eventId, groupId]);
-  useEffect(() => {
-    if (active) void load();
-  }, [load, active]);
+  const load = useRefreshLoad(read);
+  useInvalidatedRefresh(groupId, 'finance', load, active);
   const eventYear = financeYearState(startsAt, years);
   const { addTransaction: writable, attachReceipt: attachable } = eventFinanceActions(
     canWrite,
@@ -371,6 +376,7 @@ export function EventFinancePane({
       };
       if (selectedTransaction) await api.updateTransaction(groupId, selectedTransaction.id, body);
       else await api.createTransaction(groupId, eventId, body);
+      setReceiptUploadMessage('');
       toast('저장되었습니다.');
       setEditing(false);
       setMessage('');
@@ -387,6 +393,7 @@ export function EventFinancePane({
     uploadPending.current = true;
     setAttaching(true);
     setMessage('');
+    setReceiptUploadMessage('');
     let completed = 0;
     const failures: string[] = [];
     try {
@@ -442,11 +449,13 @@ export function EventFinancePane({
           );
         }
       }
-      setMessage(
+      setReceiptUploadMessage(
         `영수증 ${completed}장 첨부${failures.length ? ` · 실패 ${failures.length}장. 실패한 파일을 다시 선택해 주세요.\n${failures.join('\n')}` : '했습니다.'}`,
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '영수증을 첨부하지 못했습니다.');
+      setReceiptUploadMessage(
+        error instanceof Error ? error.message : '영수증을 첨부하지 못했습니다.',
+      );
     } finally {
       if (completed) await load();
       setProgress('');
@@ -462,7 +471,13 @@ export function EventFinancePane({
     }
   };
   if (status === 'loading') return <LoadingState />;
-  if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
+  if (status === 'error')
+    return (
+      <View style={styles.stack}>
+        <ErrorState message={message} onRetry={() => void load()} />
+        {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
+      </View>
+    );
   return (
     <View style={styles.stack}>
       <View style={styles.eventSummary}>
@@ -471,6 +486,7 @@ export function EventFinancePane({
         <EventMoney label="차액" value={totals.incomeWon - totals.expenseWon} />
       </View>
       {message ? <Notice>{message}</Notice> : null}
+      {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
       {items.length === 0 ? <Body>등록된 거래가 없습니다</Body> : null}
       {items.map((item) => (
         <Pressable
@@ -580,6 +596,7 @@ export function EventFinancePane({
                         void api
                           .deleteTransaction(groupId, selectedTransaction.id)
                           .then(async () => {
+                            setReceiptUploadMessage('');
                             toast('삭제되었습니다.');
                             setEditing(false);
                             await load();

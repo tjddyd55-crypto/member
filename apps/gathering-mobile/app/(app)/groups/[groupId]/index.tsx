@@ -1,3 +1,4 @@
+import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState, type ComponentProps } from 'react';
 import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,7 +59,7 @@ export default function GroupDetailScreen() {
   }, [load]);
 
   return (
-    <Screen>
+    <Screen scroll={tab !== 'schedule'}>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' && group ? (
@@ -123,25 +124,29 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
       .catch(() => setHandoverPrompt(null));
   }, [group.id]);
 
-  useEffect(() => {
+  const readHome = useCallback(async () => {
     const now = Date.now();
     const span = 400 * 24 * 60 * 60 * 1000;
     const nowIso = new Date(now).toISOString();
-    void Promise.all([
-      api.events(group.id, nowIso, new Date(now + span).toISOString(), { order: 'asc', status: 'SCHEDULED' }),
-      api.events(group.id, new Date(now - span).toISOString(), nowIso, { order: 'desc', status: 'SCHEDULED' }),
-    ]).then(([upcoming, past]) => {
-      setNextEvent(upcoming.items[0]?.title ?? '다음 행사 없음');
-      setRecentEvent(past.items[0]?.title ?? '최근 행사 없음');
-    }).catch(() => undefined);
-    void api.albums(group.id).then((result) => {
-      const album = result.events[0];
-      setRecentPhotos(album ? `${album.title} · 사진 ${album.photoCount} · 영상 ${album.videoCount}` : '최근 사진 없음');
-    }).catch(() => undefined);
-    void api.finance(group.id).then((summary) => {
-      setMoney(`기초 ${summary.openingBalanceWon.toLocaleString('ko-KR')}원 · 수입 ${summary.incomeWon.toLocaleString('ko-KR')}원 · 지출 ${summary.expenseWon.toLocaleString('ko-KR')}원 · 잔액 ${summary.balanceWon.toLocaleString('ko-KR')}원`);
-    }).catch(() => undefined);
+    await Promise.all([
+      Promise.all([
+        api.events(group.id, nowIso, new Date(now + span).toISOString(), { order: 'asc', status: 'SCHEDULED' }),
+        api.events(group.id, new Date(now - span).toISOString(), nowIso, { order: 'desc', status: 'SCHEDULED' }),
+      ]).then(([upcoming, past]) => {
+        setNextEvent(upcoming.items[0]?.title ?? '다음 행사 없음');
+        setRecentEvent(past.items[0]?.title ?? '최근 행사 없음');
+      }).catch(() => undefined),
+      api.albums(group.id).then((result) => {
+        const album = result.events[0];
+        setRecentPhotos(album ? `${album.title} · 사진 ${album.photoCount} · 영상 ${album.videoCount}` : '최근 사진 없음');
+      }).catch(() => undefined),
+      api.finance(group.id).then((summary) => {
+        setMoney(`기초 ${summary.openingBalanceWon.toLocaleString('ko-KR')}원 · 수입 ${summary.incomeWon.toLocaleString('ko-KR')}원 · 지출 ${summary.expenseWon.toLocaleString('ko-KR')}원 · 잔액 ${summary.balanceWon.toLocaleString('ko-KR')}원`);
+      }).catch(() => undefined),
+    ]);
   }, [group.id]);
+  const refreshHome = useRefreshLoad(readHome);
+  useInvalidatedRefresh(group.id, 'all', refreshHome);
 
   return (
     <View style={styles.stack}>

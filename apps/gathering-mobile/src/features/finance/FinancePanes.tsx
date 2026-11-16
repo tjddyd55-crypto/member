@@ -279,6 +279,7 @@ export function EventFinancePane({
   const [receipts, setReceipts] = useState<GatheringReceiptView[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [receiptUploadMessage, setReceiptUploadMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
@@ -375,6 +376,7 @@ export function EventFinancePane({
       };
       if (selectedTransaction) await api.updateTransaction(groupId, selectedTransaction.id, body);
       else await api.createTransaction(groupId, eventId, body);
+      setReceiptUploadMessage('');
       toast('저장되었습니다.');
       setEditing(false);
       setMessage('');
@@ -391,6 +393,7 @@ export function EventFinancePane({
     uploadPending.current = true;
     setAttaching(true);
     setMessage('');
+    setReceiptUploadMessage('');
     let completed = 0;
     const failures: string[] = [];
     try {
@@ -446,11 +449,13 @@ export function EventFinancePane({
           );
         }
       }
-      setMessage(
+      setReceiptUploadMessage(
         `영수증 ${completed}장 첨부${failures.length ? ` · 실패 ${failures.length}장. 실패한 파일을 다시 선택해 주세요.\n${failures.join('\n')}` : '했습니다.'}`,
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '영수증을 첨부하지 못했습니다.');
+      setReceiptUploadMessage(
+        error instanceof Error ? error.message : '영수증을 첨부하지 못했습니다.',
+      );
     } finally {
       if (completed) await load();
       setProgress('');
@@ -466,7 +471,13 @@ export function EventFinancePane({
     }
   };
   if (status === 'loading') return <LoadingState />;
-  if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
+  if (status === 'error')
+    return (
+      <View style={styles.stack}>
+        <ErrorState message={message} onRetry={() => void load()} />
+        {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
+      </View>
+    );
   return (
     <View style={styles.stack}>
       <View style={styles.eventSummary}>
@@ -475,6 +486,7 @@ export function EventFinancePane({
         <EventMoney label="차액" value={totals.incomeWon - totals.expenseWon} />
       </View>
       {message ? <Notice>{message}</Notice> : null}
+      {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
       {items.length === 0 ? <Body>등록된 거래가 없습니다</Body> : null}
       {items.map((item) => (
         <Pressable
@@ -584,6 +596,7 @@ export function EventFinancePane({
                         void api
                           .deleteTransaction(groupId, selectedTransaction.id)
                           .then(async () => {
+                            setReceiptUploadMessage('');
                             toast('삭제되었습니다.');
                             setEditing(false);
                             await load();

@@ -8,7 +8,11 @@ import { theme } from '../../theme';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { formatEventDateTime } from './range';
 
-type Direction = 'upcoming' | 'past';
+import {
+  TimelinePageQueue,
+  timelineEndDirection,
+  type TimelineDirection as Direction,
+} from './timeline-paging';
 type Page = { items: GatheringEventView[]; nextCursor: string | null };
 const emptyPage = (): Page => ({ items: [], nextCursor: null });
 
@@ -20,11 +24,14 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
   const [paging, setPaging] = useState(false);
   const generation = useRef(0);
   const refreshing = useRef(false);
-  const requests = useRef(new Set<Direction>());
+  const pagesRef = useRef(pages);
+  const pageQueue = useRef(new TimelinePageQueue()).current;
+  const fetchMoreRef = useRef<(direction: Direction) => Promise<void>>(async () => undefined);
 
   const read = useCallback(async () => {
     const current = ++generation.current;
     refreshing.current = true;
+    pageQueue.clear();
     setMessage('');
     setStatus('loading');
     try {
@@ -33,7 +40,8 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
         api.eventsTimeline(groupId, 'past'),
       ]);
       if (current !== generation.current) return;
-      setPages({ upcoming, past });
+      pagesRef.current = { upcoming, past };
+      setPages(pagesRef.current);
       setStatus('ready');
     } catch (error) {
       if (current !== generation.current) return;
@@ -42,46 +50,47 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
     } finally {
       if (current === generation.current) refreshing.current = false;
     }
-  }, [groupId]);
+  }, [groupId, pageQueue]);
   const load = useRefreshLoad(read);
   useInvalidatedRefresh(groupId ?? '*', 'schedule', load);
 
-  const loadMore = async (direction: Direction) => {
-    const cursor = pages[direction].nextCursor;
-    if (!cursor || status !== 'ready' || refreshing.current || requests.current.size || message)
-      return;
+  const fetchMore = async (direction: Direction) => {
     const current = generation.current;
-    requests.current.add(direction);
-    setPaging(true);
     try {
+      const cursor = pagesRef.current[direction].nextCursor;
+      if (!cursor || status !== 'ready' || refreshing.current) return;
+      setPaging(true);
       const page = await api.eventsTimeline(groupId, direction, cursor);
       if (current !== generation.current) return;
-      setPages((previous) => {
-        const seen = new Set(previous[direction].items.map((item) => item.id));
-        return {
-          ...previous,
-          [direction]: {
-            ...page,
-            items: [
-              ...previous[direction].items,
-              ...page.items.filter((item) => !seen.has(item.id)),
-            ],
-          },
-        };
-      });
+      const previous = pagesRef.current;
+      const seen = new Set(previous[direction].items.map((item) => item.id));
+      const nextPages = {
+        ...previous,
+        [direction]: {
+          ...page,
+          items: [...previous[direction].items, ...page.items.filter((item) => !seen.has(item.id))],
+        },
+      };
+      // Publish cursors before draining queued demand, without waiting for React's next render.
+      pagesRef.current = nextPages;
+      setPages(nextPages);
     } catch (error) {
       if (current === generation.current)
         setMessage(error instanceof Error ? error.message : '일정을 더 불러오지 못했습니다.');
     } finally {
-      requests.current.delete(direction);
       setPaging(false);
+      const next = pageQueue.complete();
+      if (next) void fetchMoreRef.current(next);
     }
+  };
+  fetchMoreRef.current = fetchMore;
+  const loadMore = (direction: Direction) => {
+    const next = pageQueue.request(direction);
+    if (next) void fetchMoreRef.current(next);
   };
   // Keep RN's viewability handler stable while using the latest cursor/refresh guards.
   const moreRef = useRef(loadMore);
   moreRef.current = loadMore;
-  const pagesRef = useRef(pages);
-  pagesRef.current = pages;
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
     for (const token of viewableItems) {
       const direction: Direction | undefined = token.section?.key;
@@ -106,7 +115,7 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
       stickySectionHeadersEnabled={false}
       refreshing={status === 'loading'}
       onRefresh={() => void load()}
-      onEndReached={() => void loadMore(pages.upcoming.nextCursor ? 'upcoming' : 'past')}
+      onEndReached={() => loadMore(timelineEndDirection(pages.past.items.length))}
       onEndReachedThreshold={0.5}
       onViewableItemsChanged={onViewableItemsChanged}
       ListHeaderComponent={

@@ -28,13 +28,16 @@ describe('t48 화면 구조', () => {
       '임원진',
       'roleLabel(officer.role, officer.title)',
       'officer.displayName',
-      "eventsTimeline(group.id, 'upcoming')",
+      ".events(group.id, new Date().toISOString(), '9999-12-31T23:59:59.999Z'",
+      "order: 'asc'",
+      "status: 'SCHEDULED'",
       'page.items[0]',
       '예정된 행사가 없습니다',
     ])
       expect(home).toContain(text);
     for (const text of ['내 역할', '최근 행사', '최근 사진', '재무 요약', 'api.finance'])
       expect(home).not.toContain(text);
+    expect(home).not.toContain('eventsTimeline');
     expect(source('src/features/group/AppChrome.tsx')).toContain("['settings', '모임 설정']");
   });
   it.each([

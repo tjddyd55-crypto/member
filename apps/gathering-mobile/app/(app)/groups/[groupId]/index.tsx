@@ -127,7 +127,10 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
     setError('');
     await Promise.all([
       api
-        .eventsTimeline(group.id, 'upcoming')
+        .events(group.id, new Date().toISOString(), '9999-12-31T23:59:59.999Z', {
+          order: 'asc',
+          status: 'SCHEDULED',
+        })
         .then((page) => setNextEvent(page.items[0] ?? null))
         .catch((caught: unknown) =>
           setError(caught instanceof Error ? caught.message : '일정을 불러오지 못했습니다.'),

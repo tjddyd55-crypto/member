@@ -364,10 +364,11 @@ describe('행사, 캘린더, 참석, 알림', () => {
   });
 });
 
-it('홈 요약은 취소 행사를 빼고 가장 가까운 예정과 최근 행사를 고른다', async () => {
+it('홈 다음 행사는 오늘 이미 시작한 행사와 취소 행사를 빼고 현재 시각 이후 첫 예정 행사를 고른다', async () => {
     const owner = await register('요약회장');
     const group = await createGroup(owner.tokens.accessToken, '요약 모임');
-    const now = Date.now();
+    // KST 정오: 30분 전 행사는 timeline upcoming 범위에도 포함된다.
+    const now = Date.parse('2026-11-17T03:00:00.000Z');
     const oldEvents = Array.from({ length: 201 }, (_, index) => ({
       groupId: group.id,
       title: `오래된 행사 ${index}`,
@@ -378,6 +379,13 @@ it('홈 요약은 취소 행사를 빼고 가장 가까운 예정과 최근 행�
     await prisma.gatheringEvent.createMany({
       data: [
         ...oldEvents,
+        {
+          groupId: group.id,
+          title: '더 나중 행사',
+          startsAt: new Date(now + 2 * 60 * 60 * 1000),
+          status: 'SCHEDULED',
+          createdByUserId: owner.user.id,
+        },
         {
           groupId: group.id,
           title: '취소된 최근 행사',
@@ -395,14 +403,14 @@ it('홈 요약은 취소 행사를 빼고 가장 가까운 예정과 최근 행�
         {
           groupId: group.id,
           title: '취소된 다음 행사',
-          startsAt: new Date(now + 30 * 60 * 1000),
+          startsAt: new Date(now),
           status: 'CANCELLED',
           createdByUserId: owner.user.id,
         },
         {
           groupId: group.id,
           title: '실제 다음 행사',
-          startsAt: new Date(now + 2 * 60 * 60 * 1000),
+          startsAt: new Date(now),
           status: 'SCHEDULED',
           createdByUserId: owner.user.id,
         },
@@ -425,7 +433,10 @@ it('홈 요약은 취소 행사를 빼고 가장 가까운 예정과 최근 행�
       headers: auth(owner.tokens.accessToken),
     });
     expect(upcoming.statusCode).toBe(200);
-    expect(upcoming.json().items[0].title).toBe('실제 다음 행사');
+    expect(upcoming.json().items.map((event: { title: string }) => event.title)).toEqual([
+      '실제 다음 행사', '더 나중 행사',
+    ]);
+    expect(upcoming.json().items[0].startsAt).toBe(new Date(now).toISOString());
   });
 
 describe('저장소 준비', () => {

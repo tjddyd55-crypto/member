@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } fr
 import type { GatheringMemberView } from '@member/contracts';
 import { Body, Button, TextField } from '../../design/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { withRo } from '../../utils/korean';
 import { phoneDigits } from '../../utils/phone';
 import { CompactMemberRow } from './CompactMemberRow';
 
@@ -65,7 +66,7 @@ export function MemberPickerSheet({
           <Body>{target?.label}</Body>
           {member ? (
             <>
-              <Body>{`${member.displayName}님을 ${target?.label}으로 임명할까요?`}</Body>
+              <Body>{`${member.displayName}님을 ${withRo(target?.label ?? '')} 임명할까요?`}</Body>
               <Button
                 label="임명"
                 loading={busy}

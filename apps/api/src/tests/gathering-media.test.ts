@@ -118,6 +118,51 @@ async function createEvent(token: string, groupId: string, startsAt: string) {
 }
 
 describe('행사 사진·영상', () => {
+  it('빈 JSON 본문 DELETE를 허용하고 잘못된 JSON과 필수 본문 누락은 거부한다', async () => {
+    const owner = await register('빈본문삭제');
+    const token = owner.tokens.accessToken;
+    const group = await createGroup(token, '빈본문삭제모임');
+    const url = `/api/gathering/groups/${group.id}/folders`;
+    const headers = { ...auth(token), 'content-type': 'application/json' };
+    const folder = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { title: '삭제할 폴더' },
+    });
+    expect(folder.statusCode).toBe(200);
+
+    const malformed = await app.inject({
+      method: 'DELETE',
+      url: `${url}/${folder.json().id}`,
+      headers,
+      payload: '{',
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json().error.code).toBe('FST_ERR_CTP_INVALID_JSON_BODY');
+
+    const oversized = await app.inject({
+      method: 'DELETE',
+      url: `${url}/${folder.json().id}`,
+      headers,
+      payload: JSON.stringify('x'.repeat(1024 * 1024)),
+    });
+    expect(oversized.statusCode).toBe(413);
+    expect(oversized.json().error.code).toBe('FST_ERR_CTP_BODY_TOO_LARGE');
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `${url}/${folder.json().id}`,
+      headers,
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ ok: true });
+
+    const missing = await app.inject({ method: 'POST', url, headers });
+    expect(missing.statusCode).toBe(400);
+    expect(missing.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('회원은 서명 업로드 뒤 확인해야 목록에 보이고, 다른 모임은 받지 못한다', async () => {
     const owner = await register('사진회장');
     const member = await register('사진회원');

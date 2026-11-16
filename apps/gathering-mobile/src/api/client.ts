@@ -48,7 +48,7 @@ type ErrorBody = { error?: { code?: string; message?: string } };
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const accessToken = await tokenStorage.getAccessToken();
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),
     ...(init.headers as Record<string, string> | undefined),
   };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;

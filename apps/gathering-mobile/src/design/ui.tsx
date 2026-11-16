@@ -27,12 +27,14 @@ const FormScrollContext = createContext<FormScroll | null>(null);
 export function Screen({
   children,
   header,
+  footer,
   modal = false,
   scrollKey,
   scroll = true,
 }: {
   children: React.ReactNode;
   header?: React.ReactNode;
+  footer?: React.ReactNode;
   modal?: boolean;
   scrollKey?: string;
   scroll?: boolean;
@@ -75,6 +77,7 @@ export function Screen({
             </View>
           )}
         </FormScrollContext.Provider>
+        {footer}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

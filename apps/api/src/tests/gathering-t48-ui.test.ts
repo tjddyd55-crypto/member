@@ -1,0 +1,91 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { eventDateBlock } from '../../../gathering-mobile/src/features/schedule/range';
+const source = (path: string) =>
+  readFileSync(new URL(`../../../gathering-mobile/${path}`, import.meta.url), 'utf8');
+const group = source('app/(app)/groups/[groupId]/index.tsx');
+describe('t48 화면 구조', () => {
+  it('다섯 탭은 스크롤 밖 footer에 있고 safe area 안에 놓인다', () => {
+    for (const label of ['홈', '회원', '일정', '사진', '재무'])
+      expect(group).toContain(`label: '${label}'`);
+    expect(group).toContain('footer={');
+    expect(group).not.toContain('회계연도');
+    const screen = source('src/design/ui.tsx');
+    expect(screen.indexOf('{footer}')).toBeGreaterThan(
+      screen.indexOf('</FormScrollContext.Provider>'),
+    );
+    expect(screen.indexOf('{footer}')).toBeLessThan(screen.indexOf('</SafeAreaView>'));
+    expect(screen).toContain("['bottom']");
+  });
+  it('홈은 현재 임원진과 다음 행사 하나만 표시한다', () => {
+    const home = group.slice(
+      group.indexOf('function HomePane'),
+      group.indexOf('function MembersPane'),
+    );
+    for (const text of [
+      'group.name',
+      'group.president?.displayName',
+      '임원진',
+      'roleLabel(officer.role, officer.title)',
+      'officer.displayName',
+      "eventsTimeline(group.id, 'upcoming')",
+      'page.items[0]',
+      '예정된 행사가 없습니다',
+    ])
+      expect(home).toContain(text);
+    for (const text of ['내 역할', '최근 행사', '최근 사진', '재무 요약', 'api.finance'])
+      expect(home).not.toContain(text);
+    expect(source('src/features/group/AppChrome.tsx')).toContain("['settings', '모임 설정']");
+  });
+  it.each([
+    [
+      '2026-11-19T10:00:00Z',
+      '2026-01-01T00:00:00Z',
+      { date: '11.19', year: null, time: '(목) 19:00' },
+    ],
+    [
+      '2026-11-19T10:00:00Z',
+      '2027-01-01T00:00:00Z',
+      { date: '11.19', year: '2026', time: '(목) 19:00' },
+    ],
+    [
+      '2026-12-31T15:05:00Z',
+      '2026-12-31T15:00:00Z',
+      { date: '01.01', year: null, time: '(금) 00:05' },
+    ],
+  ])('KST 날짜 블록 %s', (value, now, expected) =>
+    expect(eventDateBlock(value, new Date(now))).toEqual(expected),
+  );
+  it('사진 목록은 갤러리 라우트를 열고 갤러리는 행사 탭을 포함하지 않는다', () => {
+    const albums = source('src/features/media/AlbumsPane.tsx');
+    expect(albums).toContain('/albums/event/${event.eventId}');
+    for (const text of ['사진 올리기', '영상 올리기', 'setDestination', '?tab=media'])
+      expect(albums).not.toContain(text);
+    for (const path of [
+      'app/(app)/groups/[groupId]/albums/event/[eventId].tsx',
+      'app/(app)/groups/[groupId]/folders/[folderId].tsx',
+      'src/features/media/AlbumGallery.tsx',
+    ]) {
+      for (const text of ['EVENT_TABS', 'EventDetail', 'EventFinancePane', '앨범으로'])
+        expect(source(path)).not.toContain(text);
+    }
+    expect(source('src/features/media/AlbumGallery.tsx')).toContain('<MediaPane');
+  });
+  it('행사 탭은 헤더에, 큰 제목과 일시는 안내 내용 시작에 있다', () => {
+    const event = source('app/(app)/groups/[groupId]/events/[eventId].tsx');
+    const header = event.slice(
+      event.indexOf('  const header ='),
+      event.indexOf('    <Screen header={header}'),
+    );
+    expect(header).toContain('EVENT_TABS.map');
+    expect(header).not.toContain('{event.title}');
+    expect(header).not.toContain('event.startsAt');
+    const info = event.slice(
+      event.indexOf("<View style={[styles.stack, tab !== 'info'"),
+      event.indexOf("{visited.includes('media')}"),
+    );
+    expect(info.indexOf('{event.title}')).toBeGreaterThan(0);
+    expect(info.indexOf('{event.title}')).toBeLessThan(info.indexOf('location.place'));
+    expect(info).toContain('new Date(event.startsAt)');
+  });
+});

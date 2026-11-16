@@ -2,18 +2,13 @@ import { formatAlbumDate } from '../schedule/range';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import type { GatheringAlbumEvent, GatheringAlbumYear } from '@member/contracts';
 import { api } from '../../api/client';
 import { Body, Button, EmptyState, ErrorState, Notice, Screen, TextField } from '../../design/ui';
 import { theme } from '../../theme';
-import { signedUrlStillFresh } from '@member/gathering-domain';
-import { uploadAlbumFiles } from './album-upload';
-import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
 import { useToast } from '../../design/toast';
 import { folderDeletePrompt } from './folder-values';
-import { uploadBlockReason } from './upload-block';
 
 type Folder = {
   folderId: string;
@@ -21,21 +16,6 @@ type Folder = {
   photoCount: number;
   videoCount: number;
   canManage: boolean;
-};
-
-type Destination =
-  { kind: 'event'; id: string; title: string } | { kind: 'folder'; id: string; title: string };
-
-type FailedUpload = {
-  key: string;
-  name: string;
-  file: PreparedUpload;
-  destination: Destination;
-  assetId?: string;
-  uploadUrl?: string;
-  headers?: Record<string, string>;
-  expiresAt?: string;
-  message?: string;
 };
 
 export function AlbumsPane({ groupId }: { groupId: string }) {
@@ -52,11 +32,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
-  const [destination, setDestination] = useState<Destination | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [failedUploads, setFailedUploads] = useState<FailedUpload[]>([]);
-  const [writesAllowed, setWritesAllowed] = useState<boolean | undefined>(undefined);
-
   const read = useCallback(async () => {
     setMessage('');
     setFolderError(null);
@@ -80,127 +55,9 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     void load();
   }, [load, year]);
 
-  useEffect(() => {
-    let active = true;
-    void api
-      .subscription(groupId)
-      .then((row) => {
-        if (active) setWritesAllowed(row.uploadsAllowed);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [groupId]);
-
-  const destinationCount = events.length + folders.length;
-  const blockReason = uploadBlockReason({
-    destinationCount,
-    destinationChosen: destination != null,
-    writesAllowed,
-  });
-
-  const upload = async (kind: 'PHOTO' | 'VIDEO') => {
-    if (!destination || blockReason) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setMessage('앨범 접근을 허용해야 사진·영상을 올릴 수 있습니다.');
-      return;
-    }
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: kind === 'PHOTO' ? ['images'] : ['videos'],
-      allowsMultipleSelection: true,
-      quality: 1,
-    });
-    if (picked.canceled) return;
-    setBusy(true);
-    setMessage('');
-    const files: FailedUpload[] = [];
-    for (const asset of picked.assets) {
-      try {
-        const file = await prepareAsset(asset);
-        if (file.kind !== kind) continue;
-        files.push({
-          key: `${destination.kind}:${destination.id}:${files.length}:${file.originalName ?? kind}`,
-          name: `${kind === 'PHOTO' ? '사진' : '영상'} ${files.length + 1}`,
-          file,
-          destination,
-        });
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : '파일을 준비하지 못했습니다.');
-      }
-    }
-    if (files.length === 0) {
-      setBusy(false);
-      setMessage(
-        kind === 'PHOTO' ? '사진 파일을 고르지 않았습니다.' : '영상 파일을 고르지 않았습니다.',
-      );
-      return;
-    }
-    try {
-      const failed = await sendAlbumFiles(files);
-      setFailedUploads((current) => {
-        const keys = new Set(files.map((file) => file.key));
-        return [...current.filter((entry) => !keys.has(entry.key)), ...failed];
-      });
-      if (failed.length > 0) {
-        setMessage(
-          `${failed.length}개를 올리지 못했습니다. 다시 시도는 같은 업로드를 이어 받습니다.`,
-        );
-      }
-    } finally {
-      setBusy(false);
-      await load();
-    }
-  };
-
-  const retryUpload = async (item: FailedUpload) => {
-    setBusy(true);
-    setMessage('');
-    try {
-      const failed = await sendAlbumFiles([item]);
-      setFailedUploads((current) => [
-        ...current.filter((entry) => entry.key !== item.key),
-        ...failed,
-      ]);
-      if (failed.length > 0)
-        setMessage('다시 올리지 못했습니다. 같은 업로드로 한 번 더 시도할 수 있습니다.');
-    } finally {
-      setBusy(false);
-      await load();
-    }
-  };
-
   if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
   return (
     <View style={styles.stack}>
-      {destination ? (
-        <>
-          <Button
-            label="사진 올리기"
-            disabled={Boolean(blockReason) || busy}
-            onPress={() => void upload('PHOTO')}
-          />
-          <Button
-            label="영상 올리기"
-            disabled={Boolean(blockReason) || busy}
-            onPress={() => void upload('VIDEO')}
-          />
-        </>
-      ) : null}
-      {writesAllowed === false ? <Notice>{blockReason}</Notice> : null}
-      {failedUploads.map((item) => (
-        <View key={item.key} style={styles.card}>
-          <Text style={styles.title}>{item.name}</Text>
-          <Body>{item.message ?? '올리지 못했습니다.'}</Body>
-          <Button
-            label="다시 시도"
-            variant="secondary"
-            disabled={busy}
-            onPress={() => void retryUpload(item)}
-          />
-        </View>
-      ))}
       {folderError ? <Body>{folderError}</Body> : null}
       {message ? <Notice>{message}</Notice> : null}
       <View style={styles.years}>
@@ -214,19 +71,19 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           />
         ))}
       </View>
-      <TextField label="새 폴더 이름" value={folderTitle} onChangeText={setFolderTitle} />
-      <Button label="폴더 만들기" variant="secondary" onPress={() => void createFolder()} />
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <TextField label="새 폴더 이름" value={folderTitle} onChangeText={setFolderTitle} />
+        </View>
+        <Button label="폴더 만들기" variant="secondary" onPress={() => void createFolder()} />
+      </View>
       {folders.map((folder) => {
-        const selected = destination?.kind === 'folder' && destination.id === folder.folderId;
         return (
           <Pressable
             key={folder.folderId}
             accessibilityRole="button"
-            accessibilityState={{ selected }}
-            onPress={() =>
-              setDestination({ kind: 'folder', id: folder.folderId, title: folder.title })
-            }
-            style={[styles.card, selected && styles.cardOn]}
+            onPress={() => router.push(`/(app)/groups/${groupId}/folders/${folder.folderId}`)}
+            style={styles.card}
           >
             <View
               style={{
@@ -243,7 +100,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${folder.title} 관리`}
-                  disabled={busy || managing}
+                  disabled={managing}
                   style={{ padding: 8 }}
                   onPress={(event) => {
                     event.stopPropagation();
@@ -316,14 +173,12 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         </Modal>
       ) : null}
       {events.map((event) => {
-        const selected = destination?.kind === 'event' && destination.id === event.eventId;
         return (
           <Pressable
             key={event.eventId}
             accessibilityRole="button"
-            accessibilityState={{ selected }}
-            onPress={() => setDestination({ kind: 'event', id: event.eventId, title: event.title })}
-            style={[styles.card, selected && styles.cardOn]}
+            onPress={() => router.push(`/(app)/groups/${groupId}/albums/event/${event.eventId}`)}
+            style={styles.card}
           >
             <View style={styles.heading}>
               <Text style={[styles.badge, styles.eventBadge]}>행사</Text>
@@ -336,9 +191,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
             <Button
               label="앨범 열기"
               variant="text"
-              onPress={() =>
-                router.push(`/(app)/groups/${groupId}/events/${event.eventId}?tab=media`)
-              }
+              onPress={() => router.push(`/(app)/groups/${groupId}/albums/event/${event.eventId}`)}
             />
           </Pressable>
         );
@@ -346,86 +199,12 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     </View>
   );
 
-  async function sendAlbumFiles(files: FailedUpload[]) {
-    const failed: FailedUpload[] = [];
-    const groups = new Map<string, FailedUpload[]>();
-    for (const file of files) {
-      const groupKey = `${file.destination.kind}:${file.destination.id}`;
-      groups.set(groupKey, [...(groups.get(groupKey) ?? []), file]);
-    }
-    for (const group of groups.values()) {
-      const target = group[0]?.destination;
-      if (!target) continue;
-      const outcomes = await uploadAlbumFiles({
-        files: group,
-        reserve: async (batch) => {
-          const reserved =
-            target.kind === 'event'
-              ? await api.createMediaUploads(
-                  groupId,
-                  target.id,
-                  batch.map((item) => toIntent(item.file)),
-                )
-              : await api.createFolderUploads(
-                  groupId,
-                  target.id,
-                  batch.map((item) => toIntent(item.file)),
-                );
-          return batch.map((item, index) => {
-            const created = reserved.items[index];
-            return created
-              ? {
-                  key: item.key,
-                  assetId: created.id,
-                  uploadUrl: created.uploadUrl,
-                  headers: created.headers,
-                  expiresAt: created.expiresAt,
-                }
-              : { key: item.key, assetId: '' };
-          });
-        },
-        send: async (item) => {
-          const fresh =
-            item.uploadUrl && item.headers && signedUrlStillFresh(item.expiresAt)
-              ? { status: 'PENDING' as const, uploadUrl: item.uploadUrl, headers: item.headers }
-              : await refreshUploadUrl(target, item.assetId);
-          if (fresh.status === 'READY') return;
-          await putPreparedFile(item.file.uri, fresh.uploadUrl, fresh.headers, () => undefined);
-          if (target.kind === 'event')
-            await api.completeMedia(groupId, target.id, item.assetId, item.file.sizeBytes);
-          else await api.completeFolderMedia(groupId, target.id, item.assetId, item.file.sizeBytes);
-        },
-      });
-      for (const outcome of outcomes) {
-        if (outcome.ok) continue;
-        const source = group.find((item) => item.key === outcome.key);
-        if (!source) continue;
-        failed.push({
-          ...source,
-          assetId: outcome.assetId ?? source.assetId,
-          message: outcome.message,
-        });
-      }
-    }
-    return failed;
-  }
-
-  async function refreshUploadUrl(target: Destination, assetId: string) {
-    if (target.kind === 'event') return api.resumeMedia(groupId, target.id, assetId);
-    return api.resumeFolderMedia(groupId, target.id, assetId);
-  }
-
   async function renameFolder() {
     if (!renaming || managing) return;
     setManaging(true);
     setRenameError('');
     try {
-      const updated = await api.renameFolder(groupId, renaming.folderId, renameTitle);
-      setDestination((current) =>
-        current?.kind === 'folder' && current.id === updated.id
-          ? { ...current, title: updated.title }
-          : current,
-      );
+      await api.renameFolder(groupId, renaming.folderId, renameTitle);
       setRenaming(null);
       toast('저장되었습니다.');
       await load();
@@ -447,9 +226,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           void api
             .deleteFolder(groupId, folder.folderId)
             .then(async () => {
-              setDestination((current) =>
-                current?.kind === 'folder' && current.id === folder.folderId ? null : current,
-              );
               toast('삭제되었습니다.');
               await load();
             })
@@ -472,18 +248,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
       setFolderError(error instanceof Error ? error.message : '폴더를 만들지 못했습니다.');
     }
   }
-}
-
-function toIntent(file: PreparedUpload) {
-  return {
-    kind: file.kind,
-    mimeType: file.mimeType,
-    sizeBytes: file.sizeBytes,
-    durationMs: file.durationMs,
-    width: file.width,
-    height: file.height,
-    originalName: file.originalName,
-  };
 }
 
 function YearChip({

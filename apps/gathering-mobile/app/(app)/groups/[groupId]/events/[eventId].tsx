@@ -183,9 +183,7 @@ function EventDetail({
           >
             <Text style={styles.backLabel}>‹</Text>
           </Pressable>
-          <Text accessibilityRole="header" style={styles.title}>
-            {event.title}
-          </Text>
+          <View style={{ flex: 1 }} />
           {actions.edit && event.status === 'SCHEDULED' ? (
             <Pressable accessibilityRole="button" style={styles.edit} onPress={edit}>
               <Text style={styles.editLabel}>수정</Text>
@@ -193,17 +191,6 @@ function EventDetail({
           ) : null}
         </View>
 
-        <Text style={styles.date}>
-          {new Date(event.startsAt).toLocaleString('ko-KR', {
-            timeZone: 'Asia/Seoul',
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            weekday: 'short',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </Text>
         <View style={styles.tabs}>
           {EVENT_TABS.map(([id, label]) => (
             <Pressable
@@ -247,6 +234,21 @@ function EventDetail({
             </Text>
           ) : null}
           <View style={[styles.stack, tab !== 'info' && styles.hidden]}>
+            <Text accessibilityRole="header" style={styles.title}>
+              {event.title}
+            </Text>
+            <Text style={styles.date}>
+              {new Date(event.startsAt).toLocaleString('ko-KR', {
+                timeZone: 'Asia/Seoul',
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                weekday: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+
             {event.status === 'CANCELLED' ? <Body>취소된 행사</Body> : null}
             {location.place || location.address ? (
               <>

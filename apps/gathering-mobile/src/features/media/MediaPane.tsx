@@ -319,15 +319,15 @@ export function MediaPane({
     <View style={styles.stack}>
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {message ? <Notice>{message}</Notice> : null}
-      <View style={eventId ? { flexDirection: 'row', gap: 8 } : styles.stack}>
-        <View style={eventId ? { flex: 1 } : undefined}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1 }}>
           <Button
             label="사진 올리기"
             disabled={Boolean(uploadReason) || picking}
             onPress={() => void pick('PHOTO')}
           />
         </View>
-        <View style={eventId ? { flex: 1 } : undefined}>
+        <View style={{ flex: 1 }}>
           <Button
             label="영상 올리기"
             disabled={Boolean(uploadReason) || picking}
@@ -335,7 +335,6 @@ export function MediaPane({
           />
         </View>
       </View>
-      {uploadLinks}
       {uploadReason ? <Notice>{uploadReason}</Notice> : null}
       {jobs.length > 0 ? (
         <Body>
@@ -372,26 +371,29 @@ export function MediaPane({
         )
       ) : null}
       {eventId ? <Button label="앨범 새로고침" variant="text" onPress={() => void load()} /> : null}
-      {selecting ? (
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Body>{selected.length}개 선택됨</Body>
-          <Button
-            label="삭제"
-            disabled={deleting || selected.length === 0}
-            onPress={() => confirmRemove(items.filter((item) => selected.includes(item.id)))}
-          />
-          <Button
-            label="취소"
-            disabled={deleting}
-            onPress={() => {
-              setSelecting(false);
-              setSelected([]);
-            }}
-          />
-        </View>
-      ) : (
-        <Button label="선택" variant="text" onPress={() => setSelecting(true)} />
-      )}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        {uploadLinks}
+        {selecting ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Body>{selected.length}개 선택됨</Body>
+            <Button
+              label="삭제"
+              disabled={deleting || selected.length === 0}
+              onPress={() => confirmRemove(items.filter((item) => selected.includes(item.id)))}
+            />
+            <Button
+              label="취소"
+              disabled={deleting}
+              onPress={() => {
+                setSelecting(false);
+                setSelected([]);
+              }}
+            />
+          </View>
+        ) : (
+          <Button label="선택" variant="text" onPress={() => setSelecting(true)} />
+        )}
+      </View>
       <View style={styles.grid} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
         {items.map((item, index) => (
           <MediaThumb

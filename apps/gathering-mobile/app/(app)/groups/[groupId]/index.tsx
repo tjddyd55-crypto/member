@@ -3,7 +3,12 @@ import { useCallback, useEffect, useState, type ComponentProps } from 'react';
 import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import type { GatheringGroupDetail, GatheringMemberView } from '@member/contracts';
+import type {
+  GatheringEventView,
+  GatheringOfficerView,
+  GatheringGroupDetail,
+  GatheringMemberView,
+} from '@member/contracts';
 import { api } from '../../../../src/api/client';
 import { GroupFinancePane } from '../../../../src/features/finance/FinancePanes';
 import { AlbumsPane } from '../../../../src/features/media/AlbumsPane';
@@ -17,9 +22,9 @@ import {
   Screen,
   TextField,
 } from '../../../../src/design/ui';
-import { visibleRoleLabels } from '../../../../src/copy';
+import { roleLabel, visibleRoleLabels } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
-import { handoverInProgress } from '../../../../src/features/media/upload-block';
+import { formatEventDateTime } from '../../../../src/features/schedule/range';
 import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
@@ -59,34 +64,43 @@ export default function GroupDetailScreen() {
   }, [load]);
 
   return (
-    <Screen scroll={tab !== 'schedule'}>
+    <Screen
+      scroll={tab !== 'schedule'}
+      scrollKey={tab}
+      footer={
+        <View style={styles.tabs}>
+          {TABS.map((item) => {
+            const selected = tab === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="tab"
+                accessibilityLabel={item.label}
+                accessibilityState={{ selected }}
+                onPress={() => setTab(item.id)}
+                style={[styles.tab, selected && styles.tabOn]}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={iconSize}
+                  color={selected ? '#FFFFFF' : '#1B3A6B'}
+                />
+                <Text
+                  style={[styles.tabLabel, { fontSize: labelSize }, selected && styles.tabOnText]}
+                  numberOfLines={1}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      }
+    >
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' && group ? (
         <>
-          <Body>
-            {group.financeYear ? `${group.financeYear.year} 회계연도` : '회계연도 없음'} · 협의회장{' '}
-            {group.president?.displayName ?? '미정'}
-          </Body>
-          <View style={styles.tabs}>
-            {TABS.map((item) => {
-              const selected = tab === item.id;
-              return (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected }}
-                  onPress={() => setTab(item.id)}
-                  style={[styles.tab, selected && styles.tabOn]}
-                >
-                  <Ionicons name={item.icon} size={iconSize} color={selected ? '#FFFFFF' : '#1B3A6B'} />
-                  <Text style={[styles.tabLabel, { fontSize: labelSize }, selected && styles.tabOnText]} numberOfLines={1}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
           {tab === 'home' ? <HomePane group={group} /> : null}
           {tab === 'members' ? <MembersPane groupId={group.id} /> : null}
           {tab === 'schedule' ? (
@@ -106,86 +120,55 @@ export default function GroupDetailScreen() {
 }
 
 function HomePane({ group }: { group: GatheringGroupDetail }) {
-  const [handoverPrompt, setHandoverPrompt] = useState<string | null>(null);
-  const [nextEvent, setNextEvent] = useState('다음 행사 없음');
-  const [recentEvent, setRecentEvent] = useState('최근 행사 없음');
-  const [recentPhotos, setRecentPhotos] = useState('최근 사진 없음');
-  const [money, setMoney] = useState('');
-
-  useEffect(() => {
-    void api
-      .handover(group.id)
-      .then((view) => {
-        if (view.actions.accept) setHandoverPrompt('차기 협의회장으로 지명되었습니다. 인계를 확인해 주세요.');
-        else if (handoverInProgress(view.handover?.status)) setHandoverPrompt('진행 중인 인계가 있습니다.');
-        else if (view.actions.nominate) setHandoverPrompt(null);
-        else setHandoverPrompt(null);
-      })
-      .catch(() => setHandoverPrompt(null));
-  }, [group.id]);
-
+  const [nextEvent, setNextEvent] = useState<GatheringEventView | null>(null);
+  const [officers, setOfficers] = useState<GatheringOfficerView[]>([]);
+  const [error, setError] = useState('');
   const readHome = useCallback(async () => {
-    const now = Date.now();
-    const span = 400 * 24 * 60 * 60 * 1000;
-    const nowIso = new Date(now).toISOString();
+    setError('');
     await Promise.all([
-      Promise.all([
-        api.events(group.id, nowIso, new Date(now + span).toISOString(), { order: 'asc', status: 'SCHEDULED' }),
-        api.events(group.id, new Date(now - span).toISOString(), nowIso, { order: 'desc', status: 'SCHEDULED' }),
-      ]).then(([upcoming, past]) => {
-        setNextEvent(upcoming.items[0]?.title ?? '다음 행사 없음');
-        setRecentEvent(past.items[0]?.title ?? '최근 행사 없음');
-      }).catch(() => undefined),
-      api.albums(group.id).then((result) => {
-        const album = result.events[0];
-        setRecentPhotos(album ? `${album.title} · 사진 ${album.photoCount} · 영상 ${album.videoCount}` : '최근 사진 없음');
-      }).catch(() => undefined),
-      api.finance(group.id).then((summary) => {
-        setMoney(`기초 ${summary.openingBalanceWon.toLocaleString('ko-KR')}원 · 수입 ${summary.incomeWon.toLocaleString('ko-KR')}원 · 지출 ${summary.expenseWon.toLocaleString('ko-KR')}원 · 잔액 ${summary.balanceWon.toLocaleString('ko-KR')}원`);
-      }).catch(() => undefined),
+      api
+        .eventsTimeline(group.id, 'upcoming')
+        .then((page) => setNextEvent(page.items[0] ?? null))
+        .catch((caught: unknown) =>
+          setError(caught instanceof Error ? caught.message : '일정을 불러오지 못했습니다.'),
+        ),
+      api
+        .officers(group.id)
+        .then((result) => setOfficers(result.current.filter((item) => item.role !== 'PRESIDENT')))
+        .catch(() => setOfficers([])),
     ]);
   }, [group.id]);
   const refreshHome = useRefreshLoad(readHome);
   useInvalidatedRefresh(group.id, 'all', refreshHome);
-
   return (
     <View style={styles.stack}>
-      {group.description ? <Body>{group.description}</Body> : null}
-      <View style={styles.card}>
-        <Text style={styles.name}>내 역할</Text>
-        <Body>{visibleRoleLabels(group.roles)}</Body>
-        <Body>활동 회원 {group.memberCount}명</Body>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.name}>다음 행사</Text>
-        <Body>{nextEvent}</Body>
-      </View>
-      <View style={styles.cardQuiet}>
-        <Text style={styles.meta}>최근 행사</Text>
-        <Body>{recentEvent}</Body>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.name}>최근 사진</Text>
-        <Body>{recentPhotos}</Body>
-      </View>
-      {money ? (
+      <Text style={styles.meta}>{group.name}</Text>
+      <Text style={styles.name}>협의회장: {group.president?.displayName ?? '미정'}</Text>
+      {officers.length ? (
         <View style={styles.card}>
-          <Text style={styles.name}>재무 요약</Text>
-          <Body>{money}</Body>
+          <Text style={styles.name}>임원진</Text>
+          {officers.map((officer) => (
+            <Body key={officer.assignmentId}>
+              {roleLabel(officer.role, officer.title)} · {officer.displayName}
+            </Body>
+          ))}
         </View>
       ) : null}
-      {handoverPrompt ? (
-        <Button
-          label={handoverPrompt}
-          onPress={() => router.push(`/(app)/groups/${group.id}/handover`)}
-        />
-      ) : null}
-<Button
-        label="모임 설정"
-        variant="secondary"
-        onPress={() => router.push(`/(app)/groups/${group.id}/settings`)}
-      />
-      <Button label="관리" variant="secondary" onPress={() => router.push(`/(app)/groups/${group.id}/manage`)} />
+      <Text style={styles.name}>다음 행사</Text>
+      {error ? (
+        <ErrorState message={error} onRetry={() => void refreshHome()} />
+      ) : nextEvent ? (
+        <Pressable
+          accessibilityRole="button"
+          style={styles.card}
+          onPress={() => router.push(`/(app)/groups/${group.id}/events/${nextEvent.id}`)}
+        >
+          <Body>{formatEventDateTime(nextEvent.startsAt)}</Body>
+          <Text style={styles.name}>{nextEvent.title}</Text>
+        </Pressable>
+      ) : (
+        <Body>예정된 행사가 없습니다</Body>
+      )}
     </View>
   );
 }
@@ -215,7 +198,10 @@ function MembersPane({ groupId }: { groupId: string }) {
 
   useEffect(() => {
     void load();
-    void api.me().then((me) => setSelfId(me.user.id)).catch(() => setSelfId(null));
+    void api
+      .me()
+      .then((me) => setSelfId(me.user.id))
+      .catch(() => setSelfId(null));
   }, [load]);
 
   const block = async (userId: string) => {
@@ -249,9 +235,7 @@ function MembersPane({ groupId }: { groupId: string }) {
         <View key={member.membershipId} style={styles.card}>
           <Text style={styles.name}>{member.displayName}</Text>
           <Text style={styles.meta}>{member.localJcName || '소속 없음'}</Text>
-          <Text style={styles.meta}>
-            {visibleRoleLabels(member.roles)}
-          </Text>
+          <Text style={styles.meta}>{visibleRoleLabels(member.roles)}</Text>
           {member.userId === selfId ? null : (
             <Button label="차단" variant="text" onPress={() => void block(member.userId)} />
           )}
@@ -276,7 +260,14 @@ function MembersPane({ groupId }: { groupId: string }) {
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', flexWrap: 'nowrap', width: '100%' },
+  tabs: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    width: '100%',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border.default,
+    backgroundColor: theme.colors.bg.default,
+  },
   tab: {
     flex: 1,
     minWidth: 0,

@@ -74,7 +74,7 @@ describe('모임 데이터 무효화', () => {
     expect(hook).toContain('clearTimeout(timer)');
     const events = albums.slice(
       albums.indexOf('{events.map('),
-      albums.indexOf('async function sendAlbumFiles'),
+      albums.indexOf('async function renameFolder'),
     );
     expect(events).not.toContain('행사 앨범은 일정에서 관리됩니다');
     expect(events).not.toContain('⋯');

@@ -20,3 +20,14 @@ export function formatEventDateTime(value: string, now = new Date()) {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${prefix}${pad(date.getUTCMonth() + 1)}.${pad(date.getUTCDate())} (${WEEKDAYS[date.getUTCDay()]}) ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
 }
+
+export function eventDateBlock(value: string, now = new Date()) {
+  const formatted = formatEventDateTime(value, now);
+  const [date, weekday, time] = formatted.split(' ');
+  const parts = date.split('.');
+  return {
+    date: parts.slice(-2).join('.'),
+    year: parts.length === 3 ? parts[0] : null,
+    time: `${weekday} ${time}`,
+  };
+}

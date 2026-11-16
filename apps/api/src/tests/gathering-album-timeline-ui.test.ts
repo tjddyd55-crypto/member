@@ -17,7 +17,7 @@ describe('앨범·선택·연속 일정 UI', () => {
     expect(albums).toContain('theme.colors.bg.default');
     const events = albums.slice(
       albums.indexOf('{events.map('),
-      albums.indexOf('async function sendAlbumFiles'),
+      albums.indexOf('async function renameFolder'),
     );
     expect(events).not.toContain('⋯');
     expect(events).not.toContain('confirmDeleteFolder');
@@ -89,13 +89,13 @@ describe('앨범·선택·연속 일정 UI', () => {
     const timeline = source('src/features/schedule/EventsTimeline.tsx');
     for (const text of [
       'SectionList',
-      "title: '예정'",
-      "title: '지난 일정'",
+      "key: 'upcoming'",
+      '지난 일정',
       'onEndReached=',
       'onViewableItemsChanged=',
       "useInvalidatedRefresh(groupId ?? '*', 'schedule', load)",
       '등록된 일정이 없습니다',
-      'formatEventDateTime(item.startsAt)',
+      'eventDateBlock(item.startsAt)',
     ])
       expect(timeline).toContain(text);
     expect(timeline).not.toContain('더 보기');

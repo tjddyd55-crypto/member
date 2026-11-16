@@ -185,6 +185,7 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     events: eventList.filter((card) => (year == null ? true : card.year === year)),
     folders: folders.map((folder) => ({
       folderId: folder.id,
+      createdAt: folder.createdAt.toISOString(),
       canManage: canManageFolders(access),
       title: folder.title,
       photoCount: folderCounts

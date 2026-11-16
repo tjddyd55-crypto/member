@@ -84,7 +84,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
         <MoneyCard label="전체 지출" value={summary.expenseWon} />
         <MoneyCard label="현재 잔액" value={summary.balanceWon} />
       </View>
-      <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원. 회비는 행사 장부에 다시 넣지 않습니다.`}</Body>
+      <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원`}</Body>
       <View style={styles.years}>
         {summary.years.map((item) => {
           const selected = item.year === summary.year;
@@ -106,7 +106,6 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
           );
         })}
       </View>
-      {closed ? <Notice>마감된 회계연도는 조회만 됩니다.</Notice> : null}
       <View style={styles.segment}>
         <Pressable
           accessibilityRole="tab"
@@ -131,10 +130,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
       </View>
       {tab === 'events' ? (
         summary.events.length === 0 ? (
-          <EmptyState
-            title="기록된 행사가 없습니다"
-            description="행사 화면에서 수입과 지출을 남깁니다."
-          />
+          <EmptyState title="기록된 행사가 없습니다" />
         ) : (
           summary.events.map((event) => (
             <Text key={event.eventId} style={styles.line}>
@@ -145,12 +141,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
         )
       ) : (
         <>
-          {summary.dues.length === 0 ? (
-            <EmptyState
-              title="회비가 없습니다"
-              description="이름으로 회원을 찾아 청구액과 납부액을 남깁니다."
-            />
-          ) : null}
+          {summary.dues.length === 0 ? <EmptyState title="회비가 없습니다" /> : null}
           {summary.dues.map((due) => (
             <Text key={due.id} style={styles.line}>
               {due.displayName} · {dueLabel(due.status)} · {WON.format(due.paidAmountWon)}/
@@ -659,12 +650,8 @@ export function EventFinancePane({
         </>
       ) : null}
       {progress ? <Body>{progress}</Body> : null}
-      {eventYear === 'CLOSED' ? (
-        <Notice>행사 연도가 마감되어 영수증은 조회만 가능합니다.</Notice>
-      ) : null}
-      {eventYear === 'MISSING' && canAttach ? (
-        <Notice>행사 날짜에 해당하는 회계연도가 없어 영수증을 첨부할 수 없습니다.</Notice>
-      ) : null}
+      {eventYear === 'CLOSED' ? <Notice>마감</Notice> : null}
+      {eventYear === 'MISSING' && canAttach ? <Notice>회계연도 없음</Notice> : null}
       {viewer ? (
         <MediaViewer
           kind="PHOTO"

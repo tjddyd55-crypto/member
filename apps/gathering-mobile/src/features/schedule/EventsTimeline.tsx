@@ -151,7 +151,7 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
             <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
               <Text style={[styles.title, past && styles.past]}>{item.title}</Text>
               {item.status === 'CANCELLED' ? <Text style={styles.date}>취소</Text> : null}
-              {!groupId ? <Text style={styles.date}>{item.groupName}</Text> : null}
+              {!groupId ? <Text style={[styles.date, past && styles.past]}>{item.groupName}</Text> : null}
               {item.place ? (
                 <Text numberOfLines={1} style={[styles.date, past && styles.past]}>
                   {item.place}

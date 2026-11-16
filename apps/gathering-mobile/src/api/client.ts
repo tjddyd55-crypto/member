@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import { SharedRefreshGate } from '@member/gathering-domain';
 import type {
   GatheringAlbumEvent,
+  GatheringAlbumFolder,
   GatheringAlbumYear,
   GatheringEventView,
   GatheringFinanceSummary,
@@ -261,7 +262,9 @@ export const api = {
   eventsTimeline(groupId: string | undefined, direction: 'upcoming' | 'past', cursor?: string) {
     const params = new URLSearchParams({ direction });
     if (cursor) params.set('cursor', cursor);
-    const path = groupId ? `/api/gathering/groups/${groupId}/events/timeline` : '/api/gathering/calendar/timeline';
+    const path = groupId
+      ? `/api/gathering/groups/${groupId}/events/timeline`
+      : '/api/gathering/calendar/timeline';
     return request<{ items: GatheringEventView[]; nextCursor: string | null }>(`${path}?${params}`);
   },
   calendar(from: string, to: string) {
@@ -336,13 +339,7 @@ export const api = {
     return request<{
       years: GatheringAlbumYear[];
       events: GatheringAlbumEvent[];
-      folders?: Array<{
-        folderId: string;
-        title: string;
-        photoCount: number;
-        videoCount: number;
-        canManage: boolean;
-      }>;
+      folders?: GatheringAlbumFolder[];
     }>(`/api/gathering/groups/${groupId}/albums${query}`);
   },
   createFolder(groupId: string, title: string) {

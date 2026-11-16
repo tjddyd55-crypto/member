@@ -15,7 +15,8 @@ describe('앨범·선택·연속 일정 UI', () => {
     expect(albums).not.toContain('formatAlbumDate(event.startsAt)');
     expect(albums.match(/style=\{styles.card\}/g)).toHaveLength(2);
     expect(albums.match(/style=\{styles.heading\}/g)).toHaveLength(2);
-    expect(albums).toContain('사진 {folder.photoCount} · 영상 {folder.videoCount}');
+    expect(albums).toContain('{albumCardDate(folder.createdAt)} · 사진 {folder.photoCount}');
+    expect(albums).toContain('{folder.videoCount}');
     expect(albums).toContain('사진 {event.photoCount} · 영상 {event.videoCount}');
     expect(albums).toContain('theme.colors.primary.soft');
     expect(albums).toContain('theme.colors.bg.default');

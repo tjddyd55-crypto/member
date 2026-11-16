@@ -1,21 +1,20 @@
+import { albumCardDate } from './album-date';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import type { GatheringAlbumEvent, GatheringAlbumYear } from '@member/contracts';
+import type {
+  GatheringAlbumEvent,
+  GatheringAlbumYear,
+  GatheringAlbumFolder,
+} from '@member/contracts';
 import { api } from '../../api/client';
 import { Body, Button, EmptyState, ErrorState, Notice, Screen, TextField } from '../../design/ui';
 import { theme } from '../../theme';
 import { useToast } from '../../design/toast';
 import { folderDeletePrompt } from './folder-values';
 
-type Folder = {
-  folderId: string;
-  title: string;
-  photoCount: number;
-  videoCount: number;
-  canManage: boolean;
-};
+type Folder = GatheringAlbumFolder;
 
 export function AlbumsPane({ groupId }: { groupId: string }) {
   const [years, setYears] = useState<GatheringAlbumYear[]>([]);
@@ -128,7 +127,8 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
               ) : null}
             </View>
             <Body>
-              사진 {folder.photoCount} · 영상 {folder.videoCount}
+              {albumCardDate(folder.createdAt)} · 사진 {folder.photoCount} · 영상{' '}
+              {folder.videoCount}
             </Body>
           </Pressable>
         );
@@ -183,7 +183,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
               </Text>
             </View>
             <Body>
-              사진 {event.photoCount} · 영상 {event.videoCount}
+              {albumCardDate(event.startsAt)} · 사진 {event.photoCount} · 영상 {event.videoCount}
             </Body>
           </Pressable>
         );

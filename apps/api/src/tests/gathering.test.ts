@@ -424,6 +424,27 @@ describe('모임 테넌트와 초대', () => {
       payload: { userId: member.body.user.id, role: 'SECRETARY', groupId: other.id },
     });
     expect(assigned.statusCode).toBe(200);
+    const presidentAssign = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/roles`,
+      headers: authHeader(owner.body.tokens.accessToken),
+      payload: { userId: member.body.user.id, role: 'PRESIDENT' },
+    });
+    expect(presidentAssign.statusCode).toBe(400);
+    const outsiderAssign = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${other.id}/roles`,
+      headers: authHeader(owner.body.tokens.accessToken),
+      payload: { userId: member.body.user.id, role: 'TREASURER' },
+    });
+    expect(outsiderAssign.statusCode).toBe(404);
+    const forbiddenRevoke = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/roles/${assigned.json().assignmentId}/revoke`,
+      headers: authHeader(member.body.tokens.accessToken),
+      payload: {},
+    });
+    expect(forbiddenRevoke.statusCode).toBe(403);
 
     const members = await app.inject({
       method: 'GET',
@@ -433,6 +454,7 @@ describe('모임 테넌트와 초대', () => {
     const secretary = members
       .json()
       .items.find((item: { userId: string }) => item.userId === member.body.user.id);
+    expect(secretary.localJcName).toBe('서울테스트로컬');
     expect(secretary.roles.some((role: { role: string }) => role.role === 'SECRETARY')).toBe(true);
 
     const otherMembers = await app.inject({

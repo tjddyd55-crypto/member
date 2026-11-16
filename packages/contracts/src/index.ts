@@ -92,6 +92,7 @@ export type {
   GatheringOfficerView,
   GatheringInviteView,
   GatheringAlbumEvent,
+  GatheringAlbumFolder,
   GatheringAlbumYear,
   GatheringMediaUploadItem,
   GatheringMediaView,

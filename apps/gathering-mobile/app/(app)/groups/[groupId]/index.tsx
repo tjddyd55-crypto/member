@@ -30,9 +30,17 @@ import {
   Screen,
   TextField,
 } from '../../../../src/design/ui';
-import { roleLabel, visibleRoleLabels } from '../../../../src/copy';
+import { roleLabel } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
 import { formatEventDateTime } from '../../../../src/features/schedule/range';
+import { CompactMemberRow } from '../../../../src/features/group/CompactMemberRow';
+import {
+  MemberPickerSheet,
+  type AssignableRole,
+} from '../../../../src/features/group/MemberPickerSheet';
+import { RoleChooserSheet } from '../../../../src/features/group/RoleChooserSheet';
+import { useToast } from '../../../../src/design/toast';
+import { phoneDigits } from '../../../../src/utils/phone';
 import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
@@ -185,6 +193,11 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
 }
 
 function MembersPane({ groupId }: { groupId: string }) {
+  const [canAssign, setCanAssign] = useState(false);
+  const [titles, setTitles] = useState<string[]>([]);
+  const [roleMember, setRoleMember] = useState<GatheringMemberView | null>(null);
+  const [target, setTarget] = useState<AssignableRole | null>(null);
+  const toast = useToast();
   const [memberMenu, setMemberMenu] = useState<GatheringMemberView | null>(null);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<GatheringMemberView[]>([]);
@@ -199,6 +212,18 @@ function MembersPane({ groupId }: { groupId: string }) {
       try {
         const result = await api.members(groupId, 'ACTIVE', q);
         setItems(result.items);
+        const group = await api.group(groupId);
+        setCanAssign(group.permissions.includes('ROLE_ASSIGN'));
+        if (group.permissions.includes('ROLE_ASSIGN')) {
+          const officers = await api.officers(groupId);
+          setTitles([
+            ...new Set(
+              officers.current
+                .filter((item) => item.role === 'EXECUTIVE')
+                .map((item) => item.title ?? '집행부'),
+            ),
+          ]);
+        }
         setStatus('ready');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : '명부를 불러오지 못했습니다.');
@@ -239,21 +264,10 @@ function MembersPane({ groupId }: { groupId: string }) {
       {status === 'error' ? (
         <ErrorState message={message} onRetry={() => void load(query)} />
       ) : null}
-      {status === 'ready' && items.length === 0 ? (
-        <EmptyState title="회원이 없습니다" description="초대 링크로 회원을 받으세요." />
-      ) : null}
+      {status === 'ready' && items.length === 0 ? <EmptyState title="회원이 없습니다" /> : null}
       {blockError ? <Body>{blockError}</Body> : null}
       {items.map((member) => (
-        <View key={member.membershipId} style={styles.memberRow}>
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.memberName}>
-              {member.displayName}{' '}
-              <Text style={styles.memberMeta}>
-                {[member.localJcName, visibleRoleLabels(member.roles)].filter(Boolean).join(' ')}
-              </Text>
-            </Text>
-            {member.phone ? <Text style={styles.memberMeta}>{member.phone}</Text> : null}
-          </View>
+        <CompactMemberRow key={member.membershipId} member={member}>
           {member.phone
             ? (['전화', '문자'] as const).map((label) => (
                 <Pressable
@@ -262,14 +276,16 @@ function MembersPane({ groupId }: { groupId: string }) {
                   accessibilityLabel={`${member.displayName} ${label}`}
                   style={styles.contactButton}
                   onPress={() =>
-                    void Linking.openURL(`${label === '전화' ? 'tel' : 'sms'}:${member.phone}`)
+                    void Linking.openURL(
+                      `${label === '전화' ? 'tel' : 'sms'}:${phoneDigits(member.phone ?? '')}`,
+                    )
                   }
                 >
                   <Text style={styles.contactLabel}>{label}</Text>
                 </Pressable>
               ))
             : null}
-          {member.userId === selfId ? null : (
+          {member.userId === selfId && !canAssign ? null : (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${member.displayName} 메뉴`}
@@ -279,8 +295,37 @@ function MembersPane({ groupId }: { groupId: string }) {
               <Text style={styles.memberName}>⋯</Text>
             </Pressable>
           )}
-        </View>
+        </CompactMemberRow>
       ))}
+      {roleMember && !target && canAssign ? (
+        <RoleChooserSheet
+          titles={titles}
+          onClose={() => setRoleMember(null)}
+          onChoose={setTarget}
+        />
+      ) : null}
+      {roleMember && target && canAssign ? (
+        <MemberPickerSheet
+          members={items}
+          fixedMember={roleMember}
+          target={target}
+          onClose={() => {
+            setRoleMember(null);
+            setTarget(null);
+          }}
+          onAssign={async (member, role) => {
+            await api.assignOfficer(groupId, {
+              userId: member.userId,
+              role: role.role,
+              title: role.title,
+            });
+            setRoleMember(null);
+            setTarget(null);
+            await load(query);
+            toast('저장되었습니다');
+          }}
+        />
+      ) : null}
       {memberMenu ? (
         <Modal transparent visible animationType="fade" onRequestClose={() => setMemberMenu(null)}>
           <Pressable
@@ -290,6 +335,17 @@ function MembersPane({ groupId }: { groupId: string }) {
             onPress={() => setMemberMenu(null)}
           >
             <View style={styles.memberActions}>
+              {canAssign ? (
+                <Button
+                  label="직책 지정"
+                  variant="text"
+                  onPress={() => {
+                    setRoleMember(memberMenu);
+                    setTarget(null);
+                    setMemberMenu(null);
+                  }}
+                />
+              ) : null}
               <Button
                 label="차단"
                 variant="text"
@@ -309,17 +365,7 @@ function MembersPane({ groupId }: { groupId: string }) {
 }
 
 const styles = StyleSheet.create({
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border.default,
-  },
   memberName: { fontSize: 14, fontWeight: '600', color: theme.colors.text.primary },
-  memberMeta: { fontSize: 12, fontWeight: '400', color: theme.colors.text.secondary },
   contactButton: {
     minHeight: 36,
     paddingHorizontal: 7,

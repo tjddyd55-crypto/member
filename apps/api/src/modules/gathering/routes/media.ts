@@ -27,6 +27,7 @@ import {
   publicReserve,
   publicUploadInfo,
   renameMediaFolder,
+  deleteMediaFolder,
   setUploadLinkState,
 } from '../media/links.js';
 import { downloadMedia, listAlbums, listFolderMedia, listEventMedia } from '../media/queries.js';
@@ -228,6 +229,13 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
       params.folderId,
       query.cursor,
     );
+  });
+
+  app.delete('/api/gathering/groups/:groupId/folders/:folderId', auth, async (request) => {
+    const params = z
+      .object({ groupId: z.string().min(1), folderId: z.string().min(1) })
+      .parse(request.params);
+    return deleteMediaFolder(requireGatheringUserId(request), params.groupId, params.folderId);
   });
 
   app.post('/api/gathering/groups/:groupId/folders/:folderId', auth, async (request) => {

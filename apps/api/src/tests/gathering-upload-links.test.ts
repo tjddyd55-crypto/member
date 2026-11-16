@@ -1,11 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { currentOperatorSecret } from '../modules/gathering/subscription/service.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
-import { gatheringUploadLimiter } from '../modules/gathering/rate-limit.js';
+import { gatheringAuthLimiter, gatheringUploadLimiter } from '../modules/gathering/rate-limit.js';
 
 let app: FastifyInstance;
 let storage: MemoryObjectStorage;
@@ -19,6 +19,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  gatheringAuthLimiter.reset();
   storage = new MemoryObjectStorage();
   useObjectStorage(storage);
   gatheringUploadLimiter.reset();
@@ -71,7 +72,13 @@ async function register(name: string) {
   const res = await app.inject({
     method: 'POST',
     url: '/api/gathering/auth/register',
-    payload: { name, phone, password: 'Passw0rd!', localJcName: '서울테스트', directoryConsent: true },
+    payload: {
+      name,
+      phone,
+      password: 'Passw0rd!',
+      localJcName: '서울테스트',
+      directoryConsent: true,
+    },
   });
   expect(res.statusCode).toBe(200);
   userIds.push(res.json().user.id);
@@ -105,7 +112,10 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     await app.inject({
       method: 'POST',
       url: `/api/gathering/admin/groups/${groupId}/subscription`,
-      headers: { ...auth(owner.tokens.accessToken), 'x-gathering-operator-secret': currentOperatorSecret() },
+      headers: {
+        ...auth(owner.tokens.accessToken),
+        'x-gathering-operator-secret': currentOperatorSecret(),
+      },
       payload: { source: 'COMPLIMENTARY', idempotencyKey: `link-${groupId}` },
     });
     const emptyAlbums = await app.inject({
@@ -126,7 +136,9 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       url: `/api/gathering/groups/${groupId}/albums`,
       headers: auth(owner.tokens.accessToken),
     });
-    expect(albums.json().events.some((item: { eventId: string }) => item.eventId === eventId)).toBe(true);
+    expect(albums.json().events.some((item: { eventId: string }) => item.eventId === eventId)).toBe(
+      true,
+    );
     const denied = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${groupId}/upload-links`,
@@ -157,7 +169,9 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     const videoReady = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${token}/reserve`,
-      payload: { items: [{ kind: 'VIDEO', mimeType: 'video/mp4', sizeBytes: 32, durationMs: 1000 }] },
+      payload: {
+        items: [{ kind: 'VIDEO', mimeType: 'video/mp4', sizeBytes: 32, durationMs: 1000 }],
+      },
     });
     expect(videoReady.statusCode).toBe(200);
     const bad = await app.inject({
@@ -216,7 +230,10 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       url: `/api/gathering/groups/${groupId}/upload-links/${link.json().id}/revoke`,
       headers: auth(owner.tokens.accessToken),
     });
-    const revoked = await app.inject({ method: 'GET', url: `/api/gathering/public/uploads/${token}` });
+    const revoked = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/public/uploads/${token}`,
+    });
     expect(revoked.statusCode).toBe(404);
     const folder = await app.inject({
       method: 'POST',
@@ -246,7 +263,9 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       url: `/api/gathering/groups/${groupId}/albums`,
       headers: auth(member.tokens.accessToken),
     });
-    expect(shown.json().folders.some((item: { title: string }) => item.title === '해외 방문')).toBe(true);
+    expect(shown.json().folders.some((item: { title: string }) => item.title === '해외 방문')).toBe(
+      true,
+    );
     const liveFolderLink = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${groupId}/upload-links`,
@@ -260,7 +279,9 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     });
     expect(folderReserved.statusCode).toBe(200);
     const folderAssetId = folderReserved.json().items[0].id as string;
-    const folderRow = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: folderAssetId } });
+    const folderRow = await prisma.gatheringMediaAsset.findUniqueOrThrow({
+      where: { id: folderAssetId },
+    });
     storage.put(`${folderRow.storageKey}-pending`, jpeg(32));
     const folderDone = await app.inject({
       method: 'POST',
@@ -304,7 +325,10 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     await app.inject({
       method: 'POST',
       url: `/api/gathering/admin/groups/${groupId}/subscription`,
-      headers: { ...auth(owner.tokens.accessToken), 'x-gathering-operator-secret': currentOperatorSecret() },
+      headers: {
+        ...auth(owner.tokens.accessToken),
+        'x-gathering-operator-secret': currentOperatorSecret(),
+      },
       payload: { source: 'COMPLIMENTARY', idempotencyKey: `limit-${groupId}` },
     });
     const event = await app.inject({
@@ -430,6 +454,201 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       headers: auth(owner.tokens.accessToken),
     });
     expect(afterRevoke.json().items).toHaveLength(20);
-    expect(afterRevoke.json().items.some((item: { id: string }) => item.id === created.json().id)).toBe(false);
+    expect(
+      afterRevoke.json().items.some((item: { id: string }) => item.id === created.json().id),
+    ).toBe(false);
+  });
+  it('회장·총무만 폴더를 수정·삭제하고 행사·다른 그룹·삭제된 폴더는 보호한다', async () => {
+    const owner = await register('폴더회장');
+    const secretary = await register('폴더총무');
+    const member = await register('폴더회원');
+    const createGroup = async (name: string) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/gathering/groups',
+        headers: auth(owner.tokens.accessToken),
+        payload: { name },
+      });
+      expect(res.statusCode).toBe(200);
+      groupIds.push(res.json().id);
+      return res.json().id as string;
+    };
+    const groupId = await createGroup('폴더 관리');
+    const otherGroupId = await createGroup('폴더 다른 모임');
+    for (const user of [secretary, member]) {
+      const invite = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${groupId}/invites`,
+        headers: auth(owner.tokens.accessToken),
+        payload: { requiresApproval: false },
+      });
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: `/api/gathering/invites/${invite.json().token}/accept`,
+            headers: auth(user.tokens.accessToken),
+            payload: { directoryConsent: true },
+          })
+        ).statusCode,
+      ).toBe(200);
+    }
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/gathering/groups/${groupId}/officers`,
+          headers: auth(owner.tokens.accessToken),
+          payload: { userId: secretary.user.id, role: 'SECRETARY' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const createFolder = (token: string) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${groupId}/folders`,
+        headers: auth(token),
+        payload: { title: '번개' },
+      });
+    expect((await createFolder(member.tokens.accessToken)).statusCode).toBe(403);
+    const folder = await createFolder(secretary.tokens.accessToken);
+    expect(folder.statusCode).toBe(200);
+    const folderId = folder.json().id as string;
+    const manage = (token: string, method: 'POST' | 'DELETE', id = folderId, group = groupId) =>
+      app.inject({
+        method,
+        url: `/api/gathering/groups/${group}/folders/${id}`,
+        headers: auth(token),
+        ...(method === 'POST' ? { payload: { title: '바뀐 이름' } } : {}),
+      });
+    for (const method of ['POST', 'DELETE'] as const) {
+      expect((await manage(member.tokens.accessToken, method)).statusCode).toBe(403);
+      expect(
+        (await manage(owner.tokens.accessToken, method, folderId, otherGroupId)).statusCode,
+      ).toBe(404);
+    }
+    for (const user of [owner, secretary])
+      expect((await manage(user.tokens.accessToken, 'POST')).statusCode).toBe(200);
+    const eventRes = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/events`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { title: '자동 앨범', startsAt: '2026-06-01T03:00:00.000Z' },
+    });
+    expect(eventRes.statusCode).toBe(200);
+    for (const method of ['POST', 'DELETE'] as const)
+      expect((await manage(owner.tokens.accessToken, method, eventRes.json().id)).statusCode).toBe(
+        404,
+      );
+    const rows = [];
+    for (const [kind, status] of [
+      ['PHOTO', 'READY'],
+      ['PHOTO', 'PENDING'],
+      ['VIDEO', 'READY'],
+      ['VIDEO', 'FAILED'],
+      ['PHOTO', 'DELETED'],
+    ] as const) {
+      const row = await prisma.gatheringMediaAsset.create({
+        data: {
+          groupId,
+          folderId,
+          uploaderUserId: member.user.id,
+          kind,
+          status,
+          mimeType: kind === 'PHOTO' ? 'image/jpeg' : 'video/mp4',
+          sizeBytes: 32n,
+          storageKey: `test/folders/${Math.random()}`,
+          ...(status === 'DELETED' ? { deletedAt: new Date() } : {}),
+        },
+      });
+      if (status !== 'DELETED') {
+        storage.put(row.storageKey, jpeg(32));
+        storage.put(`${row.storageKey}-pending`, jpeg(32));
+        rows.push(row);
+      }
+    }
+    const albums = (token: string) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/gathering/groups/${groupId}/albums`,
+        headers: auth(token),
+      });
+    expect((await albums(owner.tokens.accessToken)).json().folders[0]).toMatchObject({
+      photoCount: 2,
+      videoCount: 1,
+      canManage: true,
+    });
+    expect((await albums(secretary.tokens.accessToken)).json().folders[0].canManage).toBe(true);
+    expect((await albums(member.tokens.accessToken)).json().folders[0].canManage).toBe(false);
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/folders/${folderId}/media`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(detail.json().folder).toMatchObject({
+      title: '바뀐 이름',
+      photoCount: 2,
+      videoCount: 1,
+      canManage: true,
+    });
+    const links = [];
+    for (let index = 0; index < 2; index += 1) {
+      const link = await app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${groupId}/upload-links`,
+        headers: auth(owner.tokens.accessToken),
+        payload: { folderId },
+      });
+      links.push(link.json());
+    }
+    await prisma.gatheringUploadLink.update({
+      where: { id: links[1].id },
+      data: { pausedAt: new Date() },
+    });
+    const remove = vi.spyOn(storage, 'remove');
+    expect((await manage(secretary.tokens.accessToken, 'DELETE')).statusCode).toBe(200);
+    expect(remove).toHaveBeenCalledTimes(rows.length * 2);
+    for (const row of rows) {
+      expect(remove).toHaveBeenCalledWith(row.storageKey);
+      expect(remove).toHaveBeenCalledWith(`${row.storageKey}-pending`);
+      expect(await prisma.gatheringMediaAsset.findUnique({ where: { id: row.id } })).toMatchObject({
+        status: 'DELETED',
+        deletedAt: expect.any(Date),
+      });
+      expect(
+        await prisma.gatheringAuditLog.count({
+          where: { targetId: row.id, action: 'GATHERING_MEDIA_DELETE' },
+        }),
+      ).toBe(1);
+    }
+    expect(
+      (await prisma.gatheringMediaFolder.findUniqueOrThrow({ where: { id: folderId } })).deletedAt,
+    ).not.toBeNull();
+    expect(
+      await prisma.gatheringAuditLog.count({
+        where: { targetId: folderId, action: 'GATHERING_MEDIA_FOLDER_DELETE' },
+      }),
+    ).toBe(1);
+    for (const link of links) {
+      expect(
+        (await prisma.gatheringUploadLink.findUniqueOrThrow({ where: { id: link.id } })).revokedAt,
+      ).not.toBeNull();
+      expect(
+        (await app.inject({ method: 'GET', url: `/api/gathering/public/uploads/${link.token}` }))
+          .statusCode,
+      ).toBe(404);
+    }
+    for (const method of ['POST', 'DELETE'] as const)
+      expect((await manage(owner.tokens.accessToken, method)).statusCode).toBe(404);
+    expect((await albums(owner.tokens.accessToken)).json().folders).toHaveLength(0);
+    expect(
+      (await prisma.gatheringEvent.findUniqueOrThrow({ where: { id: eventRes.json().id } }))
+        .deletedAt,
+    ).toBeNull();
+    const empty = await createFolder(owner.tokens.accessToken);
+    expect(empty.statusCode).toBe(200);
+    expect((await manage(owner.tokens.accessToken, 'DELETE', empty.json().id)).statusCode).toBe(
+      200,
+    );
   });
 });

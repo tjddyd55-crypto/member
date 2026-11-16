@@ -8,6 +8,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
 import { assertNotBlocked, blockedUserIds } from '../moderation/blocks.js';
 import { currentObjectStorage } from '../storage/r2.js';
+import { canManageFolders } from './folder-access.js';
 import { decodeMediaCursor, encodeMediaCursor, presentMedia } from './present.js';
 
 export async function listEventMedia(
@@ -78,7 +79,28 @@ export async function listFolderMedia(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {
-    folder,
+    folder: {
+      ...folder,
+      canManage: canManageFolders(access),
+      photoCount: await prisma.gatheringMediaAsset.count({
+        where: {
+          groupId,
+          folderId,
+          deletedAt: null,
+          status: { in: ['READY', 'PENDING'] },
+          kind: 'PHOTO',
+        },
+      }),
+      videoCount: await prisma.gatheringMediaAsset.count({
+        where: {
+          groupId,
+          folderId,
+          deletedAt: null,
+          status: { in: ['READY', 'PENDING'] },
+          kind: 'VIDEO',
+        },
+      }),
+    },
     items: page.map((row) => ({
       ...presentMedia(row, userId),
       canDelete: row.uploaderUserId === userId || access.permissions.includes('MEDIA_MODERATE'),
@@ -107,7 +129,7 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
 }
 
 export async function listAlbums(userId: string, groupId: string, year?: number) {
-  await requireGroupMember(userId, groupId, 'read');
+  const access = await requireGroupMember(userId, groupId, 'read');
   const hidden = await blockedUserIds(groupId, userId);
   const counts = await prisma.gatheringMediaAsset.groupBy({
     by: ['eventId', 'kind'],
@@ -153,9 +175,8 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     where: {
       groupId,
       folderId: { not: null },
-      status: 'READY',
+      status: { in: ['READY', 'PENDING'] },
       deletedAt: null,
-      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
     },
     _count: { _all: true },
   });
@@ -164,6 +185,7 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     events: eventList.filter((card) => (year == null ? true : card.year === year)),
     folders: folders.map((folder) => ({
       folderId: folder.id,
+      canManage: canManageFolders(access),
       title: folder.title,
       photoCount: folderCounts
         .filter((row) => row.folderId === folder.id && row.kind === 'PHOTO')

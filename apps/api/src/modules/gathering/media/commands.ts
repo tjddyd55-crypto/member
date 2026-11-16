@@ -253,19 +253,22 @@ export async function deleteEventMedia(
   return { ok: true as const, deleted: assets.length };
 }
 
-async function removeMediaAssets(
+export async function removeMediaAssets(
   assets: GatheringMediaAsset[],
   groupId: string,
   actorUserId: string,
+  tx?: Prisma.TransactionClient,
 ) {
   const storage = currentObjectStorage();
   for (const asset of assets) {
     await storage.remove(asset.storageKey);
     await storage.remove(pendingObjectKey(asset.storageKey));
   }
-  await prisma.$transaction(async (tx) => {
-    for (const asset of assets) await markDeleted(tx, asset.id, groupId, actorUserId);
-  });
+  const mark = async (db: Prisma.TransactionClient) => {
+    for (const asset of assets) await markDeleted(db, asset.id, groupId, actorUserId);
+  };
+  if (tx) await mark(tx);
+  else await prisma.$transaction(mark);
 }
 
 function prepareItem(item: UploadItem) {

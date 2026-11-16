@@ -327,13 +327,30 @@ export const api = {
     return request<{
       years: GatheringAlbumYear[];
       events: GatheringAlbumEvent[];
-      folders?: Array<{ folderId: string; title: string; photoCount: number; videoCount: number }>;
+      folders?: Array<{
+        folderId: string;
+        title: string;
+        photoCount: number;
+        videoCount: number;
+        canManage: boolean;
+      }>;
     }>(`/api/gathering/groups/${groupId}/albums${query}`);
   },
   createFolder(groupId: string, title: string) {
     return request<{ id: string; title: string }>(`/api/gathering/groups/${groupId}/folders`, {
       method: 'POST',
       body: JSON.stringify({ title }),
+    });
+  },
+  renameFolder(groupId: string, folderId: string, title: string) {
+    return request<{ id: string; title: string }>(
+      `/api/gathering/groups/${groupId}/folders/${folderId}`,
+      { method: 'POST', body: JSON.stringify({ title }) },
+    );
+  },
+  deleteFolder(groupId: string, folderId: string) {
+    return request<{ ok: boolean }>(`/api/gathering/groups/${groupId}/folders/${folderId}`, {
+      method: 'DELETE',
     });
   },
   createUploadLink(groupId: string, body: { eventId?: string; folderId?: string }) {
@@ -365,7 +382,13 @@ export const api = {
   folderMedia(groupId: string, folderId: string, cursor?: string) {
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
     return request<{
-      folder: { id: string; title: string };
+      folder: {
+        id: string;
+        title: string;
+        photoCount: number;
+        videoCount: number;
+        canManage: boolean;
+      };
       items: GatheringMediaView[];
       nextCursor: string | null;
     }>(`/api/gathering/groups/${groupId}/folders/${folderId}/media${query}`);

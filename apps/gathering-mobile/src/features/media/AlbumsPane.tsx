@@ -1,19 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import type { GatheringAlbumEvent, GatheringAlbumYear } from '@member/contracts';
 import { api } from '../../api/client';
-import { Body, Button, EmptyState, ErrorState, Notice, TextField } from '../../design/ui';
+import { Body, Button, EmptyState, ErrorState, Notice, Screen, TextField } from '../../design/ui';
 import { theme } from '../../theme';
 import { signedUrlStillFresh } from '@member/gathering-domain';
 import { uploadAlbumFiles } from './album-upload';
 import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
+import { useToast } from '../../design/toast';
+import { folderDeletePrompt } from './folder-values';
 import { uploadBlockReason } from './upload-block';
 
+type Folder = {
+  folderId: string;
+  title: string;
+  photoCount: number;
+  videoCount: number;
+  canManage: boolean;
+};
+
 type Destination =
-  | { kind: 'event'; id: string; title: string }
-  | { kind: 'folder'; id: string; title: string };
+  { kind: 'event'; id: string; title: string } | { kind: 'folder'; id: string; title: string };
 
 type FailedUpload = {
   key: string;
@@ -30,7 +39,12 @@ type FailedUpload = {
 export function AlbumsPane({ groupId }: { groupId: string }) {
   const [years, setYears] = useState<GatheringAlbumYear[]>([]);
   const [events, setEvents] = useState<GatheringAlbumEvent[]>([]);
-  const [folders, setFolders] = useState<Array<{ folderId: string; title: string; photoCount: number; videoCount: number }>>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const toast = useToast();
+  const [renaming, setRenaming] = useState<Folder | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [managing, setManaging] = useState(false);
   const [folderTitle, setFolderTitle] = useState('');
   const [year, setYear] = useState<number | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -61,9 +75,12 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
 
   useEffect(() => {
     let active = true;
-    void api.subscription(groupId).then((row) => {
-      if (active) setWritesAllowed(row.uploadsAllowed);
-    }).catch(() => undefined);
+    void api
+      .subscription(groupId)
+      .then((row) => {
+        if (active) setWritesAllowed(row.uploadsAllowed);
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
     };
@@ -108,7 +125,9 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     }
     if (files.length === 0) {
       setBusy(false);
-      setMessage(kind === 'PHOTO' ? '사진 파일을 고르지 않았습니다.' : '영상 파일을 고르지 않았습니다.');
+      setMessage(
+        kind === 'PHOTO' ? '사진 파일을 고르지 않았습니다.' : '영상 파일을 고르지 않았습니다.',
+      );
       return;
     }
     try {
@@ -118,7 +137,9 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         return [...current.filter((entry) => !keys.has(entry.key)), ...failed];
       });
       if (failed.length > 0) {
-        setMessage(`${failed.length}개를 올리지 못했습니다. 다시 시도는 같은 업로드를 이어 받습니다.`);
+        setMessage(
+          `${failed.length}개를 올리지 못했습니다. 다시 시도는 같은 업로드를 이어 받습니다.`,
+        );
       }
     } finally {
       setBusy(false);
@@ -131,8 +152,12 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     setMessage('');
     try {
       const failed = await sendAlbumFiles([item]);
-      setFailedUploads((current) => [...current.filter((entry) => entry.key !== item.key), ...failed]);
-      if (failed.length > 0) setMessage('다시 올리지 못했습니다. 같은 업로드로 한 번 더 시도할 수 있습니다.');
+      setFailedUploads((current) => [
+        ...current.filter((entry) => entry.key !== item.key),
+        ...failed,
+      ]);
+      if (failed.length > 0)
+        setMessage('다시 올리지 못했습니다. 같은 업로드로 한 번 더 시도할 수 있습니다.');
     } finally {
       setBusy(false);
       await load();
@@ -142,24 +167,49 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
   return (
     <View style={styles.stack}>
-      <Button label="사진 올리기" disabled={Boolean(blockReason) || busy} onPress={() => void upload('PHOTO')} />
-      <Button label="영상 올리기" disabled={Boolean(blockReason) || busy} onPress={() => void upload('VIDEO')} />
+      {destination ? (
+        <>
+          <Button
+            label="사진 올리기"
+            disabled={Boolean(blockReason) || busy}
+            onPress={() => void upload('PHOTO')}
+          />
+          <Button
+            label="영상 올리기"
+            disabled={Boolean(blockReason) || busy}
+            onPress={() => void upload('VIDEO')}
+          />
+        </>
+      ) : null}
       {blockReason ? <Notice>{blockReason}</Notice> : null}
       {failedUploads.map((item) => (
         <View key={item.key} style={styles.card}>
           <Text style={styles.title}>{item.name}</Text>
           <Body>{item.message ?? '올리지 못했습니다.'}</Body>
-          <Button label="다시 시도" variant="secondary" disabled={busy} onPress={() => void retryUpload(item)} />
+          <Button
+            label="다시 시도"
+            variant="secondary"
+            disabled={busy}
+            onPress={() => void retryUpload(item)}
+          />
         </View>
       ))}
-      {destination ? <Body>{`올리는 곳: ${destination.title}`}</Body> : <Body>아래에서 행사나 폴더를 고르세요.</Body>}
-      <Button label="행사 만들기" variant="secondary" onPress={() => router.push(`/(app)/groups/${groupId}/events/new`)} />
+      {destination ? (
+        <Body>{`올리는 곳: ${destination.title}`}</Body>
+      ) : (
+        <Body>아래에서 행사나 폴더를 고르세요.</Body>
+      )}
       {folderError ? <Body>{folderError}</Body> : null}
       {message ? <Notice>{message}</Notice> : null}
       <View style={styles.years}>
         <YearChip label="전체" selected={year == null} onPress={() => setYear(null)} />
         {years.map((item) => (
-          <YearChip key={item.year} label={`${item.year}`} selected={year === item.year} onPress={() => setYear(item.year)} />
+          <YearChip
+            key={item.year}
+            label={`${item.year}`}
+            selected={year === item.year}
+            onPress={() => setYear(item.year)}
+          />
         ))}
       </View>
       <TextField label="새 폴더 이름" value={folderTitle} onChangeText={setFolderTitle} />
@@ -171,11 +221,52 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
             key={folder.folderId}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            onPress={() => setDestination({ kind: 'folder', id: folder.folderId, title: folder.title })}
+            onPress={() =>
+              setDestination({ kind: 'folder', id: folder.folderId, title: folder.title })
+            }
             style={[styles.card, selected && styles.cardOn]}
           >
-            <Text style={styles.title}>{folder.title}</Text>
-            <Body>사진 {folder.photoCount} · 영상 {folder.videoCount}</Body>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Text style={styles.title}>{folder.title}</Text>
+              {folder.canManage ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${folder.title} 관리`}
+                  disabled={busy || managing}
+                  style={{ padding: 8 }}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    Alert.alert(folder.title, undefined, [
+                      {
+                        text: '이름 변경',
+                        onPress: () => {
+                          setRenameTitle(folder.title);
+                          setRenameError('');
+                          setRenaming(folder);
+                        },
+                      },
+                      {
+                        text: '삭제',
+                        style: 'destructive',
+                        onPress: () => confirmDeleteFolder(folder),
+                      },
+                      { text: '취소', style: 'cancel' },
+                    ]);
+                  }}
+                >
+                  <Text style={styles.title}>⋯</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Body>
+              사진 {folder.photoCount} · 영상 {folder.videoCount}
+            </Body>
             <Button
               label="폴더 열기"
               variant="text"
@@ -185,7 +276,42 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         );
       })}
       {status === 'ready' && events.length === 0 && folders.length === 0 ? (
-        <EmptyState title="앨범이 비어 있습니다" description="행사나 폴더를 만든 뒤 사진과 영상을 올릴 수 있습니다." />
+        <EmptyState
+          title="앨범이 비어 있습니다"
+          description="행사나 폴더를 만든 뒤 사진과 영상을 올릴 수 있습니다."
+        />
+      ) : null}
+      {renaming ? (
+        <Modal
+          visible
+          animationType="slide"
+          onRequestClose={() => {
+            if (!managing) setRenaming(null);
+          }}
+        >
+          <Screen modal>
+            <Text style={styles.title}>폴더 이름 변경</Text>
+            <TextField
+              label="폴더 이름"
+              value={renameTitle}
+              onChangeText={setRenameTitle}
+              maxLength={80}
+            />
+            {renameError ? <Notice>{renameError}</Notice> : null}
+            <Button
+              label="저장"
+              loading={managing}
+              disabled={!renameTitle.trim()}
+              onPress={() => void renameFolder()}
+            />
+            <Button
+              label="취소"
+              disabled={managing}
+              variant="text"
+              onPress={() => setRenaming(null)}
+            />
+          </Screen>
+        </Modal>
       ) : null}
       {events.map((event) => {
         const selected = destination?.kind === 'event' && destination.id === event.eventId;
@@ -198,11 +324,15 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
             style={[styles.card, selected && styles.cardOn]}
           >
             <Text style={styles.title}>{event.title}</Text>
-            <Body>사진 {event.photoCount} · 영상 {event.videoCount}</Body>
+            <Body>
+              사진 {event.photoCount} · 영상 {event.videoCount}
+            </Body>
             <Button
               label="앨범 열기"
               variant="text"
-              onPress={() => router.push(`/(app)/groups/${groupId}/events/${event.eventId}?tab=media`)}
+              onPress={() =>
+                router.push(`/(app)/groups/${groupId}/events/${event.eventId}?tab=media`)
+              }
             />
           </Pressable>
         );
@@ -225,8 +355,16 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         reserve: async (batch) => {
           const reserved =
             target.kind === 'event'
-              ? await api.createMediaUploads(groupId, target.id, batch.map((item) => toIntent(item.file)))
-              : await api.createFolderUploads(groupId, target.id, batch.map((item) => toIntent(item.file)));
+              ? await api.createMediaUploads(
+                  groupId,
+                  target.id,
+                  batch.map((item) => toIntent(item.file)),
+                )
+              : await api.createFolderUploads(
+                  groupId,
+                  target.id,
+                  batch.map((item) => toIntent(item.file)),
+                );
           return batch.map((item, index) => {
             const created = reserved.items[index];
             return created
@@ -247,7 +385,8 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
               : await refreshUploadUrl(target, item.assetId);
           if (fresh.status === 'READY') return;
           await putPreparedFile(item.file.uri, fresh.uploadUrl, fresh.headers, () => undefined);
-          if (target.kind === 'event') await api.completeMedia(groupId, target.id, item.assetId, item.file.sizeBytes);
+          if (target.kind === 'event')
+            await api.completeMedia(groupId, target.id, item.assetId, item.file.sizeBytes);
           else await api.completeFolderMedia(groupId, target.id, item.assetId, item.file.sizeBytes);
         },
       });
@@ -255,7 +394,11 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         if (outcome.ok) continue;
         const source = group.find((item) => item.key === outcome.key);
         if (!source) continue;
-        failed.push({ ...source, assetId: outcome.assetId ?? source.assetId, message: outcome.message });
+        failed.push({
+          ...source,
+          assetId: outcome.assetId ?? source.assetId,
+          message: outcome.message,
+        });
       }
     }
     return failed;
@@ -264,6 +407,53 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
   async function refreshUploadUrl(target: Destination, assetId: string) {
     if (target.kind === 'event') return api.resumeMedia(groupId, target.id, assetId);
     return api.resumeFolderMedia(groupId, target.id, assetId);
+  }
+
+  async function renameFolder() {
+    if (!renaming || managing) return;
+    setManaging(true);
+    setRenameError('');
+    try {
+      const updated = await api.renameFolder(groupId, renaming.folderId, renameTitle);
+      setDestination((current) =>
+        current?.kind === 'folder' && current.id === updated.id
+          ? { ...current, title: updated.title }
+          : current,
+      );
+      setRenaming(null);
+      toast('저장되었습니다.');
+      await load();
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : '이름을 변경하지 못했습니다.');
+    } finally {
+      setManaging(false);
+    }
+  }
+
+  function confirmDeleteFolder(folder: Folder) {
+    Alert.alert(folderDeletePrompt(folder), undefined, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          setManaging(true);
+          void api
+            .deleteFolder(groupId, folder.folderId)
+            .then(async () => {
+              setDestination((current) =>
+                current?.kind === 'folder' && current.id === folder.folderId ? null : current,
+              );
+              toast('삭제되었습니다.');
+              await load();
+            })
+            .catch((error: unknown) =>
+              setMessage(error instanceof Error ? error.message : '폴더를 삭제하지 못했습니다.'),
+            )
+            .finally(() => setManaging(false));
+        },
+      },
+    ]);
   }
 
   async function createFolder() {
@@ -290,9 +480,21 @@ function toIntent(file: PreparedUpload) {
   };
 }
 
-function YearChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+function YearChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.chip, selected && styles.chipOn]}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[styles.chip, selected && styles.chipOn]}
+    >
       <Text style={{ color: selected ? '#FFFFFF' : '#1B3A6B' }}>{label}</Text>
     </Pressable>
   );
@@ -309,7 +511,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg.subtle,
   },
   chipOn: { backgroundColor: '#1B3A6B' },
-  card: { gap: theme.space[8], padding: theme.space[12], borderRadius: theme.radius[12], backgroundColor: theme.colors.bg.subtle },
+  card: {
+    gap: theme.space[8],
+    padding: theme.space[12],
+    borderRadius: theme.radius[12],
+    backgroundColor: theme.colors.bg.subtle,
+  },
   cardOn: { borderWidth: 2, borderColor: '#1B3A6B' },
   title: { ...theme.typography.sectionTitle, color: theme.colors.text.primary },
 });

@@ -192,7 +192,12 @@ export const api = {
   },
   updateGroup(
     groupId: string,
-    body: { inviteRequiresApproval?: boolean; name?: string; fiscalStartMonth?: number; fiscalStartDay?: number },
+    body: {
+      inviteRequiresApproval?: boolean;
+      name?: string;
+      fiscalStartMonth?: number;
+      fiscalStartDay?: number;
+    },
   ) {
     return request<GatheringGroupDetail>(`/api/gathering/groups/${groupId}`, {
       method: 'PATCH',
@@ -280,7 +285,10 @@ export const api = {
       `/api/gathering/groups/${groupId}/officers`,
     );
   },
-  assignOfficer(groupId: string, body: { userId: string; role: 'SECRETARY' | 'TREASURER' | 'EXECUTIVE'; title?: string }) {
+  assignOfficer(
+    groupId: string,
+    body: { userId: string; role: 'SECRETARY' | 'TREASURER' | 'EXECUTIVE'; title?: string },
+  ) {
     return request<{ assignmentId: string }>(`/api/gathering/groups/${groupId}/officers`, {
       method: 'POST',
       body: JSON.stringify(body),
@@ -292,7 +300,11 @@ export const api = {
       { method: 'POST', body: JSON.stringify({}) },
     );
   },
-  registerPush(body: { permission: 'granted' | 'denied'; platform: 'IOS' | 'ANDROID'; token?: string }) {
+  registerPush(body: {
+    permission: 'granted' | 'denied';
+    platform: 'IOS' | 'ANDROID';
+    token?: string;
+  }) {
     return request<{ ok: boolean }>('/api/gathering/push/tokens', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -315,10 +327,14 @@ export const api = {
     return request<{
       years: GatheringAlbumYear[];
       events: GatheringAlbumEvent[];
-      folders?: Array<{ folderId: string; title: string; photoCount: number; videoCount: number }>;
-    }>(
-      `/api/gathering/groups/${groupId}/albums${query}`,
-    );
+      folders?: Array<{
+        folderId: string;
+        title: string;
+        photoCount: number;
+        videoCount: number;
+        canManage: boolean;
+      }>;
+    }>(`/api/gathering/groups/${groupId}/albums${query}`);
   },
   createFolder(groupId: string, title: string) {
     return request<{ id: string; title: string }>(`/api/gathering/groups/${groupId}/folders`, {
@@ -326,28 +342,53 @@ export const api = {
       body: JSON.stringify({ title }),
     });
   },
-  createUploadLink(groupId: string, body: { eventId?: string; folderId?: string }) {
-    return request<{ id: string; token: string; expiresAt: string }>(`/api/gathering/groups/${groupId}/upload-links`, {
-      method: 'POST',
-      body: JSON.stringify(body),
+  renameFolder(groupId: string, folderId: string, title: string) {
+    return request<{ id: string; title: string }>(
+      `/api/gathering/groups/${groupId}/folders/${folderId}`,
+      { method: 'POST', body: JSON.stringify({ title }) },
+    );
+  },
+  deleteFolder(groupId: string, folderId: string) {
+    return request<{ ok: boolean }>(`/api/gathering/groups/${groupId}/folders/${folderId}`, {
+      method: 'DELETE',
     });
+  },
+  createUploadLink(groupId: string, body: { eventId?: string; folderId?: string }) {
+    return request<{ id: string; token: string; expiresAt: string }>(
+      `/api/gathering/groups/${groupId}/upload-links`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    );
   },
   uploadLinks(groupId: string, query: { eventId?: string; folderId?: string }) {
     const params = new URLSearchParams();
     if (query.eventId) params.set('eventId', query.eventId);
     if (query.folderId) params.set('folderId', query.folderId);
-    return request<{ items: UploadLinkView[] }>(`/api/gathering/groups/${groupId}/upload-links?${params}`);
+    return request<{ items: UploadLinkView[] }>(
+      `/api/gathering/groups/${groupId}/upload-links?${params}`,
+    );
   },
   setUploadLinkState(groupId: string, linkId: string, action: 'pause' | 'resume' | 'revoke') {
-    return request<{ ok: true }>(`/api/gathering/groups/${groupId}/upload-links/${linkId}/${action}`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    });
+    return request<{ ok: true }>(
+      `/api/gathering/groups/${groupId}/upload-links/${linkId}/${action}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    );
   },
   folderMedia(groupId: string, folderId: string, cursor?: string) {
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
     return request<{
-      folder: { id: string; title: string };
+      folder: {
+        id: string;
+        title: string;
+        photoCount: number;
+        videoCount: number;
+        canManage: boolean;
+      };
       items: GatheringMediaView[];
       nextCursor: string | null;
     }>(`/api/gathering/groups/${groupId}/folders/${folderId}/media${query}`);
@@ -379,7 +420,13 @@ export const api = {
   resumeFolderMedia(groupId: string, folderId: string, assetId: string) {
     return request<
       | { status: 'READY'; media: GatheringMediaView }
-      | { status: 'PENDING'; id: string; uploadUrl: string; expiresAt: string; headers: Record<string, string> }
+      | {
+          status: 'PENDING';
+          id: string;
+          uploadUrl: string;
+          expiresAt: string;
+          headers: Record<string, string>;
+        }
     >(`/api/gathering/groups/${groupId}/folders/${folderId}/media/${assetId}/resume`, {
       method: 'POST',
       body: JSON.stringify({}),
@@ -444,6 +491,30 @@ export const api = {
     const query = year ? `?year=${year}` : '';
     return request<GatheringFinanceSummary>(`/api/gathering/groups/${groupId}/finance${query}`);
   },
+  deleteEventMedia(groupId: string, eventId: string, assetIds: string[]) {
+    return request<{ ok: boolean; deleted: number }>(
+      `/api/gathering/groups/${groupId}/events/${eventId}/media/delete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ assetIds }),
+      },
+    );
+  },
+  updateTransaction(groupId: string, transactionId: string, body: unknown) {
+    return request<GatheringTransactionView>(
+      `/api/gathering/groups/${groupId}/transactions/${transactionId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      },
+    );
+  },
+  deleteTransaction(groupId: string, transactionId: string) {
+    return request<{ ok: boolean }>(
+      `/api/gathering/groups/${groupId}/transactions/${transactionId}`,
+      { method: 'DELETE' },
+    );
+  },
   eventTransactions(groupId: string, eventId: string) {
     return request<{ items: GatheringTransactionView[] }>(
       `/api/gathering/groups/${groupId}/events/${eventId}/transactions`,
@@ -456,10 +527,13 @@ export const api = {
     );
   },
   saveDue(groupId: string, body: unknown) {
-    return request<{ id: string; status: string }>(`/api/gathering/groups/${groupId}/finance/dues`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    return request<{ id: string; status: string }>(
+      `/api/gathering/groups/${groupId}/finance/dues`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    );
   },
   eventReceipts(groupId: string, eventId: string) {
     return request<{ items: GatheringReceiptView[] }>(
@@ -471,10 +545,12 @@ export const api = {
     eventId: string,
     items: Array<{ mimeType: string; sizeBytes: number; originalName?: string }>,
   ) {
-    return request<{ items: Array<{ id: string; uploadUrl: string; headers: Record<string, string> }> }>(
-      `/api/gathering/groups/${groupId}/events/${eventId}/receipts/uploads`,
-      { method: 'POST', body: JSON.stringify({ items }) },
-    );
+    return request<{
+      items: Array<{ id: string; uploadUrl: string; headers: Record<string, string> }>;
+    }>(`/api/gathering/groups/${groupId}/events/${eventId}/receipts/uploads`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
   },
   completeReceipt(groupId: string, eventId: string, receiptId: string, sizeBytes: number) {
     return request<GatheringReceiptView>(
@@ -513,34 +589,50 @@ export const api = {
     });
   },
   acceptHandover(groupId: string, handoverId: string) {
-    return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/accept`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    });
+    return request<{ status: string }>(
+      `/api/gathering/groups/${groupId}/handover/${handoverId}/accept`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    );
   },
-  confirmHandover(groupId: string, handoverId: string, preview: {
-    incomeWon: number;
-    expenseWon: number;
-    balanceWon: number;
-    dueCount: number;
-    receiptCount: number;
-  }) {
-    return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/confirm`, {
-      method: 'POST',
-      body: JSON.stringify(preview),
-    });
+  confirmHandover(
+    groupId: string,
+    handoverId: string,
+    preview: {
+      incomeWon: number;
+      expenseWon: number;
+      balanceWon: number;
+      dueCount: number;
+      receiptCount: number;
+    },
+  ) {
+    return request<{ status: string }>(
+      `/api/gathering/groups/${groupId}/handover/${handoverId}/confirm`,
+      {
+        method: 'POST',
+        body: JSON.stringify(preview),
+      },
+    );
   },
   cancelHandover(groupId: string, handoverId: string) {
-    return request<{ status: string }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/cancel`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    });
+    return request<{ status: string }>(
+      `/api/gathering/groups/${groupId}/handover/${handoverId}/cancel`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    );
   },
   finalizeHandover(groupId: string, handoverId: string) {
-    return request<{ balanceWon: number }>(`/api/gathering/groups/${groupId}/handover/${handoverId}/finalize`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    });
+    return request<{ balanceWon: number }>(
+      `/api/gathering/groups/${groupId}/handover/${handoverId}/finalize`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    );
   },
   reportMedia(groupId: string, assetId: string, reason: string) {
     return request<{ id: string }>(`/api/gathering/groups/${groupId}/media/${assetId}/reports`, {

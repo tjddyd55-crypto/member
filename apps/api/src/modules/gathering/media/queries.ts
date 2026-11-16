@@ -1,9 +1,14 @@
-import { calendarYearKst, MEDIA_PAGE_LIMIT, SIGNED_URL_TTL_SECONDS } from '@member/gathering-domain';
+import {
+  calendarYearKst,
+  MEDIA_PAGE_LIMIT,
+  SIGNED_URL_TTL_SECONDS,
+} from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
 import { assertNotBlocked, blockedUserIds } from '../moderation/blocks.js';
 import { currentObjectStorage } from '../storage/r2.js';
+import { canManageFolders } from './folder-access.js';
 import { decodeMediaCursor, encodeMediaCursor, presentMedia } from './present.js';
 
 export async function listEventMedia(
@@ -13,11 +18,12 @@ export async function listEventMedia(
   cursor: string | undefined,
   limit = MEDIA_PAGE_LIMIT,
 ) {
-  await requireGroupMember(userId, groupId, 'read');
+  const access = await requireGroupMember(userId, groupId, 'read');
   await requireListedEvent(groupId, eventId);
   const hidden = await blockedUserIds(groupId, userId);
   const decoded = cursor ? decodeMediaCursor(cursor) : null;
-  if (cursor && !decoded) throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
+  if (cursor && !decoded)
+    throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
   const rows = await prisma.gatheringMediaAsset.findMany({
     where: {
       groupId,
@@ -33,7 +39,10 @@ export async function listEventMedia(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {
-    items: page.map((row) => presentMedia(row, userId)),
+    items: page.map((row) => ({
+      ...presentMedia(row, userId),
+      canDelete: row.uploaderUserId === userId || access.permissions.includes('MEDIA_MODERATE'),
+    })),
     nextCursor: rows.length > limit && last ? encodeMediaCursor(last.createdAt, last.id) : null,
   };
 }
@@ -45,7 +54,7 @@ export async function listFolderMedia(
   cursor: string | undefined,
   limit = MEDIA_PAGE_LIMIT,
 ) {
-  await requireGroupMember(userId, groupId, 'read');
+  const access = await requireGroupMember(userId, groupId, 'read');
   const folder = await prisma.gatheringMediaFolder.findFirst({
     where: { id: folderId, groupId, deletedAt: null },
     select: { id: true, title: true },
@@ -53,7 +62,8 @@ export async function listFolderMedia(
   if (!folder) throw new AppError(404, 'FOLDER_NOT_FOUND', '사진 폴더를 찾을 수 없습니다.');
   const hidden = await blockedUserIds(groupId, userId);
   const decoded = cursor ? decodeMediaCursor(cursor) : null;
-  if (cursor && !decoded) throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
+  if (cursor && !decoded)
+    throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
   const rows = await prisma.gatheringMediaAsset.findMany({
     where: {
       groupId,
@@ -69,8 +79,32 @@ export async function listFolderMedia(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {
-    folder,
-    items: page.map((row) => presentMedia(row, userId)),
+    folder: {
+      ...folder,
+      canManage: canManageFolders(access),
+      photoCount: await prisma.gatheringMediaAsset.count({
+        where: {
+          groupId,
+          folderId,
+          deletedAt: null,
+          status: { in: ['READY', 'PENDING'] },
+          kind: 'PHOTO',
+        },
+      }),
+      videoCount: await prisma.gatheringMediaAsset.count({
+        where: {
+          groupId,
+          folderId,
+          deletedAt: null,
+          status: { in: ['READY', 'PENDING'] },
+          kind: 'VIDEO',
+        },
+      }),
+    },
+    items: page.map((row) => ({
+      ...presentMedia(row, userId),
+      canDelete: row.uploaderUserId === userId || access.permissions.includes('MEDIA_MODERATE'),
+    })),
     nextCursor: rows.length > limit && last ? encodeMediaCursor(last.createdAt, last.id) : null,
   };
 }
@@ -95,7 +129,7 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
 }
 
 export async function listAlbums(userId: string, groupId: string, year?: number) {
-  await requireGroupMember(userId, groupId, 'read');
+  const access = await requireGroupMember(userId, groupId, 'read');
   const hidden = await blockedUserIds(groupId, userId);
   const counts = await prisma.gatheringMediaAsset.groupBy({
     by: ['eventId', 'kind'],
@@ -141,9 +175,8 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     where: {
       groupId,
       folderId: { not: null },
-      status: 'READY',
+      status: { in: ['READY', 'PENDING'] },
       deletedAt: null,
-      ...(hidden.size > 0 ? { uploaderUserId: { notIn: [...hidden] } } : {}),
     },
     _count: { _all: true },
   });
@@ -152,9 +185,14 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     events: eventList.filter((card) => (year == null ? true : card.year === year)),
     folders: folders.map((folder) => ({
       folderId: folder.id,
+      canManage: canManageFolders(access),
       title: folder.title,
-      photoCount: folderCounts.filter((row) => row.folderId === folder.id && row.kind === 'PHOTO').reduce((sum, row) => sum + row._count._all, 0),
-      videoCount: folderCounts.filter((row) => row.folderId === folder.id && row.kind === 'VIDEO').reduce((sum, row) => sum + row._count._all, 0),
+      photoCount: folderCounts
+        .filter((row) => row.folderId === folder.id && row.kind === 'PHOTO')
+        .reduce((sum, row) => sum + row._count._all, 0),
+      videoCount: folderCounts
+        .filter((row) => row.folderId === folder.id && row.kind === 'VIDEO')
+        .reduce((sum, row) => sum + row._count._all, 0),
     })),
   };
 }
@@ -192,11 +230,22 @@ function yearTotals(
 }
 
 function eventCards(
-  cards: Array<{ event: { id: string; title: string; startsAt: Date }; kind: 'PHOTO' | 'VIDEO'; count: number }>,
+  cards: Array<{
+    event: { id: string; title: string; startsAt: Date };
+    kind: 'PHOTO' | 'VIDEO';
+    count: number;
+  }>,
 ) {
   const grouped = new Map<
     string,
-    { eventId: string; title: string; startsAt: string; year: number; photoCount: number; videoCount: number }
+    {
+      eventId: string;
+      title: string;
+      startsAt: string;
+      year: number;
+      photoCount: number;
+      videoCount: number;
+    }
   >();
   for (const card of cards) {
     const current = grouped.get(card.event.id) ?? {

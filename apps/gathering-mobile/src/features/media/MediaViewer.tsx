@@ -17,7 +17,13 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { downloadFileName } from './viewer-values';
 
-export type ViewerItem = { id: string; kind: 'PHOTO' | 'VIDEO'; uri?: string; fileName?: string };
+export type ViewerItem = {
+  id: string;
+  kind: 'PHOTO' | 'VIDEO';
+  uri?: string;
+  fileName?: string;
+  canDelete?: boolean;
+};
 
 // A single-item invocation is retained for the existing receipt preview.
 export function MediaViewer(props: {
@@ -28,6 +34,8 @@ export function MediaViewer(props: {
   initialIndex?: number;
   resolveUri?: (item: ViewerItem) => Promise<string>;
   onClose: () => void;
+  onDelete?: (item: ViewerItem, index: number) => void;
+  deleting?: boolean;
 }) {
   const items = props.items ?? [
     { id: 'receipt', uri: props.uri, kind: props.kind ?? 'PHOTO', fileName: props.fileName },
@@ -110,6 +118,13 @@ export function MediaViewer(props: {
                 disabled={saving || !uri}
                 onPress={() => void download()}
               />
+              {item.canDelete && props.onDelete ? (
+                <Control
+                  label="삭제"
+                  disabled={props.deleting}
+                  onPress={() => props.onDelete?.(item, index)}
+                />
+              ) : null}
               <Control label="✕" accessibilityLabel="닫기" onPress={props.onClose} />
             </View>
           </View>

@@ -18,7 +18,12 @@ export type TransactionInput = {
   adjustment?: boolean;
 };
 
-export async function createTransaction(userId: string, groupId: string, eventId: string, input: TransactionInput) {
+export async function createTransaction(
+  userId: string,
+  groupId: string,
+  eventId: string,
+  input: TransactionInput,
+) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'FINANCE_WRITE');
   const parsed = parseTransaction(input);
@@ -120,10 +125,15 @@ export async function listEventTransactions(userId: string, groupId: string, eve
   await requireEvent(groupId, eventId);
   const rows = await prisma.gatheringFinanceTransaction.findMany({
     where: { groupId, eventId },
-    include: { financeYear: { select: { year: true } } },
+    include: { financeYear: { select: { year: true, status: true } } },
     orderBy: [{ paidAt: 'asc' }, { id: 'asc' }],
   });
-  return { items: rows.map((row) => presentTransaction(row, row.financeYear.year)) };
+  return {
+    items: rows.map((row) => ({
+      ...presentTransaction(row, row.financeYear.year),
+      locked: row.financeYear.status === 'CLOSED',
+    })),
+  };
 }
 
 export function presentTransaction(row: GatheringFinanceTransaction, fiscalYear: number) {
@@ -144,7 +154,8 @@ function parseTransaction(input: TransactionInput) {
   const amount = parseWon(input.amountWon);
   if (!amount.ok) throw new AppError(400, 'INVALID_AMOUNT', amount.message);
   const paidAt = new Date(input.paidAt);
-  if (Number.isNaN(paidAt.getTime())) throw new AppError(400, 'INVALID_DATE', '결제일이 올바르지 않습니다.');
+  if (Number.isNaN(paidAt.getTime()))
+    throw new AppError(400, 'INVALID_DATE', '결제일이 올바르지 않습니다.');
   const note = input.note?.trim() ? input.note.trim() : null;
   const adjustment = input.adjustment === true;
   if (adjustment && !note) {

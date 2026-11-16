@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { GatheringMediaView } from '@member/contracts';
 import {
@@ -15,6 +15,8 @@ import { theme } from '../../theme';
 import { MediaViewer } from './MediaViewer';
 import { prepareAsset, putPreparedFile, type PreparedUpload } from './prepare';
 import { uploadBlockReason } from './upload-block';
+import { useToast } from '../../design/toast';
+import { mediaDeletePrompt } from './delete-values';
 import { mediaGridLayout } from './grid-layout';
 
 type Job = {
@@ -49,6 +51,11 @@ export function MediaPane({
   const target = eventId
     ? { kind: 'event' as const, id: eventId }
     : { kind: 'folder' as const, id: folderId ?? '' };
+  const toast = useToast();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [deleting, setDeleting] = useState(false);
+  const deletePending = useRef(false);
   const [albumRevision, setAlbumRevision] = useState(0);
   const [gridWidth, setGridWidth] = useState(0);
   const { cellSize } = mediaGridLayout(gridWidth, theme.space[8]);
@@ -57,7 +64,10 @@ export function MediaPane({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
-  const [viewer, setViewer] = useState<{ items: GatheringMediaView[]; initialIndex: number } | null>(null);
+  const [viewer, setViewer] = useState<{
+    items: GatheringMediaView[];
+    initialIndex: number;
+  } | null>(null);
   const inFlight = useRef(new Set<string>());
   const [picking, setPicking] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -75,7 +85,7 @@ export function MediaPane({
         setItems(media.items);
         setNextCursor(media.nextCursor);
       }
-      setAlbumRevision(current => current + 1);
+      setAlbumRevision((current) => current + 1);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '사진·영상을 불러오지 못했습니다.');
@@ -257,6 +267,47 @@ export function MediaPane({
     }
   };
   const progress = summarizeTransfer(jobs);
+  const remove = async (assets: GatheringMediaView[], index?: number) => {
+    if (deletePending.current || !assets.length) return;
+    deletePending.current = true;
+    setDeleting(true);
+    try {
+      if (index !== undefined) await api.deleteMedia(groupId, assets[0].id);
+      else if (eventId)
+        await api.deleteEventMedia(
+          groupId,
+          eventId,
+          assets.map((item) => item.id),
+        );
+      const ids = new Set(assets.map((item) => item.id));
+      setViewer((current) => {
+        if (!current) return null;
+        const remaining = current.items.filter((item) => !ids.has(item.id));
+        return remaining.length
+          ? {
+              items: remaining,
+              initialIndex: Math.min(index ?? current.initialIndex, remaining.length - 1),
+            }
+          : null;
+      });
+      setItems((current) => current.filter((item) => !ids.has(item.id)));
+      setSelecting(false);
+      setSelected([]);
+      setMessage('');
+      toast('삭제되었습니다.');
+      await load();
+    } catch (error) {
+      Alert.alert('삭제 실패', error instanceof Error ? error.message : '삭제하지 못했습니다.');
+    } finally {
+      deletePending.current = false;
+      setDeleting(false);
+    }
+  };
+  const confirmRemove = (assets: GatheringMediaView[], index?: number) =>
+    Alert.alert(mediaDeletePrompt(assets), undefined, [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => void remove(assets, index) },
+    ]);
 
   return (
     <View style={styles.stack}>
@@ -318,6 +369,28 @@ export function MediaPane({
         )
       ) : null}
       {eventId ? <Button label="앨범 새로고침" variant="text" onPress={() => void load()} /> : null}
+      {eventId ? (
+        selecting ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Body>{selected.length}개 선택됨</Body>
+            <Button
+              label="삭제"
+              disabled={deleting || selected.length === 0}
+              onPress={() => confirmRemove(items.filter((item) => selected.includes(item.id)))}
+            />
+            <Button
+              label="취소"
+              disabled={deleting}
+              onPress={() => {
+                setSelecting(false);
+                setSelected([]);
+              }}
+            />
+          </View>
+        ) : (
+          <Button label="선택" variant="text" onPress={() => setSelecting(true)} />
+        )
+      ) : null}
       <View style={styles.grid} onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
         {items.map((item, index) => (
           <MediaThumb
@@ -326,7 +399,22 @@ export function MediaPane({
             groupId={groupId}
             cellSize={eventId ? cellSize : undefined}
             item={item}
-            onOpen={() => void open(item)}
+            selecting={selecting}
+            selected={selected.includes(item.id)}
+            disabled={
+              deleting ||
+              (selecting &&
+                (!item.canDelete || (!selected.includes(item.id) && selected.length >= 100)))
+            }
+            onOpen={() =>
+              selecting
+                ? setSelected((current) =>
+                    current.includes(item.id)
+                      ? current.filter((id) => id !== item.id)
+                      : [...current, item.id],
+                  )
+                : void open(item)
+            }
           />
         ))}
       </View>
@@ -343,7 +431,15 @@ export function MediaPane({
       ) : null}
       {viewer ? (
         <MediaViewer
+          key={viewer.items.map((item) => item.id).join(',')}
           items={viewer.items}
+          deleting={deleting}
+          onDelete={(item, index) =>
+            confirmRemove(
+              viewer.items.filter((entry) => entry.id === item.id),
+              index,
+            )
+          }
           initialIndex={viewer.initialIndex}
           resolveUri={async (item) => (await api.downloadMedia(groupId, item.id)).url}
           onClose={() => setViewer(null)}
@@ -353,7 +449,10 @@ export function MediaPane({
   );
 
   async function open(item: GatheringMediaView) {
-    setViewer({ items: [...items], initialIndex: items.findIndex(entry => entry.id === item.id) });
+    setViewer({
+      items: [...items],
+      initialIndex: items.findIndex((entry) => entry.id === item.id),
+    });
   }
 
   function updateJob(id: string, patch: Partial<Job>) {
@@ -430,12 +529,18 @@ function MediaThumb({
   label,
   onOpen,
   cellSize,
+  selecting,
+  selected,
+  disabled,
 }: {
   groupId: string;
   item: GatheringMediaView;
   label: string;
   onOpen: () => void;
   cellSize?: number;
+  selecting?: boolean;
+  selected?: boolean;
+  disabled?: boolean;
 }) {
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => {
@@ -459,8 +564,11 @@ function MediaThumb({
       accessibilityRole="imagebutton"
       accessibilityLabel={label}
       onPress={onOpen}
+      disabled={disabled}
+      accessibilityState={{ disabled, selected }}
       style={[
         styles.cell,
+        selecting && !item.canDelete && { opacity: 0.35 },
         cellSize !== undefined && { width: cellSize, height: cellSize },
         item.kind === 'VIDEO' && styles.videoCell,
       ]}
@@ -472,6 +580,20 @@ function MediaThumb({
       ) : (
         <Text style={styles.cellLabel}>사진</Text>
       )}
+      {selecting && item.canDelete ? (
+        <Text
+          style={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            color: 'white',
+            backgroundColor: '#1B3A6B',
+            padding: 4,
+          }}
+        >
+          {selected ? '✓' : '○'}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }

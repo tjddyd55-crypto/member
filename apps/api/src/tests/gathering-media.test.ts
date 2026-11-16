@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { STORAGE_QUOTA_BYTES, UPLOAD_INTENT_TTL_MS } from '@member/gathering-domain';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
-import { gatheringUploadLimiter } from '../modules/gathering/rate-limit.js';
+import { gatheringAuthLimiter, gatheringUploadLimiter } from '../modules/gathering/rate-limit.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
 
@@ -19,6 +19,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  gatheringAuthLimiter.reset();
   storage = new MemoryObjectStorage();
   useObjectStorage(storage);
   gatheringUploadLimiter.reset();
@@ -139,14 +140,18 @@ describe('행사 사진·영상', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/media/uploads`,
       headers: auth(member.tokens.accessToken),
-      payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32, originalName: '행사.jpg' }] },
+      payload: {
+        items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32, originalName: '행사.jpg' }],
+      },
     });
     expect(created.statusCode).toBe(200);
     const item = created.json().items[0];
     expect(item.uploadUrl).toContain('https://storage.test/put/');
     expect(item.headers['Content-Length']).toBe('32');
     const stored = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: item.id } });
-    expect(stored.storageKey).toBe(`test/gatherings/${group.id}/events/${event.id}/photos/${stored.storageKey.split('/').at(-1)}`);
+    expect(stored.storageKey).toBe(
+      `test/gatherings/${group.id}/events/${event.id}/photos/${stored.storageKey.split('/').at(-1)}`,
+    );
     expect(stored.status).toBe('PENDING');
 
     const missing = await app.inject({
@@ -206,7 +211,9 @@ describe('행사 사진·영상', () => {
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
     });
     const recoveredId = recoveredUpload.json().items[0].id as string;
-    const recoveredRow = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: recoveredId } });
+    const recoveredRow = await prisma.gatheringMediaAsset.findUniqueOrThrow({
+      where: { id: recoveredId },
+    });
     storage.put(recoveredRow.storageKey, jpeg(32));
     const recovered = await app.inject({
       method: 'POST',
@@ -215,7 +222,9 @@ describe('행사 사진·영상', () => {
       payload: { sizeBytes: 32 },
     });
     expect(recovered.statusCode).toBe(200);
-    const recoveredAsset = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: recoveredId } });
+    const recoveredAsset = await prisma.gatheringMediaAsset.findUniqueOrThrow({
+      where: { id: recoveredId },
+    });
     expect(recoveredAsset.status).toBe('READY');
     const hidden = await app.inject({
       method: 'GET',
@@ -277,7 +286,11 @@ describe('행사 사진·영상', () => {
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/media/uploads`,
       headers: auth(owner.tokens.accessToken),
-      payload: { items: [{ kind: 'VIDEO', mimeType: 'video/mp4', sizeBytes: 32, durationMs: 5 * 60 * 1000 + 1 }] },
+      payload: {
+        items: [
+          { kind: 'VIDEO', mimeType: 'video/mp4', sizeBytes: 32, durationMs: 5 * 60 * 1000 + 1 },
+        ],
+      },
     });
     expect(video.statusCode).toBe(400);
     expect(video.json().error.code).toBe('VIDEO_TOO_LONG');
@@ -374,6 +387,104 @@ describe('행사 사진·영상', () => {
     expect(expired.statusCode).toBe(409);
     expect(expired.json().error.code).toBe('UPLOAD_EXPIRED');
     expect(storage.objects.has(`${row.storageKey}-pending`)).toBe(false);
+  });
+
+  it('다중 삭제는 소속·권한을 전부 검증하고 중복 없이 저장소와 감사 기록을 정리한다', async () => {
+    const owner = await register('일괄회장');
+    const member = await register('일괄회원');
+    const other = await register('일괄타인');
+    const group = await createGroup(owner.tokens.accessToken, '일괄 모임');
+    await join(owner.tokens.accessToken, member.tokens.accessToken, group.id);
+    await join(owner.tokens.accessToken, other.tokens.accessToken, group.id);
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-05-01T03:00:00.000Z');
+    const another = await createEvent(
+      owner.tokens.accessToken,
+      group.id,
+      '2026-05-02T03:00:00.000Z',
+    );
+    const foreign = await createGroup(other.tokens.accessToken, '다른 모임');
+    const foreignEvent = await createEvent(
+      other.tokens.accessToken,
+      foreign.id,
+      '2026-05-01T03:00:00.000Z',
+    );
+    const make = async (uploaderUserId: string, groupId = group.id, eventId = event.id) => {
+      const row = await prisma.gatheringMediaAsset.create({
+        data: {
+          groupId,
+          eventId,
+          uploaderUserId,
+          kind: 'PHOTO',
+          mimeType: 'image/jpeg',
+          sizeBytes: 32n,
+          storageKey: `test/batch/${Math.random()}`,
+          status: 'READY',
+        },
+      });
+      storage.put(row.storageKey, jpeg(32));
+      storage.put(`${row.storageKey}-pending`, jpeg(32));
+      return row;
+    };
+    const own = await make(member.user.id);
+    const theirs = await make(other.user.id);
+    const wrongEvent = await make(member.user.id, group.id, another.id);
+    const wrongGroup = await make(other.user.id, foreign.id, foreignEvent.id);
+    const remove = vi.spyOn(storage, 'remove');
+    const batch = (token: string, assetIds: string[]) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/media/delete`,
+        headers: auth(token),
+        payload: { assetIds },
+      });
+    for (const wrong of [wrongEvent, wrongGroup]) {
+      expect((await batch(owner.tokens.accessToken, [own.id, wrong.id])).statusCode).toBe(404);
+    }
+    expect((await batch(member.tokens.accessToken, [own.id, theirs.id])).statusCode).toBe(403);
+    expect(remove).not.toHaveBeenCalled();
+    expect(
+      await prisma.gatheringMediaAsset.count({
+        where: { id: { in: [own.id, theirs.id] }, deletedAt: null },
+      }),
+    ).toBe(2);
+    const list = (token: string) =>
+      app.inject({
+        method: 'GET',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/media`,
+        headers: auth(token),
+      });
+    const memberItems = (await list(member.tokens.accessToken)).json().items;
+    expect(memberItems.find((item: { id: string }) => item.id === own.id).canDelete).toBe(true);
+    expect(memberItems.find((item: { id: string }) => item.id === theirs.id).canDelete).toBe(false);
+    expect(
+      (await list(owner.tokens.accessToken))
+        .json()
+        .items.every((item: { canDelete: boolean }) => item.canDelete),
+    ).toBe(true);
+    const removed = await batch(owner.tokens.accessToken, [own.id, theirs.id, own.id]);
+    expect(removed.json()).toEqual({ ok: true, deleted: 2 });
+    expect(remove).toHaveBeenCalledTimes(4);
+    for (const row of [own, theirs]) {
+      const deleted = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: row.id } });
+      expect(deleted.status).toBe('DELETED');
+      expect(deleted.deletedAt).not.toBeNull();
+      expect(remove).toHaveBeenCalledWith(row.storageKey);
+      expect(remove).toHaveBeenCalledWith(`${row.storageKey}-pending`);
+      expect(
+        await prisma.gatheringAuditLog.count({
+          where: { targetId: row.id, action: 'GATHERING_MEDIA_DELETE' },
+        }),
+      ).toBe(1);
+    }
+    const single = await make(member.user.id);
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/gathering/groups/${group.id}/media/${single.id}`,
+      headers: auth(owner.tokens.accessToken),
+    });
+    expect(deleted.statusCode).toBe(200);
+    for (const assetIds of [[], Array(101).fill(single.id)])
+      expect((await batch(owner.tokens.accessToken, assetIds)).statusCode).toBe(400);
   });
 
   it('신고는 회원이 하고 총무가 처리한다. 저장소가 없으면 503이다', async () => {

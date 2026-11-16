@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { fiscalYearOf, fiscalYearRange } from '@member/gathering-domain';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
+import { gatheringAuthLimiter } from '../modules/gathering/rate-limit.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
 
@@ -18,6 +19,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  gatheringAuthLimiter.reset();
   storage = new MemoryObjectStorage();
   useObjectStorage(storage);
 });
@@ -434,6 +436,75 @@ describe('행사 장부와 영수증', () => {
     });
     expect(listed.json().dues[0].paidAmountWon).toBe(10000);
     expect(listed.json().dues[0].displayName).toBe('장부회원');
+  });
+
+  it('거래 수정·삭제는 재무 권한과 원래 연도 잠금을 검사한다', async () => {
+    const owner = await register('수정회장');
+    const member = await register('수정회원');
+    const group = await createGroup(owner.tokens.accessToken, '수정 모임');
+    await join(owner.tokens.accessToken, member.tokens.accessToken, group.id);
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-05-01T03:00:00.000Z');
+    const payload = {
+      direction: 'EXPENSE',
+      label: '식대',
+      amountWon: 1000,
+      paidAt: '2026-05-01T03:00:00.000Z',
+    };
+    const create = () =>
+      app.inject({
+        method: 'POST',
+        url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+        headers: auth(owner.tokens.accessToken),
+        payload,
+      });
+    const id = (await create()).json().id as string;
+    const url = `/api/gathering/groups/${group.id}/transactions/${id}`;
+    for (const method of ['PUT', 'DELETE'] as const)
+      expect(
+        (
+          await app.inject({
+            method,
+            url,
+            headers: auth(member.tokens.accessToken),
+            ...(method === 'PUT' ? { payload } : {}),
+          })
+        ).statusCode,
+      ).toBe(403);
+    const updated = await app.inject({
+      method: 'PUT',
+      url,
+      headers: auth(owner.tokens.accessToken),
+      payload: { ...payload, amountWon: 2000, paidAt: '2026-05-02T03:00:00.000Z' },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().amountWon).toBe(2000);
+    expect(updated.json().paidAt).toBe('2026-05-02T03:00:00.000Z');
+    expect(
+      (await app.inject({ method: 'DELETE', url, headers: auth(owner.tokens.accessToken) }))
+        .statusCode,
+    ).toBe(200);
+    expect(await prisma.gatheringFinanceTransaction.findUnique({ where: { id } })).toBeNull();
+    const lockedId = (await create()).json().id as string;
+    await prisma.gatheringFinanceYear.update({
+      where: { groupId_year: { groupId: group.id, year: group.financeYear.year } },
+      data: { status: 'CLOSED' },
+    });
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+      headers: auth(member.tokens.accessToken),
+    });
+    expect(listed.json().items[0].locked).toBe(true);
+    for (const method of ['PUT', 'DELETE'] as const) {
+      const result = await app.inject({
+        method,
+        url: `/api/gathering/groups/${group.id}/transactions/${lockedId}`,
+        headers: auth(owner.tokens.accessToken),
+        ...(method === 'PUT' ? { payload } : {}),
+      });
+      expect(result.statusCode).toBe(409);
+      expect(result.json().error.code).toBe('FINANCE_YEAR_CLOSED');
+    }
   });
 
   it('12월 24일 결제는 다음 회계연도이고, 마감된 해는 고칠 수 없다', async () => {

@@ -12,7 +12,10 @@ describe('drawer sections and permission gates', () => {
     const sections = drawerSections([{ id: 'a', name: '현재 모임', membershipStatus: 'ACTIVE' }], 'a', group(['MEMBER']));
     expect(sections.map((s) => s.title)).toEqual(['내 모임', '현재 모임', '전체']);
     expect(sections[0].items[0].selected).toBe(true);
-    expect(sections[0].items.slice(1).map((i) => i.href)).toEqual(['/(app)/groups', '/(app)/groups/create']);
+    expect(sections[0].items.slice(1)).toEqual([
+      { id: 'all-groups', label: '모든 모임 보기', href: '/(app)/groups', icon: 'albums-outline' },
+      { id: 'create', label: '모임 만들기', href: '/(app)/groups/create', icon: 'add-outline' },
+    ]);
     expect(sections[2].items.map((i) => i.label)).toEqual(['전체 일정']);
     expect(drawerSections([], 'b', group(['PRESIDENT']))).toHaveLength(2);
   });

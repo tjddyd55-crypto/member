@@ -83,7 +83,7 @@ export type DrawerItem = {
   id: string;
   label: string;
   href: string;
-  icon?: 'settings-outline' | 'shield-checkmark-outline' | 'people-outline' | 'swap-horizontal-outline' | 'calendar-outline' | 'add-outline';
+  icon?: 'settings-outline' | 'shield-checkmark-outline' | 'people-outline' | 'swap-horizontal-outline' | 'calendar-outline' | 'add-outline' | 'albums-outline';
   selected?: boolean;
 };
 
@@ -107,8 +107,8 @@ export function drawerSections(groups: readonly GatheringSwitchTarget[], current
   const sections: { id: string; title: string; items: DrawerItem[] }[] = [
     { id: 'groups', title: '내 모임', items: [
       ...gatheringSwitchItems(groups, currentId),
-      { id: 'all-groups', label: '모든 모임 보기', href: '/(app)/groups' },
-      { id: 'create', label: '+ 모임 만들기', href: '/(app)/groups/create', icon: 'add-outline' },
+      { id: 'all-groups', label: '모든 모임 보기', href: '/(app)/groups', icon: 'albums-outline' },
+      { id: 'create', label: '모임 만들기', href: '/(app)/groups/create', icon: 'add-outline' },
     ] },
   ];
   if (currentId && group?.id === currentId) sections.push({ id: 'current', title: group.name, items: groupMenuItems(group, actions) });

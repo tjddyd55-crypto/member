@@ -15,6 +15,7 @@ export function UploadLinkPanel(props: Target & { compact?: boolean }) {
   const eventId = props.eventId;
   const folderId = props.folderId;
   const scope = eventId ? { eventId } : { folderId: folderId ?? '' };
+  const [expanded, setExpanded] = useState(false);
   const [items, setItems] = useState<UploadLinkView[]>([]);
   const [fresh, setFresh] = useState<{ id: string; url: string } | null>(null);
   const freshRef = useRef(fresh);
@@ -81,9 +82,15 @@ export function UploadLinkPanel(props: Target & { compact?: boolean }) {
     }
   };
 
+  if (props.compact && !expanded)
+    return <Button label="업로드 링크" variant="text" onPress={() => setExpanded(true)} />;
   return (
     <View style={{ gap: theme.space[8] }}>
-      <Button label="업로드 링크 만들기" variant="secondary" onPress={() => void create()} />
+      <Button
+        label="업로드 링크 만들기"
+        variant={props.compact ? 'text' : 'secondary'}
+        onPress={() => void create()}
+      />
       {fresh ? (
         <>
           <Text selectable style={{ color: theme.colors.text.primary }}>

@@ -18,7 +18,7 @@ import { downloadFileName } from '../../../gathering-mobile/src/features/media/v
 
 describe('행사 상세 조회 로직', () => {
   it('탭은 요청된 세 개이며 알 수 없는 링크는 안내 탭을 연다', () => {
-    expect(EVENT_TABS.map(([, label]) => label)).toEqual(['안내·참석', '사진·영상', '재무·영수증']);
+    expect(EVENT_TABS.map(([, label]) => label)).toEqual(['안내', '갤러리', '회계']);
     expect(initialEventTab('finance')).toBe('finance');
     expect(initialEventTab('media')).toBe('media');
     expect(initialEventTab(['finance'])).toBe('info');
@@ -144,13 +144,13 @@ describe('행사 상세 조회 로직', () => {
     expect(eventMapQuery(null)).toBe('');
     expect(eventMapQuery('회의실\r\n서울시 중구\r\n3층')).toBe('서울시 중구 3층');
   });
-  it.each([256, 296, 359, 360, 366, 480])(
-    '그리드 폭 %ipx에서는 3~4개 셀이 간격까지 들어간다',
+  it.each([256, 296, 359, 360, 390, 430, 600, 768])(
+    '그리드 폭 %ipx에서는 3개 이상의 셀이 간격까지 들어간다',
     (width) => {
       const { columns, cellSize } = mediaGridLayout(width);
-      expect(columns).toBe(width >= 360 ? 4 : 3);
-      expect(columns * cellSize + (columns - 1) * 8).toBeLessThanOrEqual(width);
-      expect((columns + 1) * cellSize + columns * 8).toBeGreaterThan(width);
+      expect(columns).toBe(Math.max(3, Math.floor(width / 130)));
+      expect(columns * cellSize + (columns - 1) * 3).toBeLessThanOrEqual(width);
+      expect((columns + 1) * cellSize + columns * 3).toBeGreaterThan(width);
     },
   );
   it.each([1, 1.3, 2])(

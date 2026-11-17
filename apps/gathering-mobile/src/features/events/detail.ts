@@ -1,7 +1,7 @@
 export const EVENT_TABS = [
-  ['info', '안내·참석'],
-  ['media', '사진·영상'],
-  ['finance', '재무·영수증'],
+  ['info', '안내'],
+  ['media', '갤러리'],
+  ['finance', '회계'],
 ] as const;
 export type EventTab = (typeof EVENT_TABS)[number][0];
 export const ATTENDANCE_OPTIONS = [

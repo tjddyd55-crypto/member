@@ -392,6 +392,15 @@ export type GatheringAlbumEvent = {
   videoCount: number;
 };
 
+export type GatheringAlbumFolder = {
+  folderId: string;
+  title: string;
+  createdAt: string;
+  photoCount: number;
+  videoCount: number;
+  canManage: boolean;
+};
+
 export type GatheringAlbumYear = {
   year: number;
   photoCount: number;
@@ -443,7 +452,13 @@ export type GatheringFinanceSummary = {
   duesWon: number;
   years: Array<{ year: number; status: string; startsAt: string; endsAt: string }>;
   dues: GatheringDueView[];
-  events: Array<{ eventId: string; title: string; incomeWon: number; expenseWon: number; netWon: number }>;
+  events: Array<{
+    eventId: string;
+    title: string;
+    incomeWon: number;
+    expenseWon: number;
+    netWon: number;
+  }>;
 };
 
 export type GatheringStorageUsage = {

@@ -1,5 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { router, useGlobalSearchParams, usePathname } from 'expo-router';
@@ -27,8 +35,11 @@ export function useUnderAppChrome() {
 export function AppChrome({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
+  const eventDetail =
+    /\/groups\/[^/]+\/events\/[^/]+$/.test(pathname) && !pathname.endsWith('/new');
   const params = useGlobalSearchParams<{ groupId?: string }>();
-  const groupId = typeof params.groupId === 'string' && params.groupId !== 'create' ? params.groupId : undefined;
+  const groupId =
+    typeof params.groupId === 'string' && params.groupId !== 'create' ? params.groupId : undefined;
   const [namedGroup, setNamedGroup] = useState<{ id: string; name: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<GatheringGroupSummary[]>([]);
@@ -75,33 +86,77 @@ export function AppChrome({ children }: { children: ReactNode }) {
   return (
     <ChromeContext.Provider value>
       <View style={styles.root}>
-        <View style={[styles.bar, { paddingTop: insets.top }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="메뉴"
-            accessibilityState={{ expanded: open }}
-            onPress={showMenu}
-            style={styles.menuButton}
-          >
-            <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
-          </Pressable>
-          <Text accessibilityRole="header" numberOfLines={2} style={styles.title}>
-            {title}
-          </Text>
-        </View>
+        {eventDetail ? (
+          <View style={{ height: insets.top }} />
+        ) : (
+          <View style={[styles.bar, { paddingTop: insets.top, paddingLeft: theme.layout.horizontalGutter + insets.left, paddingRight: theme.layout.horizontalGutter + insets.right }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="메뉴"
+              accessibilityState={{ expanded: open }}
+              onPress={showMenu}
+              style={styles.menuButton}
+            >
+              <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
+            </Pressable>
+            <Text accessibilityRole="header" numberOfLines={2} style={styles.title}>
+              {title}
+            </Text>
+          </View>
+        )}
         <View style={styles.body}>{children}</View>
-        <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Modal
+          transparent
+          visible={open}
+          animationType="fade"
+          onRequestClose={() => setOpen(false)}
+        >
           <View style={styles.drawerRow}>
-            <View style={[styles.drawer, { width: Math.min(320, Math.round(width * 0.86)), paddingTop: insets.top }]}>
-              <Pressable accessibilityRole="button" accessibilityLabel="메뉴 닫기" onPress={() => setOpen(false)} style={styles.close}>
+            <View
+              style={[
+                styles.drawer,
+                { width: Math.min(320, width - 2 * theme.layout.horizontalGutter), paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left },
+              ]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="메뉴 닫기"
+                onPress={() => setOpen(false)}
+                style={styles.close}
+              >
                 <Text style={styles.closeLabel}>닫기</Text>
               </Pressable>
               <ScrollView style={styles.menuScroll} contentContainerStyle={styles.menuContent}>
                 {GLOBAL_MENU_ROUTES.map((item) => (
-                  <Pressable key={item.id} accessibilityRole="button" onPress={() => go(item.href)} style={styles.item}>
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="button"
+                    onPress={() => go(item.href)}
+                    style={styles.item}
+                  >
                     <Text style={styles.itemLabel}>{item.label}</Text>
                   </Pressable>
                 ))}
+                {groupId
+                  ? [
+                      ['settings', '모임 설정'],
+                      ['manage', '관리'],
+                      ['officers', '집행부'],
+                      ['handover', '차기 협의회장 인계'],
+                    ].map(([route, label]) => (
+                      <Pressable
+                        key={route}
+                        accessibilityRole="button"
+                        style={styles.item}
+                        onPress={() => {
+                          setOpen(false);
+                          router.push(`/(app)/groups/${groupId}/${route}` as '/(app)/groups');
+                        }}
+                      >
+                        <Text style={styles.itemLabel}>{label}</Text>
+                      </Pressable>
+                    ))
+                  : null}
                 {gatheringSwitchItems(groups, groupId).map((item) => (
                   <Pressable
                     key={item.id}
@@ -117,7 +172,12 @@ export function AppChrome({ children }: { children: ReactNode }) {
                 ))}
               </ScrollView>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="메뉴 닫기" style={styles.backdrop} onPress={() => setOpen(false)} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="메뉴 닫기"
+              style={styles.backdrop}
+              onPress={() => setOpen(false)}
+            />
           </View>
         </Modal>
       </View>
@@ -140,6 +200,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg.default },
   body: { flex: 1 },
   bar: {
+    paddingHorizontal: theme.layout.horizontalGutter,
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
@@ -155,7 +216,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    marginRight: theme.space[16],
+    marginRight: 0,
     fontSize: 17,
     lineHeight: 22,
     fontWeight: '700',
@@ -169,13 +230,13 @@ const styles = StyleSheet.create({
   close: {
     minHeight: theme.layout.buttonMinHeight,
     justifyContent: 'center',
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   closeLabel: { fontSize: 16, color: theme.colors.text.primary },
   item: {
     minHeight: theme.layout.buttonMinHeight,
     justifyContent: 'center',
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   itemLabel: { fontSize: 16, lineHeight: 22, color: theme.colors.text.primary },
 });

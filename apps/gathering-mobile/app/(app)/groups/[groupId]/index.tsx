@@ -1,9 +1,22 @@
 import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
-import { useCallback, useEffect, useState, type ComponentProps } from 'react';
-import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
+import {
+  Linking,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import type { GatheringGroupDetail, GatheringMemberView } from '@member/contracts';
+import type {
+  GatheringEventView,
+  GatheringOfficerView,
+  GatheringGroupDetail,
+  GatheringMemberView,
+} from '@member/contracts';
 import { api } from '../../../../src/api/client';
 import { GroupFinancePane } from '../../../../src/features/finance/FinancePanes';
 import { AlbumsPane } from '../../../../src/features/media/AlbumsPane';
@@ -17,9 +30,17 @@ import {
   Screen,
   TextField,
 } from '../../../../src/design/ui';
-import { visibleRoleLabels } from '../../../../src/copy';
+import { roleLabel } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
-import { handoverInProgress } from '../../../../src/features/media/upload-block';
+import { formatEventDateTime } from '../../../../src/features/schedule/range';
+import { CompactMemberRow } from '../../../../src/features/group/CompactMemberRow';
+import {
+  MemberPickerSheet,
+  type AssignableRole,
+} from '../../../../src/features/group/MemberPickerSheet';
+import { RoleChooserSheet } from '../../../../src/features/group/RoleChooserSheet';
+import { useToast } from '../../../../src/design/toast';
+import { phoneDigits } from '../../../../src/utils/phone';
 import { theme } from '../../../../src/theme';
 
 type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
@@ -29,7 +50,7 @@ const TABS: Array<{ id: Tab; label: string; icon: ComponentProps<typeof Ionicons
   { id: 'members', label: '회원', icon: 'people' },
   { id: 'schedule', label: '일정', icon: 'calendar' },
   { id: 'photos', label: '사진', icon: 'images' },
-  { id: 'finance', label: '재무', icon: 'wallet' },
+  { id: 'finance', label: '회계', icon: 'wallet' },
 ];
 
 export default function GroupDetailScreen() {
@@ -59,34 +80,43 @@ export default function GroupDetailScreen() {
   }, [load]);
 
   return (
-    <Screen scroll={tab !== 'schedule'}>
+    <Screen
+      scroll={tab !== 'schedule'}
+      scrollKey={tab}
+      footer={
+        <View style={styles.tabs}>
+          {TABS.map((item) => {
+            const selected = tab === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="tab"
+                accessibilityLabel={item.label}
+                accessibilityState={{ selected }}
+                onPress={() => setTab(item.id)}
+                style={[styles.tab, selected && styles.tabOn]}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={iconSize}
+                  color={selected ? '#FFFFFF' : '#1B3A6B'}
+                />
+                <Text
+                  style={[styles.tabLabel, { fontSize: labelSize }, selected && styles.tabOnText]}
+                  numberOfLines={1}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      }
+    >
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' && group ? (
         <>
-          <Body>
-            {group.financeYear ? `${group.financeYear.year} 회계연도` : '회계연도 없음'} · 협의회장{' '}
-            {group.president?.displayName ?? '미정'}
-          </Body>
-          <View style={styles.tabs}>
-            {TABS.map((item) => {
-              const selected = tab === item.id;
-              return (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected }}
-                  onPress={() => setTab(item.id)}
-                  style={[styles.tab, selected && styles.tabOn]}
-                >
-                  <Ionicons name={item.icon} size={iconSize} color={selected ? '#FFFFFF' : '#1B3A6B'} />
-                  <Text style={[styles.tabLabel, { fontSize: labelSize }, selected && styles.tabOnText]} numberOfLines={1}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
           {tab === 'home' ? <HomePane group={group} /> : null}
           {tab === 'members' ? <MembersPane groupId={group.id} /> : null}
           {tab === 'schedule' ? (
@@ -106,91 +136,69 @@ export default function GroupDetailScreen() {
 }
 
 function HomePane({ group }: { group: GatheringGroupDetail }) {
-  const [handoverPrompt, setHandoverPrompt] = useState<string | null>(null);
-  const [nextEvent, setNextEvent] = useState('다음 행사 없음');
-  const [recentEvent, setRecentEvent] = useState('최근 행사 없음');
-  const [recentPhotos, setRecentPhotos] = useState('최근 사진 없음');
-  const [money, setMoney] = useState('');
-
-  useEffect(() => {
-    void api
-      .handover(group.id)
-      .then((view) => {
-        if (view.actions.accept) setHandoverPrompt('차기 협의회장으로 지명되었습니다. 인계를 확인해 주세요.');
-        else if (handoverInProgress(view.handover?.status)) setHandoverPrompt('진행 중인 인계가 있습니다.');
-        else if (view.actions.nominate) setHandoverPrompt(null);
-        else setHandoverPrompt(null);
-      })
-      .catch(() => setHandoverPrompt(null));
-  }, [group.id]);
-
+  const [nextEvent, setNextEvent] = useState<GatheringEventView | null>(null);
+  const [officers, setOfficers] = useState<GatheringOfficerView[]>([]);
+  const [error, setError] = useState('');
   const readHome = useCallback(async () => {
-    const now = Date.now();
-    const span = 400 * 24 * 60 * 60 * 1000;
-    const nowIso = new Date(now).toISOString();
+    setError('');
     await Promise.all([
-      Promise.all([
-        api.events(group.id, nowIso, new Date(now + span).toISOString(), { order: 'asc', status: 'SCHEDULED' }),
-        api.events(group.id, new Date(now - span).toISOString(), nowIso, { order: 'desc', status: 'SCHEDULED' }),
-      ]).then(([upcoming, past]) => {
-        setNextEvent(upcoming.items[0]?.title ?? '다음 행사 없음');
-        setRecentEvent(past.items[0]?.title ?? '최근 행사 없음');
-      }).catch(() => undefined),
-      api.albums(group.id).then((result) => {
-        const album = result.events[0];
-        setRecentPhotos(album ? `${album.title} · 사진 ${album.photoCount} · 영상 ${album.videoCount}` : '최근 사진 없음');
-      }).catch(() => undefined),
-      api.finance(group.id).then((summary) => {
-        setMoney(`기초 ${summary.openingBalanceWon.toLocaleString('ko-KR')}원 · 수입 ${summary.incomeWon.toLocaleString('ko-KR')}원 · 지출 ${summary.expenseWon.toLocaleString('ko-KR')}원 · 잔액 ${summary.balanceWon.toLocaleString('ko-KR')}원`);
-      }).catch(() => undefined),
+      api
+        .events(group.id, new Date().toISOString(), '9999-12-31T23:59:59.999Z', {
+          order: 'asc',
+          status: 'SCHEDULED',
+        })
+        .then((page) => setNextEvent(page.items[0] ?? null))
+        .catch((caught: unknown) =>
+          setError(caught instanceof Error ? caught.message : '일정을 불러오지 못했습니다.'),
+        ),
+      api
+        .officers(group.id)
+        .then((result) => setOfficers(result.current.filter((item) => item.role !== 'PRESIDENT')))
+        .catch(() => setOfficers([])),
     ]);
   }, [group.id]);
   const refreshHome = useRefreshLoad(readHome);
   useInvalidatedRefresh(group.id, 'all', refreshHome);
-
   return (
     <View style={styles.stack}>
-      {group.description ? <Body>{group.description}</Body> : null}
-      <View style={styles.card}>
-        <Text style={styles.name}>내 역할</Text>
-        <Body>{visibleRoleLabels(group.roles)}</Body>
-        <Body>활동 회원 {group.memberCount}명</Body>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.name}>다음 행사</Text>
-        <Body>{nextEvent}</Body>
-      </View>
-      <View style={styles.cardQuiet}>
-        <Text style={styles.meta}>최근 행사</Text>
-        <Body>{recentEvent}</Body>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.name}>최근 사진</Text>
-        <Body>{recentPhotos}</Body>
-      </View>
-      {money ? (
+      <Text style={styles.meta}>{group.name}</Text>
+      <Text style={styles.name}>협의회장: {group.president?.displayName ?? '미정'}</Text>
+      {officers.length ? (
         <View style={styles.card}>
-          <Text style={styles.name}>재무 요약</Text>
-          <Body>{money}</Body>
+          <Text style={styles.name}>임원진</Text>
+          {officers.map((officer) => (
+            <Body key={officer.assignmentId}>
+              {roleLabel(officer.role, officer.title)} · {officer.displayName}
+            </Body>
+          ))}
         </View>
       ) : null}
-      {handoverPrompt ? (
-        <Button
-          label={handoverPrompt}
-          onPress={() => router.push(`/(app)/groups/${group.id}/handover`)}
-        />
-      ) : null}
-<Button
-        label="모임 설정"
-        variant="secondary"
-        onPress={() => router.push(`/(app)/groups/${group.id}/settings`)}
-      />
-      <Button label="관리" variant="secondary" onPress={() => router.push(`/(app)/groups/${group.id}/manage`)} />
+      <Text style={styles.name}>다음 행사</Text>
+      {error ? (
+        <ErrorState message={error} onRetry={() => void refreshHome()} />
+      ) : nextEvent ? (
+        <Pressable
+          accessibilityRole="button"
+          style={styles.card}
+          onPress={() => router.push(`/(app)/groups/${group.id}/events/${nextEvent.id}`)}
+        >
+          <Body>{formatEventDateTime(nextEvent.startsAt)}</Body>
+          <Text style={styles.name}>{nextEvent.title}</Text>
+        </Pressable>
+      ) : (
+        <Body>예정된 행사가 없습니다</Body>
+      )}
     </View>
   );
 }
 
 function MembersPane({ groupId }: { groupId: string }) {
+  const [canAssign, setCanAssign] = useState(false);
+  const [titles, setTitles] = useState<string[]>([]);
+  const [roleMember, setRoleMember] = useState<GatheringMemberView | null>(null);
+  const [target, setTarget] = useState<AssignableRole | null>(null);
+  const toast = useToast();
+  const [memberMenu, setMemberMenu] = useState<GatheringMemberView | null>(null);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<GatheringMemberView[]>([]);
   const [selfId, setSelfId] = useState<string | null>(null);
@@ -198,14 +206,32 @@ function MembersPane({ groupId }: { groupId: string }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
+  const requestVersion = useRef(0);
   const load = useCallback(
     async (q?: string) => {
+      const version = ++requestVersion.current;
       setStatus('loading');
       try {
         const result = await api.members(groupId, 'ACTIVE', q);
+        if (version !== requestVersion.current) return;
+        const group = await api.group(groupId);
+        if (version !== requestVersion.current) return;
         setItems(result.items);
+        setCanAssign(group.permissions.includes('ROLE_ASSIGN'));
+        if (group.permissions.includes('ROLE_ASSIGN')) {
+          const officers = await api.officers(groupId);
+          if (version !== requestVersion.current) return;
+          setTitles([
+            ...new Set(
+              officers.current
+                .filter((item) => item.role === 'EXECUTIVE')
+                .map((item) => item.title ?? '집행부'),
+            ),
+          ]);
+        }
         setStatus('ready');
       } catch (error) {
+        if (version !== requestVersion.current) return;
         setMessage(error instanceof Error ? error.message : '명부를 불러오지 못했습니다.');
         setStatus('error');
       }
@@ -214,8 +240,18 @@ function MembersPane({ groupId }: { groupId: string }) {
   );
 
   useEffect(() => {
-    void load();
-    void api.me().then((me) => setSelfId(me.user.id)).catch(() => setSelfId(null));
+    const timer = setTimeout(() => void load(query.trim() || undefined), 300);
+    return () => {
+      clearTimeout(timer);
+      requestVersion.current += 1;
+    };
+  }, [load, query]);
+
+  useEffect(() => {
+    void api
+      .me()
+      .then((me) => setSelfId(me.user.id))
+      .catch(() => setSelfId(null));
   }, [load]);
 
   const block = async (userId: string) => {
@@ -233,50 +269,141 @@ function MembersPane({ groupId }: { groupId: string }) {
       <TextField
         label="회원 검색"
         value={query}
-        onChangeText={setQuery}
-        onSubmitEditing={() => void load(query)}
+        onChangeText={(value) => {
+          requestVersion.current += 1;
+          setQuery(value);
+        }}
       />
-      <Button label="검색" variant="secondary" onPress={() => void load(query)} />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? (
         <ErrorState message={message} onRetry={() => void load(query)} />
       ) : null}
-      {status === 'ready' && items.length === 0 ? (
-        <EmptyState title="회원이 없습니다" description="초대 링크로 회원을 받으세요." />
-      ) : null}
+      {status === 'ready' && items.length === 0 ? <EmptyState title="회원이 없습니다" /> : null}
       {blockError ? <Body>{blockError}</Body> : null}
       {items.map((member) => (
-        <View key={member.membershipId} style={styles.card}>
-          <Text style={styles.name}>{member.displayName}</Text>
-          <Text style={styles.meta}>{member.localJcName || '소속 없음'}</Text>
-          <Text style={styles.meta}>
-            {visibleRoleLabels(member.roles)}
-          </Text>
-          {member.userId === selfId ? null : (
-            <Button label="차단" variant="text" onPress={() => void block(member.userId)} />
+        <CompactMemberRow key={member.membershipId} member={member}>
+          {member.phone
+            ? (['전화', '문자'] as const).map((label) => (
+                <Pressable
+                  key={label}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${member.displayName} ${label}`}
+                  style={styles.contactButton}
+                  onPress={() =>
+                    void Linking.openURL(
+                      `${label === '전화' ? 'tel' : 'sms'}:${phoneDigits(member.phone ?? '')}`,
+                    )
+                  }
+                >
+                  <Text style={styles.contactLabel}>{label}</Text>
+                </Pressable>
+              ))
+            : null}
+          {member.userId === selfId && !canAssign ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${member.displayName} 메뉴`}
+              style={styles.memberMenu}
+              onPress={() => setMemberMenu(member)}
+            >
+              <Text style={styles.memberName}>⋯</Text>
+            </Pressable>
           )}
-          {member.phone ? (
-            <View style={styles.row}>
-              <Button
-                label="전화"
-                variant="secondary"
-                onPress={() => void Linking.openURL(`tel:${member.phone}`)}
-              />
-              <Button
-                label="문자"
-                variant="secondary"
-                onPress={() => void Linking.openURL(`sms:${member.phone}`)}
-              />
-            </View>
-          ) : null}
-        </View>
+        </CompactMemberRow>
       ))}
+      {roleMember && !target && canAssign ? (
+        <RoleChooserSheet
+          titles={titles}
+          onClose={() => setRoleMember(null)}
+          onChoose={setTarget}
+        />
+      ) : null}
+      {roleMember && target && canAssign ? (
+        <MemberPickerSheet
+          members={items}
+          fixedMember={roleMember}
+          target={target}
+          onClose={() => {
+            setRoleMember(null);
+            setTarget(null);
+          }}
+          onAssign={async (member, role) => {
+            await api.assignOfficer(groupId, {
+              userId: member.userId,
+              role: role.role,
+              title: role.title,
+            });
+            setRoleMember(null);
+            setTarget(null);
+            await load(query);
+            toast('저장되었습니다');
+          }}
+        />
+      ) : null}
+      {memberMenu ? (
+        <Modal transparent visible animationType="fade" onRequestClose={() => setMemberMenu(null)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="메뉴 닫기"
+            style={styles.menuBackdrop}
+            onPress={() => setMemberMenu(null)}
+          >
+            <View style={styles.memberActions}>
+              {canAssign ? (
+                <Button
+                  label="직책 지정"
+                  variant="text"
+                  onPress={() => {
+                    setRoleMember(memberMenu);
+                    setTarget(null);
+                    setMemberMenu(null);
+                  }}
+                />
+              ) : null}
+              <Button
+                label="차단"
+                variant="text"
+                onPress={() => {
+                  const userId = memberMenu.userId;
+                  setMemberMenu(null);
+                  void block(userId);
+                }}
+              />
+              <Button label="취소" variant="text" onPress={() => setMemberMenu(null)} />
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', flexWrap: 'nowrap', width: '100%' },
+  memberName: { fontSize: 14, fontWeight: '600', color: theme.colors.text.primary },
+  contactButton: {
+    minHeight: 36,
+    paddingHorizontal: 7,
+    justifyContent: 'center',
+    borderRadius: 6,
+    backgroundColor: theme.colors.primary.soft,
+  },
+  contactLabel: { fontSize: 12, color: theme.colors.primary.default },
+  memberMenu: { width: 32, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  menuBackdrop: {
+    flex: 1,
+    padding: theme.layout.horizontalGutter,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  memberActions: { padding: 12, borderRadius: 12, backgroundColor: theme.colors.bg.default },
+  tabs: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    width: '100%',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border.default,
+    backgroundColor: theme.colors.bg.default,
+  },
   tab: {
     flex: 1,
     minWidth: 0,
@@ -292,14 +419,14 @@ const styles = StyleSheet.create({
   stack: { gap: theme.space[12] },
   card: {
     gap: theme.space[8],
-    padding: theme.space[16],
+    padding: theme.space[12],
     borderRadius: theme.radius[12],
     backgroundColor: theme.colors.bg.subtle,
   },
   cardQuiet: {
     gap: theme.space[4],
     paddingVertical: theme.space[8],
-    paddingHorizontal: theme.space[16],
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   row: { flexDirection: 'row', gap: theme.space[8], alignItems: 'center' },
   name: { ...theme.typography.cardTitle, color: theme.colors.text.primary },

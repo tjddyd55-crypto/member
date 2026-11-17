@@ -165,8 +165,9 @@ describe('행사 사진·영상', () => {
       const albums = await get('/albums');
       expect(
         albums.events.find((row: { eventId: string }) => row.eventId === event.id),
-      ).toMatchObject({ photoCount: photos, videoCount: videos });
+      ).toMatchObject({ photoCount: photos, videoCount: videos, startsAt: '2026-04-01T00:00:00.000Z' });
       expect(albums.folders[0]).toMatchObject({
+        createdAt: folder.createdAt.toISOString(),
         photoCount: photos,
         videoCount: videos,
         canManage: true,

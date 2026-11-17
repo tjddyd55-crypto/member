@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import type { GatheringMemberView, GatheringOfficerTermView, GatheringOfficerView } from '@member/contracts';
+import type {
+  GatheringMemberView,
+  GatheringOfficerTermView,
+  GatheringOfficerView,
+} from '@member/contracts';
 import { api } from '../../../../src/api/client';
 import { roleLabel } from '../../../../src/copy';
-import { Body, Button, ErrorState, LoadingState, Screen, TextField, Title } from '../../../../src/design/ui';
+import { Body, Button, ErrorState, LoadingState, Screen, Title } from '../../../../src/design/ui';
+import {
+  MemberPickerSheet,
+  officerRoles,
+  type AssignableRole,
+} from '../../../../src/features/group/MemberPickerSheet';
+import { RoleChooserSheet } from '../../../../src/features/group/RoleChooserSheet';
+import { useToast } from '../../../../src/design/toast';
 import { theme } from '../../../../src/theme';
 
 export default function OfficersScreen() {
@@ -18,8 +29,14 @@ export default function OfficersScreen() {
   const [handoverEntry, setHandoverEntry] = useState(false);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
-  const [userId, setUserId] = useState('');
-  const [title, setTitle] = useState('');
+  const [target, setTarget] = useState<AssignableRole | null>(null);
+  const [adding, setAdding] = useState(false);
+  const toast = useToast();
+  const titles = [
+    ...new Set(
+      current.filter((item) => item.role === 'EXECUTIVE').map((item) => item.title ?? '집행부'),
+    ),
+  ];
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -39,11 +56,11 @@ export default function OfficersScreen() {
       setHandoverEntry(
         Boolean(
           handover &&
-            (handover.actions.accept ||
-              handover.actions.confirm ||
-              handover.actions.finalize ||
-              handover.actions.cancel ||
-              handover.actions.nominate),
+          (handover.actions.accept ||
+            handover.actions.confirm ||
+            handover.actions.finalize ||
+            handover.actions.cancel ||
+            handover.actions.nominate),
         ),
       );
       setStatus('ready');
@@ -57,62 +74,114 @@ export default function OfficersScreen() {
     void load();
   }, [load]);
 
-  const assign = async (role: 'SECRETARY' | 'TREASURER' | 'EXECUTIVE') => {
-    setError(null);
-    try {
-      await api.assignOfficer(groupId, { userId, role, title: title || undefined });
-      setTitle('');
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '역할을 지정하지 못했습니다.');
-    }
+  const assign = async (member: GatheringMemberView, role: AssignableRole) => {
+    await api.assignOfficer(groupId, { userId: member.userId, role: role.role, title: role.title });
+    setTarget(null);
+    await load();
+    toast('저장되었습니다');
   };
 
   return (
     <Screen>
       <Title>집행부</Title>
-      <Button label="모임으로" variant="text" onPress={() => router.replace(`/(app)/groups/${groupId}`)} />
+      <Button
+        label="모임으로"
+        variant="text"
+        onPress={() => router.replace(`/(app)/groups/${groupId}`)}
+      />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' ? (
         <>
-          <Body>현재</Body>
-          {current.map((officer) => (
-            <View key={officer.assignmentId} style={{ gap: 4 }}>
-              <Text style={{ color: theme.colors.text.primary }}>
-                {officer.displayName} · {roleLabel(officer.role, officer.title)}
-              </Text>
-              {canAssign && officer.role !== 'PRESIDENT' ? (
-                <Button
-                  label="해임"
-                  variant="secondary"
-                  onPress={() => void api.revokeOfficer(groupId, officer.assignmentId).then(load)}
-                />
-              ) : null}
-            </View>
-          ))}
+          {[
+            { role: 'PRESIDENT' as const, label: '협의회장', title: undefined },
+            ...officerRoles(titles),
+          ].map((row) => {
+            const holders = current.filter(
+              (item) =>
+                item.role === row.role &&
+                (row.role !== 'EXECUTIVE' || (item.title ?? '집행부') === row.title),
+            );
+            return (
+              <View
+                key={`${row.role}:${row.title ?? ''}`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                  <Body>{row.label}</Body>
+                  {holders.length ? (
+                    holders.map((officer) => (
+                      <View
+                        key={officer.assignmentId}
+                        style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}
+                      >
+                        <Text style={{ color: theme.colors.text.primary }}>
+                          {officer.displayName}
+                        </Text>
+                        {canAssign && officer.role !== 'PRESIDENT' ? (
+                          <Button
+                            label="해임"
+                            variant="text"
+                            onPress={() => {
+                              setError(null);
+                              void api
+                                .revokeOfficer(groupId, officer.assignmentId)
+                                .then(async () => {
+                                  await load();
+                                  toast('저장되었습니다');
+                                })
+                                .catch((caught: unknown) =>
+                                  setError(
+                                    caught instanceof Error
+                                      ? caught.message
+                                      : '해임하지 못했습니다.',
+                                  ),
+                                );
+                            }}
+                          />
+                        ) : null}
+                      </View>
+                    ))
+                  ) : (
+                    <Body>—</Body>
+                  )}
+                </View>
+                {row.role === 'PRESIDENT' ? (
+                  canHandover || handoverEntry ? (
+                    <Button
+                      label="인계"
+                      variant="text"
+                      onPress={() => router.push(`/(app)/groups/${groupId}/handover`)}
+                    />
+                  ) : null
+                ) : canAssign ? (
+                  <Button label="임명" variant="text" onPress={() => setTarget(row)} />
+                ) : null}
+              </View>
+            );
+          })}
           {canAssign ? (
-            <>
-              <Body>회원 이름에서 고릅니다. 협의회장 역할은 인계 절차에서만 바뀝니다.</Body>
-              {members.map((member) => (
-                <Button
-                  key={member.userId}
-                  label={`${member.displayName} 선택`}
-                  variant={userId === member.userId ? 'primary' : 'text'}
-                  onPress={() => setUserId(member.userId)}
-                />
-              ))}
-              <TextField label="추가 집행부 직함" value={title} onChangeText={setTitle} />
-              <Button label="총무 지정" onPress={() => void assign('SECRETARY')} />
-              <Button label="재무 지정" variant="secondary" onPress={() => void assign('TREASURER')} />
-              <Button label="추가 집행부 지정" variant="secondary" onPress={() => void assign('EXECUTIVE')} />
-              {error ? <Body>{error}</Body> : null}
-            </>
-          ) : (
-            <Body>역할 변경은 협의회장만 할 수 있습니다.</Body>
-          )}
-          {canHandover || handoverEntry ? (
-            <Button label="차기 협의회장 인계" onPress={() => router.push(`/(app)/groups/${groupId}/handover`)} />
+            <Button label="+ 직책 추가" variant="text" onPress={() => setAdding(true)} />
+          ) : null}
+          {error ? <Body>{error}</Body> : null}
+          {adding && canAssign ? (
+            <RoleChooserSheet
+              titles={titles}
+              addOnly
+              onClose={() => setAdding(false)}
+              onChoose={(role) => {
+                setAdding(false);
+                setTarget(role);
+              }}
+            />
+          ) : null}
+          {target && canAssign ? (
+            <MemberPickerSheet
+              members={members}
+              target={target}
+              onClose={() => setTarget(null)}
+              onAssign={assign}
+            />
           ) : null}
           <Body>역대</Body>
           {history.map((term) => (

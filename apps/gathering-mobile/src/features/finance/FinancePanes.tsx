@@ -1,6 +1,7 @@
+import { useAppAlert } from '../../design/dialog';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 import type {
@@ -84,7 +85,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
         <MoneyCard label="전체 지출" value={summary.expenseWon} />
         <MoneyCard label="현재 잔액" value={summary.balanceWon} />
       </View>
-      <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원. 회비는 행사 장부에 다시 넣지 않습니다.`}</Body>
+      <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원`}</Body>
       <View style={styles.years}>
         {summary.years.map((item) => {
           const selected = item.year === summary.year;
@@ -106,7 +107,6 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
           );
         })}
       </View>
-      {closed ? <Notice>마감된 회계연도는 조회만 됩니다.</Notice> : null}
       <View style={styles.segment}>
         <Pressable
           accessibilityRole="tab"
@@ -131,10 +131,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
       </View>
       {tab === 'events' ? (
         summary.events.length === 0 ? (
-          <EmptyState
-            title="기록된 행사가 없습니다"
-            description="행사 화면에서 수입과 지출을 남깁니다."
-          />
+          <EmptyState title="기록된 행사가 없습니다" />
         ) : (
           summary.events.map((event) => (
             <Text key={event.eventId} style={styles.line}>
@@ -145,12 +142,7 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
         )
       ) : (
         <>
-          {summary.dues.length === 0 ? (
-            <EmptyState
-              title="회비가 없습니다"
-              description="이름으로 회원을 찾아 청구액과 납부액을 남깁니다."
-            />
-          ) : null}
+          {summary.dues.length === 0 ? <EmptyState title="회비가 없습니다" /> : null}
           {summary.dues.map((due) => (
             <Text key={due.id} style={styles.line}>
               {due.displayName} · {dueLabel(due.status)} · {WON.format(due.paidAmountWon)}/
@@ -274,6 +266,7 @@ export function EventFinancePane({
   startsAt: string;
   active?: boolean;
 }) {
+  const { alert, dialog } = useAppAlert();
   const toast = useToast();
   const [items, setItems] = useState<GatheringTransactionView[]>([]);
   const [receipts, setReceipts] = useState<GatheringReceiptView[]>([]);
@@ -325,7 +318,7 @@ export function EventFinancePane({
       setThumbs(Object.fromEntries(urls.filter((entry) => entry !== null)));
       setStatus('ready');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '재무를 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '회계를 불러오지 못했습니다.');
       setStatus('error');
     }
   }, [eventId, groupId]);
@@ -474,12 +467,14 @@ export function EventFinancePane({
   if (status === 'error')
     return (
       <View style={styles.stack}>
+      {!editing && !viewer ? dialog : null}
         <ErrorState message={message} onRetry={() => void load()} />
         {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
       </View>
     );
   return (
     <View style={styles.stack}>
+      {!editing && !viewer ? dialog : null}
       <View style={styles.eventSummary}>
         <EventMoney label="수입 합계" value={totals.incomeWon} />
         <EventMoney label="지출 합계" value={totals.expenseWon} />
@@ -495,7 +490,7 @@ export function EventFinancePane({
           disabled={!canWrite || saving}
           onPress={() => {
             if (item.locked) {
-              Alert.alert('안내', '마감된 회계연도의 거래는 수정·삭제할 수 없습니다.');
+              alert('안내', '마감된 회계연도의 거래는 수정·삭제할 수 없습니다.');
               return;
             }
             setSelectedTransaction(item);
@@ -544,6 +539,7 @@ export function EventFinancePane({
           }}
         >
           <Screen modal>
+            {dialog}
             <Text style={styles.line}>
               {selectedTransaction ? '수입·지출 수정' : '수입·지출 추가'}
             </Text>
@@ -586,7 +582,7 @@ export function EventFinancePane({
                   opacity: saving || selectedTransaction.locked ? 0.4 : 1,
                 }}
                 onPress={() =>
-                  Alert.alert('이 거래를 삭제할까요?', undefined, [
+                  alert('이 거래를 삭제할까요?', undefined, [
                     { text: '취소', style: 'cancel' },
                     {
                       text: '삭제',
@@ -659,14 +655,11 @@ export function EventFinancePane({
         </>
       ) : null}
       {progress ? <Body>{progress}</Body> : null}
-      {eventYear === 'CLOSED' ? (
-        <Notice>행사 연도가 마감되어 영수증은 조회만 가능합니다.</Notice>
-      ) : null}
-      {eventYear === 'MISSING' && canAttach ? (
-        <Notice>행사 날짜에 해당하는 회계연도가 없어 영수증을 첨부할 수 없습니다.</Notice>
-      ) : null}
+      {eventYear === 'CLOSED' ? <Notice>마감</Notice> : null}
+      {eventYear === 'MISSING' && canAttach ? <Notice>회계연도 없음</Notice> : null}
       {viewer ? (
         <MediaViewer
+          overlay={dialog}
           kind="PHOTO"
           uri={viewer.uri}
           fileName={viewer.receipt.originalName ?? undefined}

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { theme } from '../../theme';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Image,
   Linking,
@@ -27,6 +28,7 @@ export type ViewerItem = {
 
 // A single-item invocation is retained for the existing receipt preview.
 export function MediaViewer(props: {
+  overlay?: ReactNode;
   uri?: string;
   kind?: 'PHOTO' | 'VIDEO';
   fileName?: string;
@@ -107,6 +109,7 @@ export function MediaViewer(props: {
     <Modal animationType="fade" visible onRequestClose={props.onClose}>
       <GestureHandlerRootView style={styles.backdrop}>
         <SafeAreaView style={styles.backdrop}>
+          {props.overlay}
           <View style={styles.toolbar}>
             <Text style={styles.label}>
               {index + 1} / {items.length}
@@ -296,14 +299,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingLeft: 20,
-    paddingRight: 4,
+    paddingHorizontal: theme.layout.horizontalGutter,
   },
   actions: { flexDirection: 'row' },
-  control: { padding: 12, minHeight: 48, minWidth: 48, alignItems: 'center' },
+  control: { padding: theme.space[8], minHeight: 48, minWidth: 48, alignItems: 'center' },
   label: { color: '#fff', fontSize: 16 },
   message: { color: '#fff', textAlign: 'center', padding: 8 },
   stage: { flex: 1, overflow: 'hidden' },
   photo: { width: '100%', height: '100%' },
-  playback: { flexDirection: 'row', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
+  playback: { paddingHorizontal: theme.layout.horizontalGutter, flexDirection: 'row', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
 });

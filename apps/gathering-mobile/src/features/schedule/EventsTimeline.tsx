@@ -6,7 +6,7 @@ import { api } from '../../api/client';
 import { EmptyState, ErrorState, LoadingState } from '../../design/ui';
 import { theme } from '../../theme';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
-import { formatEventDateTime } from './range';
+import { eventDateBlock } from './range';
 
 import {
   TimelinePageQueue,
@@ -108,8 +108,8 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
       style={styles.list}
       contentContainerStyle={styles.content}
       sections={[
-        { key: 'upcoming', title: '예정', data: pages.upcoming.items },
-        { key: 'past', title: '지난 일정', data: pages.past.items },
+        { key: 'upcoming', data: pages.upcoming.items },
+        { key: 'past', data: pages.past.items },
       ]}
       keyExtractor={(item) => item.id}
       stickySectionHeadersEnabled={false}
@@ -130,23 +130,37 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
         </View>
       }
       renderSectionHeader={({ section }) =>
-        section.data.length ? <Text style={styles.section}>{section.title}</Text> : null
+        section.key === 'past' && section.data.length ? (
+          <Text style={styles.section}>지난 일정</Text>
+        ) : null
       }
-      renderItem={({ item }) => (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push(`/(app)/groups/${item.groupId}/events/${item.id}`)}
-          style={styles.row}
-        >
-          <Text style={styles.date}>
-            {formatEventDateTime(item.startsAt)}
-            {item.status === 'CANCELLED' ? ' · 취소' : ''}
-          </Text>
-          <Text style={styles.title}>{item.title}</Text>
-          {!groupId ? <Text style={styles.date}>{item.groupName}</Text> : null}
-          {item.place ? <Text style={styles.date}>{item.place}</Text> : null}
-        </Pressable>
-      )}
+      renderItem={({ item, section }) => {
+        const block = eventDateBlock(item.startsAt);
+        const past = section.key === 'past';
+        return (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push(`/(app)/groups/${item.groupId}/events/${item.id}`)}
+            style={styles.row}
+          >
+            <View style={styles.dateBlock}>
+              {block.year ? <Text style={styles.date}>{block.year}</Text> : null}
+              <Text style={[styles.bigDate, past && styles.past]}>{block.date}</Text>
+              <Text style={[styles.date, past && styles.past]}>{block.time}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              <Text style={[styles.title, past && styles.past]}>{item.title}</Text>
+              {item.status === 'CANCELLED' ? <Text style={styles.date}>취소</Text> : null}
+              {!groupId ? <Text style={[styles.date, past && styles.past]}>{item.groupName}</Text> : null}
+              {item.place ? (
+                <Text numberOfLines={1} style={[styles.date, past && styles.past]}>
+                  {item.place}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
+        );
+      }}
       ListFooterComponent={paging ? <LoadingState /> : null}
     />
   );
@@ -155,12 +169,22 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   content: { paddingBottom: 120 },
   section: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border.default,
     ...theme.typography.bodySmall,
     color: theme.colors.text.secondary,
     paddingTop: theme.space[16],
     paddingBottom: theme.space[8],
   },
-  row: { gap: theme.space[4], paddingVertical: theme.space[8] },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space[16],
+    paddingVertical: theme.space[12],
+  },
+  dateBlock: { width: 94 },
+  bigDate: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: theme.colors.text.primary },
+  past: { color: theme.colors.text.disabled },
   title: { ...theme.typography.body, color: theme.colors.text.primary },
   date: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
 });

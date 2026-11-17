@@ -13,14 +13,13 @@ describe('사진 메뉴 폴더 관리', () => {
   ])('사진 %i 영상 %i 삭제 안내', (photoCount, videoCount, expected) => {
     expect(folderDeletePrompt({ photoCount, videoCount })).toBe(expected);
   });
-  it('선택된 업로드 대상에서만 버튼을 표시하고 업로드 차단·오류·재시도를 유지한다', () => {
+  it('최상위에는 업로드와 대상 선택 없이 폴더 만들기만 유지한다', () => {
     const albums = source('media/AlbumsPane.tsx');
-    expect(albums).toMatch(
-      /\{destination\s*\?\s*\(?\s*<>[\s\S]*?label="사진 올리기"[\s\S]*?label="영상 올리기"[\s\S]*?<\/>\s*\)?\s*:\s*null\}/,
-    );
-    expect(albums).toContain('Boolean(blockReason) || busy');
-    expect(albums).toContain('failedUploads.map');
-    expect(albums).toContain('if (!destination || blockReason) return');
+    expect(albums).not.toContain('사진 올리기');
+    expect(albums).not.toContain('영상 올리기');
+    expect(albums).not.toContain('setDestination');
+    expect(albums).not.toContain('ImagePicker');
+    expect(source('media/MediaPane.tsx')).toContain('사진 올리기');
     expect(albums).not.toContain('행사 만들기');
     expect(albums).not.toContain('/events/new');
     expect(albums).toContain('폴더 만들기');
@@ -42,10 +41,10 @@ describe('사진 메뉴 폴더 관리', () => {
       expect(albums).toContain(label);
     expect(albums).toContain('<Modal');
     expect(albums).not.toContain('Alert.prompt');
-    expect(albums).toContain('current.id === folder.folderId ? null : current');
+    expect(albums).toContain('deleteFolder(groupId, folder.folderId)');
     const events = albums.slice(
       albums.indexOf('{events.map('),
-      albums.indexOf('async function sendAlbumFiles'),
+      albums.indexOf('async function renameFolder'),
     );
     expect(events).not.toContain('canManage');
     expect(events).not.toContain('confirmDeleteFolder');

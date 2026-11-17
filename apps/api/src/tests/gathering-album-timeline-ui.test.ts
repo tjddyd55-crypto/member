@@ -8,16 +8,21 @@ const source = (path: string) =>
   readFileSync(new URL(`../../../gathering-mobile/${path}`, import.meta.url), 'utf8');
 
 describe('앨범·선택·연속 일정 UI', () => {
-  it('행사와 폴더 배지는 서로 다른 토큰을 쓰고 행사 날짜를 표시한다', () => {
+  it('행사와 폴더는 같은 카드와 제목·개수 구조를 쓰고 배지와 관리 메뉴만 다르다', () => {
     const albums = source('src/features/media/AlbumsPane.tsx');
     expect(albums).toContain('styles.eventBadge]}>행사');
     expect(albums).toContain('styles.folderBadge]}>폴더');
-    expect(albums).toContain('formatAlbumDate(event.startsAt)');
+    expect(albums).not.toContain('formatAlbumDate(event.startsAt)');
+    expect(albums.match(/style=\{styles.card\}/g)).toHaveLength(2);
+    expect(albums.match(/style=\{styles.heading\}/g)).toHaveLength(2);
+    expect(albums).toContain('{albumCardDate(folder.createdAt)} · 사진 {folder.photoCount}');
+    expect(albums).toContain('{folder.videoCount}');
+    expect(albums).toContain('사진 {event.photoCount} · 영상 {event.videoCount}');
     expect(albums).toContain('theme.colors.primary.soft');
     expect(albums).toContain('theme.colors.bg.default');
     const events = albums.slice(
       albums.indexOf('{events.map('),
-      albums.indexOf('async function sendAlbumFiles'),
+      albums.indexOf('async function renameFolder'),
     );
     expect(events).not.toContain('⋯');
     expect(events).not.toContain('confirmDeleteFolder');
@@ -41,7 +46,7 @@ describe('앨범·선택·연속 일정 UI', () => {
     ])
       expect(checkbox).toContain(pattern);
     const media = source('src/features/media/MediaPane.tsx');
-    expect(media).toContain('<SelectCheckbox selected={Boolean(selected)} />');
+    expect(media).toContain('<SelectCheckbox selected={Boolean(selected)} size={20} />');
     expect(media).toContain('selecting && item.canDelete ?');
     expect(media).toContain('selecting && !item.canDelete && { opacity: 0.35 }');
     expect(media).not.toContain("selected ? '✓' : '○'");
@@ -89,13 +94,13 @@ describe('앨범·선택·연속 일정 UI', () => {
     const timeline = source('src/features/schedule/EventsTimeline.tsx');
     for (const text of [
       'SectionList',
-      "title: '예정'",
-      "title: '지난 일정'",
+      "key: 'upcoming'",
+      '지난 일정',
       'onEndReached=',
       'onViewableItemsChanged=',
       "useInvalidatedRefresh(groupId ?? '*', 'schedule', load)",
       '등록된 일정이 없습니다',
-      'formatEventDateTime(item.startsAt)',
+      'eventDateBlock(item.startsAt)',
     ])
       expect(timeline).toContain(text);
     expect(timeline).not.toContain('더 보기');

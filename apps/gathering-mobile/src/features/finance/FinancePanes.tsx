@@ -34,6 +34,8 @@ import { eventFinanceActions, financeYearState, type FinanceYear } from '../even
 import { useToast } from '../../design/toast';
 import { formatAmountInput, parseAmountInput, formatWon } from './amount';
 
+import { FiscalYearTabs } from './FiscalYearTabs';
+
 const WON = new Intl.NumberFormat('ko-KR');
 
 export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWrite: boolean }) {
@@ -49,14 +51,21 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   const [paidOn, setPaidOn] = useState<Date | null>(null);
 
   const selectedYear = useRef<number | undefined>(undefined);
+  const [visibleYear, setVisibleYear] = useState<number | undefined>();
   const read = useCallback(
     async (year?: number) => {
-      if (year !== undefined) selectedYear.current = year;
+      if (year !== undefined) {
+        selectedYear.current = year;
+        setVisibleYear(year);
+      }
       setPaidOn(null);
       setMessage('');
       setStatus('loading');
       try {
-        setSummary(await api.finance(groupId, selectedYear.current));
+        const result = await api.finance(groupId, selectedYear.current);
+        selectedYear.current = result.year;
+        setVisibleYear(result.year);
+        setSummary(result);
         setStatus('ready');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : '장부를 불러오지 못했습니다.');
@@ -69,8 +78,13 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
 
   useInvalidatedRefresh(groupId, 'finance', load);
 
-  if (status === 'error') return <ErrorState message={message} onRetry={() => void load()} />;
-  if (!summary) return null;
+  if (!summary) {
+    return status === 'error' ? (
+      <ErrorState message={message} onRetry={() => void load()} />
+    ) : (
+      <LoadingState />
+    );
+  }
   const closed = summary.status === 'CLOSED';
   const writable = canWrite && !closed;
   const search = async () => {
@@ -81,147 +95,156 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
   };
   return (
     <View style={styles.stack}>
-      <View style={styles.cards}>
-        <MoneyCard label="기초잔액" value={summary.openingBalanceWon} />
-        <MoneyCard label="전체 수입" value={summary.incomeWon} />
-        <MoneyCard label="전체 지출" value={summary.expenseWon} />
-        <MoneyCard label="현재 잔액" value={summary.balanceWon} />
-      </View>
-      <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원`}</Body>
-      <View style={styles.years}>
-        {summary.years.map((item) => {
-          const selected = item.year === summary.year;
-          return (
+      <FiscalYearTabs
+        years={summary.years}
+        selectedYear={visibleYear ?? summary.year}
+        onSelect={(year) => void load(year)}
+      />
+      <View>
+        <View
+          style={[styles.stack, status !== 'ready' && styles.pending]}
+          pointerEvents={status === 'ready' ? 'auto' : 'none'}
+        >
+          <View style={styles.cards}>
+            <MoneyCard label="기초잔액" value={summary.openingBalanceWon} />
+            <MoneyCard label="전체 수입" value={summary.incomeWon} />
+            <MoneyCard label="전체 지출" value={summary.expenseWon} />
+            <MoneyCard label="현재 잔액" value={summary.balanceWon} />
+          </View>
+          <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원`}</Body>
+          <View style={styles.segment}>
             <Pressable
-              key={item.year}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => void load(item.year)}
-              style={[styles.year, selected && styles.yearOn]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === 'events' }}
+              onPress={() => setTab('events')}
+              style={[styles.segmentItem, tab === 'events' && styles.segmentOn]}
             >
-              <Text style={[styles.yearTitle, selected && styles.yearOnText]}>
-                {item.year} 회계연도
-              </Text>
-              <Text style={[styles.yearRange, selected && styles.yearOnText]}>
-                {fiscalRange(item.startsAt, item.endsAt)}
+              <Text style={[styles.segmentLabel, tab === 'events' && styles.segmentOnText]}>
+                행사별 장부
               </Text>
             </Pressable>
-          );
-        })}
-      </View>
-      <View style={styles.segment}>
-        <Pressable
-          accessibilityRole="tab"
-          accessibilityState={{ selected: tab === 'events' }}
-          onPress={() => setTab('events')}
-          style={[styles.segmentItem, tab === 'events' && styles.segmentOn]}
-        >
-          <Text style={[styles.segmentLabel, tab === 'events' && styles.segmentOnText]}>
-            행사별 장부
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="tab"
-          accessibilityState={{ selected: tab === 'dues' }}
-          onPress={() => setTab('dues')}
-          style={[styles.segmentItem, tab === 'dues' && styles.segmentOn]}
-        >
-          <Text style={[styles.segmentLabel, tab === 'dues' && styles.segmentOnText]}>
-            회원 회비
-          </Text>
-        </Pressable>
-      </View>
-      {tab === 'events' ? (
-        summary.events.length === 0 ? (
-          <EmptyState title="기록된 행사가 없습니다" />
-        ) : (
-          summary.events.map((event) => (
-            <Text key={event.eventId} style={styles.line}>
-              {event.title} · 수입 {WON.format(event.incomeWon)} · 지출{' '}
-              {WON.format(event.expenseWon)} · 순액 {WON.format(event.netWon)}
-            </Text>
-          ))
-        )
-      ) : (
-        <>
-          {summary.dues.length === 0 ? <EmptyState title="회비가 없습니다" /> : null}
-          {summary.dues.map((due) => (
-            <Text key={due.id} style={styles.line}>
-              {due.displayName} · {dueLabel(due.status)} · {WON.format(due.paidAmountWon)}/
-              {WON.format(due.amountWon)}원
-            </Text>
-          ))}
-          {writable ? (
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === 'dues' }}
+              onPress={() => setTab('dues')}
+              style={[styles.segmentItem, tab === 'dues' && styles.segmentOn]}
+            >
+              <Text style={[styles.segmentLabel, tab === 'dues' && styles.segmentOnText]}>
+                회원 회비
+              </Text>
+            </Pressable>
+          </View>
+          {tab === 'events' ? (
+            summary.events.length === 0 ? (
+              <EmptyState title="기록된 행사가 없습니다" />
+            ) : (
+              summary.events.map((event) => (
+                <Text key={event.eventId} style={styles.line}>
+                  {event.title} · 수입 {WON.format(event.incomeWon)} · 지출{' '}
+                  {WON.format(event.expenseWon)} · 순액 {WON.format(event.netWon)}
+                </Text>
+              ))
+            )
+          ) : (
             <>
-              <TextField label="회원 이름" value={memberName} onChangeText={setMemberName} />
-              <Button label="이름으로 찾기" variant="secondary" onPress={() => void search()} />
-              {matches.map((member) => (
-                <Button
-                  key={member.userId}
-                  label={
-                    picked?.userId === member.userId
-                      ? `${member.displayName} 선택됨`
-                      : member.displayName
-                  }
-                  variant={picked?.userId === member.userId ? 'primary' : 'secondary'}
-                  onPress={() => {
-                    setPicked(member);
-                    setPaidOn(null);
-                  }}
-                />
+              {summary.dues.length === 0 ? <EmptyState title="회비가 없습니다" /> : null}
+              {summary.dues.map((due) => (
+                <Text key={due.id} style={styles.line}>
+                  {due.displayName} · {dueLabel(due.status)} · {WON.format(due.paidAmountWon)}/
+                  {WON.format(due.amountWon)}원
+                </Text>
               ))}
-              <TextField
-                label="청구액(원)"
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="number-pad"
-              />
-              <TextField
-                label="납부액(원)"
-                value={paid}
-                onChangeText={setPaid}
-                keyboardType="number-pad"
-              />
-              {paidOn ? (
+              {writable ? (
                 <>
-                  <DateTimeField label="납부일" mode="date" value={paidOn} onChange={setPaidOn} />
-                  <Button label="납부일 지우기" variant="text" onPress={() => setPaidOn(null)} />
+                  <TextField label="회원 이름" value={memberName} onChangeText={setMemberName} />
+                  <Button label="이름으로 찾기" variant="secondary" onPress={() => void search()} />
+                  {matches.map((member) => (
+                    <Button
+                      key={member.userId}
+                      label={
+                        picked?.userId === member.userId
+                          ? `${member.displayName} 선택됨`
+                          : member.displayName
+                      }
+                      variant={picked?.userId === member.userId ? 'primary' : 'secondary'}
+                      onPress={() => {
+                        setPicked(member);
+                        setPaidOn(null);
+                      }}
+                    />
+                  ))}
+                  <TextField
+                    label="청구액(원)"
+                    value={amount}
+                    onChangeText={setAmount}
+                    keyboardType="number-pad"
+                  />
+                  <TextField
+                    label="납부액(원)"
+                    value={paid}
+                    onChangeText={setPaid}
+                    keyboardType="number-pad"
+                  />
+                  {paidOn ? (
+                    <>
+                      <DateTimeField
+                        label="납부일"
+                        mode="date"
+                        value={paidOn}
+                        onChange={setPaidOn}
+                      />
+                      <Button
+                        label="납부일 지우기"
+                        variant="text"
+                        onPress={() => setPaidOn(null)}
+                      />
+                    </>
+                  ) : (
+                    <Button
+                      label="납부일 고르기"
+                      variant="secondary"
+                      onPress={() => setPaidOn(new Date())}
+                    />
+                  )}
+                  <Button
+                    label="회비 저장"
+                    onPress={() => {
+                      if (!picked) {
+                        setMessage('회원 이름을 찾아 선택하세요.');
+                        return;
+                      }
+                      void api
+                        .saveDue(groupId, {
+                          userId: picked.userId,
+                          year: summary.year,
+                          amountWon: Number(amount),
+                          paidAmountWon: Number(paid),
+                          paidAt: paidOn ? paidAtFromCalendarDate(paidOn) : null,
+                        })
+                        .then(() => load(summary.year))
+                        .catch((error: unknown) =>
+                          setMessage(
+                            error instanceof Error ? error.message : '회비를 저장하지 못했습니다.',
+                          ),
+                        );
+                    }}
+                  />
                 </>
-              ) : (
-                <Button
-                  label="납부일 고르기"
-                  variant="secondary"
-                  onPress={() => setPaidOn(new Date())}
-                />
-              )}
-              <Button
-                label="회비 저장"
-                onPress={() => {
-                  if (!picked) {
-                    setMessage('회원 이름을 찾아 선택하세요.');
-                    return;
-                  }
-                  void api
-                    .saveDue(groupId, {
-                      userId: picked.userId,
-                      year: summary.year,
-                      amountWon: Number(amount),
-                      paidAmountWon: Number(paid),
-                      paidAt: paidOn ? paidAtFromCalendarDate(paidOn) : null,
-                    })
-                    .then(() => load(summary.year))
-                    .catch((error: unknown) =>
-                      setMessage(
-                        error instanceof Error ? error.message : '회비를 저장하지 못했습니다.',
-                      ),
-                    );
-                }}
-              />
+              ) : null}
             </>
-          ) : null}
-        </>
-      )}
-      {message ? <Notice>{message}</Notice> : null}
+          )}
+          {status === 'ready' && message ? <Notice>{message}</Notice> : null}
+        </View>
+        {status !== 'ready' ? (
+          <View style={styles.loadingOverlay}>
+            {status === 'loading' ? (
+              <LoadingState />
+            ) : (
+              <ErrorState message={message} onRetry={() => void load()} />
+            )}
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -233,17 +256,6 @@ function MoneyCard({ label, value }: { label: string; value: number }) {
       <Text style={styles.cardValue}>{WON.format(value)}원</Text>
     </View>
   );
-}
-
-function fiscalRange(startsAt: string, endsAt: string) {
-  const format = (iso: string) =>
-    new Date(iso).toLocaleDateString('ko-KR', {
-      timeZone: 'Asia/Seoul',
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-    });
-  return `${format(startsAt)} ~ ${format(endsAt)}`;
 }
 
 function dueLabel(status: string) {
@@ -796,19 +808,8 @@ const styles = StyleSheet.create({
   cardValue: { ...theme.typography.body, color: theme.colors.text.primary },
   line: { ...theme.typography.body, color: theme.colors.text.primary },
   thumb: { width: 96, height: 96, borderRadius: theme.radius[12] },
-  years: { gap: theme.space[8] },
-  year: {
-    minHeight: 48,
-    borderRadius: theme.radius[12],
-    paddingHorizontal: theme.space[12],
-    paddingVertical: theme.space[8],
-    backgroundColor: theme.colors.bg.subtle,
-    gap: 2,
-  },
-  yearOn: { backgroundColor: '#1B3A6B' },
-  yearTitle: { ...theme.typography.cardTitle, color: '#1B3A6B' },
-  yearRange: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
-  yearOnText: { color: '#FFFFFF' },
+  pending: { opacity: 0 },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject },
   segment: {
     flexDirection: 'row',
     flexWrap: 'nowrap',

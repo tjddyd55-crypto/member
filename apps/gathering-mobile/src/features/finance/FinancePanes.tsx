@@ -1,3 +1,4 @@
+import { ProgressBar } from '../../design/ProgressBar';
 import { useAppAlert } from '../../design/dialog';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useRef, useState } from 'react';
@@ -287,7 +288,11 @@ export function EventFinancePane({
   );
   const [saving, setSaving] = useState(false);
   const [attaching, setAttaching] = useState(false);
-  const [progress, setProgress] = useState('');
+  const [progress, setProgress] = useState<{
+    index: number;
+    count: number;
+    percent: number;
+  } | null>(null);
   const uploadPending = useRef(false);
   const [viewer, setViewer] = useState<{ uri: string; receipt: GatheringReceiptView } | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -427,6 +432,7 @@ export function EventFinancePane({
       }
       for (const [index, file] of files.entries()) {
         try {
+          setProgress({ index: index + 1, count: files.length, percent: 0 });
           if (!file.sizeBytes) throw new Error('파일 크기를 확인하지 못했습니다.');
           const created = await api.createReceiptUploads(groupId, eventId, [
             { mimeType: file.mimeType, sizeBytes: file.sizeBytes, originalName: file.originalName },
@@ -434,11 +440,15 @@ export function EventFinancePane({
           const target = created.items[0];
           if (!target) throw new Error('업로드 주소를 받지 못했습니다.');
           await putPreparedFile(file.uri, target.uploadUrl, target.headers, (loaded, total) =>
-            setProgress(
-              `${index + 1}/${files.length} · ${total > 0 ? Math.round((loaded / total) * 100) : 0}%`,
-            ),
+            setProgress({
+              index: index + 1,
+              count: files.length,
+              percent:
+                total > 0 ? Math.max(0, Math.min(99, Math.round((loaded / total) * 100))) : 0,
+            }),
           );
           await api.completeReceipt(groupId, eventId, target.id, file.sizeBytes);
+          setProgress({ index: index + 1, count: files.length, percent: 100 });
           completed += 1;
         } catch (error) {
           failures.push(
@@ -455,7 +465,7 @@ export function EventFinancePane({
       );
     } finally {
       if (completed) await load();
-      setProgress('');
+      setProgress(null);
       setAttaching(false);
       uploadPending.current = false;
     }
@@ -658,7 +668,17 @@ export function EventFinancePane({
           />
         </>
       ) : null}
-      {progress ? <Body>{progress}</Body> : null}
+      {progress ? (
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Body>
+              영수증 {progress.index}/{progress.count}장
+            </Body>
+            <Body>{progress.percent}%</Body>
+          </View>
+          <ProgressBar percent={progress.percent} />
+        </View>
+      ) : null}
       {eventYear === 'CLOSED' ? <Notice>마감</Notice> : null}
       {eventYear === 'MISSING' && canAttach ? <Notice>회계연도 없음</Notice> : null}
       {viewer ? (

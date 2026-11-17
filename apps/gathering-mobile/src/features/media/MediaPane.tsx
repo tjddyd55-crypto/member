@@ -1,3 +1,4 @@
+import { ProgressBar } from '../../design/ProgressBar';
 import { useAppAlert } from '../../design/dialog';
 import { SelectCheckbox } from '../../design/SelectCheckbox';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
@@ -233,7 +234,8 @@ export function MediaPane({
         const file = await prepareAsset(asset);
         next.push({
           id: `${Date.now()}-${next.length}`,
-          name: `${file.kind === 'VIDEO' ? '영상' : '사진'} ${next.length + 1}`,
+          name:
+            file.originalName ?? `${file.kind === 'VIDEO' ? '영상' : '사진'} ${next.length + 1}`,
           state: 'queued',
           loaded: 0,
           total: file.sizeBytes,
@@ -280,6 +282,13 @@ export function MediaPane({
     }
   };
   const progress = summarizeTransfer(jobs);
+  useEffect(() => {
+    if (!progress.done) return;
+    const timer = setTimeout(() => {
+      setJobs((current) => (current.every((job) => job.state === 'done') ? [] : current));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [progress.done]);
   const remove = async (assets: GatheringMediaView[], index?: number) => {
     if (deletePending.current || !assets.length) return;
     deletePending.current = true;
@@ -357,32 +366,51 @@ export function MediaPane({
       ) : null}
       {uploadReason ? <Notice>{uploadReason}</Notice> : null}
       {jobs.length > 0 ? (
-        <Body>
-          전송 {progress.loaded}/{progress.total}
-          {progress.failed > 0 ? ` · 실패 ${progress.failed}` : ''}
-        </Body>
-      ) : null}
-      {jobs.map((job) => (
-        <View key={job.id} style={styles.job}>
-          <Text style={styles.jobTitle}>{job.name}</Text>
-          <Body>
-            {job.state === 'done'
-              ? '완료'
-              : job.state === 'confirming'
-                ? '확인 중'
-                : `${job.total > 0 ? Math.round((job.loaded / job.total) * 100) : 0}%`}
-          </Body>
-          {job.message ? <Body>{job.message}</Body> : null}
-          {canRetryTransfer(job.state) ? (
+        <View style={styles.uploadProgress}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>
+              {progress.done ? '업로드 완료' : '업로드 중'} {progress.completed}/{progress.count}
+              {jobs.every((job) => job.file.kind === 'PHOTO') ? '장' : '개'}
+              {progress.failed > 0 ? ` · 실패 ${progress.failed}` : ''}
+            </Text>
+            <Text style={styles.uploadLabel}>{progress.percent}%</Text>
+          </View>
+          <ProgressBar percent={progress.percent} />
+          {jobs
+            .filter((job) => canRetryTransfer(job.state))
+            .map((job) => (
+              <View key={job.id} style={styles.failedJob}>
+                <View style={styles.failureText}>
+                  <Text numberOfLines={1} style={styles.jobTitle}>
+                    {job.name}
+                  </Text>
+                  <Text style={styles.errorText}>{job.message}</Text>
+                </View>
+                <Button
+                  label="다시 시도"
+                  disabled={picking}
+                  variant="text"
+                  onPress={() => void transfer(job).then(() => load())}
+                />
+              </View>
+            ))}
+          {progress.failed > 1 ? (
             <Button
-              label="다시 시도"
+              label="실패한 항목 모두 다시 시도"
               disabled={picking}
-              variant="secondary"
-              onPress={() => void transfer(job).then(() => load())}
+              variant="text"
+              onPress={() =>
+                void (async () => {
+                  for (const job of jobs.filter((job) => canRetryTransfer(job.state))) {
+                    await transfer(job);
+                  }
+                  await load();
+                })()
+              }
             />
           ) : null}
         </View>
-      ))}
+      ) : null}
       {status === 'ready' && items.length === 0 ? (
         eventId ? (
           <Body>등록된 사진이 없습니다</Body>
@@ -628,7 +656,12 @@ const styles = StyleSheet.create({
   uploadLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.primary.default },
   selectionBar: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   stack: { gap: theme.space[12] },
-  job: { gap: theme.space[8], paddingVertical: theme.space[8] },
+  uploadProgress: { gap: 8 },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressLabel: { flex: 1, ...theme.typography.bodySmall, color: theme.colors.text.primary },
+  failedJob: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  failureText: { flex: 1, minWidth: 0 },
+  errorText: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
   jobTitle: { ...theme.typography.body, color: theme.colors.text.primary },
   grid: {
     flexDirection: 'row',

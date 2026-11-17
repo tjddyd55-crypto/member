@@ -30,7 +30,7 @@ npx eas-cli submit -p ios --profile production --latest
 3. Play Console에서 package `kr.jcikorea.app` 앱을 만든다. **첫 AAB는 Play Console에서 수동 업로드**한다. 이후 자동 제출용 서비스 계정에 Play Console 권한을 부여하고 JSON 키를 `apps/gathering-mobile/secrets/play-service-account.json`에 둔다. secrets 디렉터리는 gitignore 대상이며 키를 커밋하지 않는다.
 4. Android 자동 제출은 internal 트랙의 draft 상태다. 각 스토어의 앱 설명, 스크린샷, 개인정보/Data safety, 심사 계정, 연령 등급을 작성하고 최종 제출한다.
 
-## 권한과 임시 이미지
+## 권한과 공식 로고
 
 사진 권한 문구는 `행사 사진과 영상을 올리기 위해 사진 보관함에 접근합니다.`이다. iOS의 사진 접근 요청은 유지하며 카메라, 마이크, 사진 보관함 추가 권한을 선언하지 않는다.
 
@@ -42,11 +42,17 @@ Android 12 이하 및 13+에서 미디어 권한을 부여하지 않은 상태�
 
 iOS 비면제 암호화 사용 여부는 false, supportsTablet은 false다. expo-splash-screen 패키지가 설치되어 있지 않아 top-level splash를 사용한다.
 
-`assets/icon.png`, `adaptive-icon.png`, `splash-icon.png`, `notification-icon.png`는 **임시 이미지**다. 남색 `#1B3A6B`와 흰색 JCI 글자를 사용하며 adaptive foreground는 투명 배경의 66% 안전 영역 안에 둔다. notification은 96×96 흰색 단색/투명이다. 출시 전에 공식 JCI KOREA 로고로 교체한다. 재생성:
+Korea/TM 없는 JCI와 방패를 `assets/icon.png`, `adaptive-icon.png`, `splash-icon.png`와 Play 스토어 feature graphic에 적용했다. 앱 아이콘과 splash는 1024×1024 RGB 이미지이며, 로고 너비는 760px이다. feature graphic은 1024×500 이미지에 로고 너비 640px을 사용한다. 모두 남색 `#130F2D` 배경 중앙에 로고를 배치하며, adaptive 아이콘은 안전 영역에 맞춘 크기를 사용한다. notification은 96×96 RGBA 흰색 방패/투명 배경이고 알림 색상은 `#0097D7`이다.
+
+원본은 `apps/gathering-mobile/assets/brand/jci-korea-logo-source.png`이다. Pillow와 numpy를 설치한 환경에서 저장소 루트 기준으로 재생성한다:
 
 ```bash
-node apps/gathering-mobile/scripts/generate-placeholder-assets.mjs
+python3 apps/gathering-mobile/scripts/generate-brand-assets.py
+# Play 스토어 출력 디렉터리 지정:
+python3 apps/gathering-mobile/scripts/generate-brand-assets.py /tmp/jci-store-assets
 ```
+
+앱 이미지 네 개는 스크립트 기준 `../assets`에 저장한다. Play 스토어 feature graphic(1024×500)과 아이콘(512×512)은 지정한 출력 디렉터리에 저장하며, 기본값 `./store-assets-out`은 gitignore 대상이다.
 
 ## 공개 법적 고지와 심사 동선
 

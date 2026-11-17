@@ -9,6 +9,8 @@ import {
   gatheringMediaUploadSchema,
 } from '@member/contracts';
 import {
+  createPosterUpload,
+  completePosterUpload,
   completeFolderMediaUpload,
   completeMediaUpload,
   resumeFolderMediaUpload,
@@ -123,6 +125,33 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     const params = assetParams.parse(request.params);
     return downloadMedia(requireGatheringUserId(request), params.groupId, params.assetId);
   });
+
+  app.post('/api/gathering/groups/:groupId/media/:assetId/poster-upload', auth, async (request) => {
+    const params = assetParams.parse(request.params);
+    const body = z
+      .object({
+        sizeBytes: z
+          .number()
+          .int()
+          .positive()
+          .max(5 * 1024 * 1024),
+      })
+      .parse(request.body);
+    return createPosterUpload(
+      requireGatheringUserId(request),
+      params.groupId,
+      params.assetId,
+      body.sizeBytes,
+    );
+  });
+  app.post(
+    '/api/gathering/groups/:groupId/media/:assetId/poster-complete',
+    auth,
+    async (request) => {
+      const params = assetParams.parse(request.params);
+      return completePosterUpload(requireGatheringUserId(request), params.groupId, params.assetId);
+    },
+  );
 
   app.delete('/api/gathering/groups/:groupId/media/:assetId', auth, async (request) => {
     const params = assetParams.parse(request.params);

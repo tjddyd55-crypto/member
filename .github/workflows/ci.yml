@@ -4,7 +4,8 @@ on:
   pull_request:
   push:
     branches:
-      - feature/mobile-member-book-foundation
+      - develop
+      - main
 
 permissions:
   contents: read

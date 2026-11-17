@@ -62,6 +62,12 @@ export default function LoginScreen() {
       <Pressable accessibilityRole="link" onPress={() => router.push('/(auth)/recovery')}>
         <Text style={{ color: theme.colors.accent }}>비밀번호를 잊었습니다</Text>
       </Pressable>
+      <Button
+        label="개인정보 처리방침"
+        variant="text"
+        onPress={() => router.push('/(app)/legal/privacy')}
+      />
+      <Button label="이용약관" variant="text" onPress={() => router.push('/(app)/legal/terms')} />
       <Disclaimer />
     </Screen>
   );

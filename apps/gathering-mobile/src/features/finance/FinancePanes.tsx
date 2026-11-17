@@ -1,8 +1,9 @@
 import { useAppAlert } from '../../design/dialog';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import { useCallback, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { canOpenMediaPicker } from '../media/picker-access';
 import { File } from 'expo-file-system';
 import type {
   GatheringFinanceSummary,
@@ -392,8 +393,11 @@ export function EventFinancePane({
     try {
       let files: Array<{ uri: string; mimeType: string; sizeBytes: number; originalName?: string }>;
       if (photos) {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) throw new Error('사진 접근을 허용해 주세요.');
+        const canOpen = await canOpenMediaPicker(
+          Platform.OS,
+          ImagePicker.requestMediaLibraryPermissionsAsync,
+        );
+        if (!canOpen) throw new Error('사진 접근을 허용해 주세요.');
         const picked = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
           allowsMultipleSelection: true,
@@ -467,7 +471,7 @@ export function EventFinancePane({
   if (status === 'error')
     return (
       <View style={styles.stack}>
-      {!editing && !viewer ? dialog : null}
+        {!editing && !viewer ? dialog : null}
         <ErrorState message={message} onRetry={() => void load()} />
         {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
       </View>

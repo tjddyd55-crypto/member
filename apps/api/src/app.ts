@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { legalRoutes } from './routes/legal.js';
 import cors from '@fastify/cors';
 import { ZodError } from 'zod';
 import { env } from './config/env.js';
@@ -52,6 +53,7 @@ export async function buildApp() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['content-type', 'authorization', 'x-gathering-admin-csrf'],
   });
+  await app.register(legalRoutes);
   await app.register(authPlugin);
   await app.register(authRoutes);
   await app.register(localRoutes);

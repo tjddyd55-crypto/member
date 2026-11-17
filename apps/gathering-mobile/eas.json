@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 16.0.0",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -43,6 +43,34 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-development-46a6.up.railway.app",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "f5a017a3-82f8-4d73-bc8a-ecd249e994f3"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://gathering-api-production.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "f5a017a3-82f8-4d73-bc8a-ecd249e994f3"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./secrets/play-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft"
+      },
+      "ios": {
+        "appleId": "REPLACE_WITH_APPLE_ID",
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID",
+        "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
       }
     }
   }

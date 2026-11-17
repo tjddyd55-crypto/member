@@ -38,4 +38,11 @@ describe('영상 썸네일 화면 구조', () => {
     ])
       expect(source(path)).toContain('<AlbumGallery');
   });
+  it('실패한 썸네일과 포스터 전송은 다음 렌더에서 재시도할 수 있다', () => {
+    const posters = source('src/features/media/video-posters.ts');
+    expect(posters).toMatch(
+      /\.catch\(\(error: unknown\) => \{\s*thumbnails\.delete\(assetId\);\s*throw error;/,
+    );
+    expect(posters).toMatch(/catch \{\s*backfilled\.delete\(assetId\);/);
+  });
 });

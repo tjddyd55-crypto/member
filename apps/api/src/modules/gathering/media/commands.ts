@@ -274,7 +274,11 @@ export async function removeMediaAssets(
   for (const asset of assets) {
     await storage.remove(asset.storageKey);
     await storage.remove(pendingObjectKey(asset.storageKey));
-    if (asset.posterStorageKey) await storage.remove(asset.posterStorageKey);
+    const posterKeys = new Set([
+      ...(asset.kind === 'VIDEO' ? [`${asset.storageKey}.poster.jpg`] : []),
+      ...(asset.posterStorageKey ? [asset.posterStorageKey] : []),
+    ]);
+    for (const key of posterKeys) await storage.remove(key).catch(() => undefined);
   }
   const mark = async (db: Prisma.TransactionClient) => {
     for (const asset of assets) await markDeleted(db, asset.id, groupId, actorUserId);

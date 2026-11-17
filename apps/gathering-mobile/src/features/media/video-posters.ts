@@ -36,6 +36,9 @@ export function videoThumbnail(assetId: string, uri: string): Promise<string> {
       format: ImageManipulator.SaveFormat.JPEG,
     });
     return image.uri;
+  }).catch((error: unknown) => {
+    thumbnails.delete(assetId);
+    throw error;
   });
   thumbnails.set(assetId, result);
   return result;
@@ -50,6 +53,7 @@ export async function uploadVideoPoster(groupId: string, assetId: string, uri: s
     await putPreparedFile(poster, target.uploadUrl, target.headers, () => undefined);
     await api.posterComplete(groupId, assetId);
   } catch {
+    backfilled.delete(assetId);
     // A poster is optional; the completed video remains available.
   }
 }

@@ -224,6 +224,32 @@ describe('행사 사진·영상', () => {
       ).statusCode,
     ).toBe(200);
     expect(storage.objects.has(`${video.storageKey}.poster.jpg`)).toBe(false);
+    // Interrupted uploads have an object without a recorded posterStorageKey.
+    for (const hasPosterObject of [true, false]) {
+      const interrupted = await make('VIDEO');
+      expect(interrupted.posterStorageKey).toBeNull();
+      const posterKey = `${interrupted.storageKey}.poster.jpg`;
+      if (hasPosterObject) storage.put(posterKey, jpeg(32));
+      const remove = vi.spyOn(storage, 'remove').mockImplementation(async (key) => {
+        if (key === posterKey && !storage.objects.has(key)) throw new Error('Object missing');
+        storage.objects.delete(key);
+      });
+      try {
+        const deleted = await app.inject({
+          method: 'DELETE',
+          url: `${base}/media/${interrupted.id}`,
+          headers: auth(owner.tokens.accessToken),
+        });
+        expect(deleted.statusCode).toBe(200);
+        expect(remove).toHaveBeenCalledWith(posterKey);
+        expect(storage.objects.has(posterKey)).toBe(false);
+        expect(
+          await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: interrupted.id } }),
+        ).toMatchObject({ status: 'DELETED', deletedAt: expect.any(Date) });
+      } finally {
+        remove.mockRestore();
+      }
+    }
     for (const action of ['poster-upload', 'poster-complete'])
       expect((await post(uploader.tokens.accessToken, video.id, action)).statusCode).toBe(404);
   });

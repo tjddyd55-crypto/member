@@ -42,7 +42,7 @@ Android 12 이하 및 13+에서 미디어 권한을 부여하지 않은 상태�
 
 iOS 비면제 암호화 사용 여부는 false, supportsTablet은 false다. expo-splash-screen 패키지가 설치되어 있지 않아 top-level splash를 사용한다.
 
-공식 JCI KOREA 로고를 `assets/icon.png`, `adaptive-icon.png`, `splash-icon.png`, `notification-icon.png`에 적용했다. 앱 아이콘은 Korea/TM 없는 JCI와 방패의 1024×1024 RGB 이미지다. adaptive 아이콘은 불투명 남색 `#130F2D` 배경의 안전 영역에 로고를 배치하며, splash도 같은 배경색을 사용한다. notification은 96×96 RGBA 흰색 방패/투명 배경이고 알림 색상은 `#0097D7`이다.
+Korea/TM 없는 JCI와 방패를 `assets/icon.png`, `adaptive-icon.png`, `splash-icon.png`와 Play 스토어 feature graphic에 적용했다. 앱 아이콘과 splash는 1024×1024 RGB 이미지이며, 로고 너비는 760px이다. feature graphic은 1024×500 이미지에 로고 너비 640px을 사용한다. 모두 남색 `#130F2D` 배경 중앙에 로고를 배치하며, adaptive 아이콘은 안전 영역에 맞춘 크기를 사용한다. notification은 96×96 RGBA 흰색 방패/투명 배경이고 알림 색상은 `#0097D7`이다.
 
 원본은 `apps/gathering-mobile/assets/brand/jci-korea-logo-source.png`이다. Pillow와 numpy를 설치한 환경에서 저장소 루트 기준으로 재생성한다:
 

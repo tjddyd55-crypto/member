@@ -26,3 +26,6 @@ apps/mobile/AGENTS.md
 apps/mobile/CLAUDE.md
 
 apps/gathering-mobile/secrets/
+
+# Generated Play store branding exports
+store-assets-out/

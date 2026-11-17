@@ -7,7 +7,7 @@ const config: ExpoConfig = {
   slug: 'jci-korea-gathering',
   version: '1.0.0',
   icon: './assets/icon.png',
-  splash: { image: './assets/splash-icon.png', resizeMode: 'contain', backgroundColor: '#1B3A6B' },
+  splash: { image: './assets/splash-icon.png', resizeMode: 'contain', backgroundColor: '#130F2D' },
   orientation: 'portrait',
   scheme: 'jcikorea',
   userInterfaceStyle: 'light',
@@ -17,7 +17,7 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-secure-store',
     'expo-video',
-    ['expo-notifications', { icon: './assets/notification-icon.png', color: '#1B3A6B' }],
+    ['expo-notifications', { icon: './assets/notification-icon.png', color: '#0097D7' }],
     [
       'expo-image-picker',
       {
@@ -60,7 +60,7 @@ const config: ExpoConfig = {
     ],
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#1B3A6B',
+      backgroundColor: '#130F2D',
     },
     package: ANDROID_PACKAGE,
     softwareKeyboardLayoutMode: 'resize',

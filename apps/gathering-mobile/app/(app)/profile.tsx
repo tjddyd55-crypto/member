@@ -1,9 +1,10 @@
+import { Alert, Keyboard } from 'react-native';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { gatheringProfileSchema } from '@member/contracts';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { DIRECTORY_CONSENT } from '../../src/copy';
-import { Body, Button, Notice, Screen, TextField, Title } from '../../src/design/ui';
+import { Body, Button, FormError, Notice, Screen, TextField, Title } from '../../src/design/ui';
 
 export default function ProfileScreen() {
   const { profile, completeProfile } = useAuth();
@@ -11,12 +12,17 @@ export default function ProfileScreen() {
   const [localJcName, setLocalJcName] = useState(profile?.localJcName ?? '');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const showError = (message: string) => {
+    setError(message);
+    Alert.alert('프로필을 저장할 수 없습니다', message);
+  };
 
   const onSubmit = async () => {
+    Keyboard.dismiss();
     setError(null);
     const parsed = gatheringProfileSchema.safeParse({ name, localJcName, directoryConsent: true });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
+      showError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
       return;
     }
     setLoading(true);
@@ -24,7 +30,13 @@ export default function ProfileScreen() {
       await completeProfile(parsed.data);
       router.replace('/');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '프로필을 저장하지 못했습니다.');
+      showError(
+        caught instanceof TypeError
+          ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.'
+          : caught instanceof Error
+            ? caught.message
+            : '프로필을 저장하지 못했습니다.',
+      );
     } finally {
       setLoading(false);
     }
@@ -45,7 +57,7 @@ export default function ProfileScreen() {
         <>
           <TextField label="이름" value={name} onChangeText={setName} />
           <TextField label="소속 로컬" value={localJcName} onChangeText={setLocalJcName} />
-          {error ? <Body>{error}</Body> : null}
+          {error ? <FormError>{error}</FormError> : null}
           <Button
             label="저장하고 복구 코드 받기"
             onPress={() => void onSubmit()}
@@ -53,9 +65,17 @@ export default function ProfileScreen() {
           />
         </>
       )}
-      <Button label="개인정보 처리방침" variant="text" onPress={() => router.push('/(app)/legal/privacy')} />
+      <Button
+        label="개인정보 처리방침"
+        variant="text"
+        onPress={() => router.push('/(app)/legal/privacy')}
+      />
       <Button label="이용약관" variant="text" onPress={() => router.push('/(app)/legal/terms')} />
-      <Button label="계정 삭제" variant="text" onPress={() => router.push('/(app)/account-delete')} />
+      <Button
+        label="계정 삭제"
+        variant="text"
+        onPress={() => router.push('/(app)/account-delete')}
+      />
       <Button label="내 모임으로" variant="text" onPress={() => router.back()} />
     </Screen>
   );

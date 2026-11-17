@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-export const gatheringPhoneSchema = z.string().trim().min(8).max(20);
+export const gatheringPhoneSchema = z
+  .string()
+  .trim()
+  .min(8, '휴대폰 번호를 정확히 입력하세요.')
+  .max(20, '휴대폰 번호를 정확히 입력하세요.');
 export const gatheringPasswordSchema = z
   .string()
   .min(8, '비밀번호는 8자 이상이어야 합니다.')
@@ -8,8 +12,16 @@ export const gatheringPasswordSchema = z
   .regex(/[A-Za-z]/, '비밀번호에 영문을 포함하세요.')
   .regex(/[0-9]/, '비밀번호에 숫자를 포함하세요.');
 
-export const gatheringDisplayNameSchema = z.string().trim().min(1).max(40);
-export const gatheringLocalJcSchema = z.string().trim().min(1).max(60);
+export const gatheringDisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1, '이름을 입력하세요.')
+  .max(40, '이름은 40자 이하여야 합니다.');
+export const gatheringLocalJcSchema = z
+  .string()
+  .trim()
+  .min(1, '소속 로컬을 입력하세요.')
+  .max(60, '소속 로컬은 60자 이하여야 합니다.');
 
 export const gatheringRegisterSchema = z.object({
   name: gatheringDisplayNameSchema,
@@ -23,7 +35,7 @@ export const gatheringRegisterSchema = z.object({
 
 export const gatheringLoginSchema = z.object({
   phone: gatheringPhoneSchema,
-  password: z.string().min(1).max(72),
+  password: z.string().min(1, '비밀번호를 입력하세요.').max(72, '비밀번호는 72자 이하여야 합니다.'),
 });
 
 export const gatheringRefreshSchema = z.object({
@@ -44,7 +56,11 @@ export const gatheringProfileSchema = z.object({
 
 export const gatheringRecoveryRedeemSchema = z.object({
   phone: gatheringPhoneSchema,
-  recoveryCode: z.string().trim().min(8).max(32),
+  recoveryCode: z
+    .string()
+    .trim()
+    .min(8, '복구 코드를 정확히 입력하세요.')
+    .max(32, '복구 코드를 정확히 입력하세요.'),
   newPassword: gatheringPasswordSchema,
 });
 
@@ -208,7 +224,7 @@ export const gatheringFinanceQuerySchema = z.object({
 });
 
 export const gatheringAccountDeleteSchema = z.object({
-  password: z.string().min(1).max(72),
+  password: z.string().min(1, '비밀번호를 입력하세요.').max(72, '비밀번호는 72자 이하여야 합니다.'),
   confirm: z.literal(true, {
     errorMap: () => ({ message: '계정 삭제에 동의해야 합니다.' }),
   }),

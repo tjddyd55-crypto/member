@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { gatheringEventWriteSchema } from '@member/contracts';
 import { api } from '../../../../../src/api/client';
 import { AddressField, DateTimeField } from '../../../../../src/design/pickers';
-import { Body, Button, Screen, TextField, Title } from '../../../../../src/design/ui';
+import { Body, FormError, Button, Screen, TextField, Title } from '../../../../../src/design/ui';
 import { eventStartsAt } from '../../../../../src/features/forms/values';
 
 function evening() {
@@ -64,7 +64,7 @@ export default function NewEventScreen() {
       <DateTimeField label="시작 시간" mode="time" value={time} onChange={setTime} />
       <AddressField label="장소" value={place} onChange={setPlace} />
       <TextField label="설명" value={description} onChangeText={setDescription} />
-      {error ? <Body>{error}</Body> : null}
+      {error ? <FormError>{error}</FormError> : null}
       <Button label="저장" onPress={() => void onSubmit()} loading={loading} />
       <Button label="취소" variant="text" onPress={() => router.back()} />
     </Screen>

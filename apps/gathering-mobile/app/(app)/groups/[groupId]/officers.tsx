@@ -8,7 +8,7 @@ import type {
 } from '@member/contracts';
 import { api } from '../../../../src/api/client';
 import { roleLabel } from '../../../../src/copy';
-import { Body, Button, ErrorState, LoadingState, Screen, Title } from '../../../../src/design/ui';
+import { Body, FormError, Button, ErrorState, LoadingState, Screen, Title } from '../../../../src/design/ui';
 import {
   MemberPickerSheet,
   officerRoles,
@@ -163,7 +163,7 @@ export default function OfficersScreen() {
           {canAssign ? (
             <Button label="+ 직책 추가" variant="text" onPress={() => setAdding(true)} />
           ) : null}
-          {error ? <Body>{error}</Body> : null}
+          {error ? <FormError>{error}</FormError> : null}
           {adding && canAssign ? (
             <RoleChooserSheet
               titles={titles}

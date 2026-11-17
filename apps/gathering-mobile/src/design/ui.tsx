@@ -55,7 +55,9 @@ export function Screen({
   return (
     <SafeAreaView
       style={styles.safe}
-      edges={underChrome && !modal ? ['left', 'right', 'bottom'] : ['top', 'left', 'right', 'bottom']}
+      edges={
+        underChrome && !modal ? ['left', 'right', 'bottom'] : ['top', 'left', 'right', 'bottom']
+      }
     >
       <KeyboardAvoidingView behavior={keyboardAvoidingBehavior(Platform.OS)} style={styles.flex}>
         {header ? <View style={styles.header}>{header}</View> : null}
@@ -89,6 +91,14 @@ export function Title({ children }: { children: React.ReactNode }) {
 
 export function Body({ children }: { children: React.ReactNode }) {
   return <Text style={styles.body}>{children}</Text>;
+}
+
+export function FormError({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={styles.formError} accessibilityRole="alert" accessibilityLiveRegion="polite">
+      <Text style={styles.error}>{children}</Text>
+    </View>
+  );
 }
 
 export function Disclaimer() {
@@ -242,6 +252,11 @@ const styles = StyleSheet.create({
     ...theme.typography.body,
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.bg.default,
+  },
+  formError: {
+    backgroundColor: theme.colors.bg.danger,
+    borderRadius: theme.radius[12],
+    padding: theme.space[12],
   },
   inputError: { borderColor: theme.colors.status.error },
   error: { ...theme.typography.bodySmall, color: theme.colors.status.error },

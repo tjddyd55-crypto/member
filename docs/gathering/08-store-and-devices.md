@@ -25,8 +25,8 @@ npx eas-cli submit -p ios --profile production --latest
 
 사용자가 준비할 사항:
 
-1. Apple Developer 계정과 권한. iOS `eas build`에서 Apple ID로 로그인해 배포 인증서와 프로비저닝을 설정한다.
-2. App Store Connect에 `kr.jcikorea.app` 앱을 만들고 `eas.json` submit.production.ios의 `REPLACE_WITH_APPLE_ID`, `REPLACE_WITH_ASC_APP_ID`, `REPLACE_WITH_APPLE_TEAM_ID`를 실제 Apple ID, 숫자 App Store Connect 앱 ID, Team ID로 교체한다. 이 값들은 JSON 주석 대신 둔 자리표시자다.
+1. Apple Developer 계정과 권한. Apple ID는 `eas build` / `eas submit` 프롬프트에서 직접 입력하며 `eas.json`에 저장하지 않는다. iOS 빌드 시 로그인해 배포 인증서와 프로비저닝을 설정한다.
+2. Apple Developer App ID는 `kr.jcikorea.app`이며 Push Notifications capability를 사용한다. App Store Connect 앱은 `JCI KOREA`, `ascAppId`는 `6835749438`, 개인(Individual) 계정 Team은 `HVK2UWPBY9`다. `eas.json`의 `submit.production.ios`에는 이 `ascAppId`와 `appleTeamId`가 설정되어 있다.
 3. Play Console에서 package `kr.jcikorea.app` 앱을 만든다. **첫 AAB는 Play Console에서 수동 업로드**한다. 이후 자동 제출용 서비스 계정에 Play Console 권한을 부여하고 JSON 키를 `apps/gathering-mobile/secrets/play-service-account.json`에 둔다. secrets 디렉터리는 gitignore 대상이며 키를 커밋하지 않는다.
 4. Android 자동 제출은 internal 트랙의 draft 상태다. 각 스토어의 앱 설명, 스크린샷, 개인정보/Data safety, 심사 계정, 연령 등급을 작성하고 최종 제출한다.
 

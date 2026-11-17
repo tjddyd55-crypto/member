@@ -68,9 +68,8 @@
         "releaseStatus": "draft"
       },
       "ios": {
-        "appleId": "REPLACE_WITH_APPLE_ID",
-        "ascAppId": "REPLACE_WITH_ASC_APP_ID",
-        "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
+        "ascAppId": "6835749438",
+        "appleTeamId": "HVK2UWPBY9"
       }
     }
   }

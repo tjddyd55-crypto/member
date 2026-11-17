@@ -119,6 +119,115 @@ async function createEvent(token: string, groupId: string, startsAt: string) {
 }
 
 describe('행사 사진·영상', () => {
+  it('영상 포스터는 활성 업로더·관리자만 올리며 목록과 다운로드에 노출한다', async () => {
+    const owner = await register('포스터회장');
+    const uploader = await register('포스터업로더');
+    const member = await register('포스터회원');
+    const outsider = await register('포스터외부');
+    const group = await createGroup(owner.tokens.accessToken, '포스터모임');
+    await join(owner.tokens.accessToken, uploader.tokens.accessToken, group.id);
+    await join(owner.tokens.accessToken, member.tokens.accessToken, group.id);
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-04-01T00:00:00.000Z');
+    const folder = await prisma.gatheringMediaFolder.create({
+      data: { groupId: group.id, title: '포스터폴더', createdByUserId: owner.user.id },
+    });
+    const make = (kind: 'PHOTO' | 'VIDEO') =>
+      prisma.gatheringMediaAsset.create({
+        data: {
+          groupId: group.id,
+          eventId: event.id,
+          folderId: folder.id,
+          uploaderUserId: uploader.user.id,
+          kind,
+          mimeType: kind === 'VIDEO' ? 'video/mp4' : 'image/jpeg',
+          sizeBytes: 32n,
+          storageKey: `test/poster/${Math.random()}`,
+          status: 'READY',
+        },
+      });
+    const video = await make('VIDEO');
+    const photo = await make('PHOTO');
+    const base = `/api/gathering/groups/${group.id}`;
+    const post = (token: string, id: string, action: string) =>
+      app.inject({
+        method: 'POST',
+        url: `${base}/media/${id}/${action}`,
+        headers: auth(token),
+        ...(action === 'poster-upload' ? { payload: { sizeBytes: 32 } } : {}),
+      });
+    for (const action of ['poster-upload', 'poster-complete']) {
+      expect((await post(outsider.tokens.accessToken, video.id, action)).statusCode).toBe(404);
+      expect((await post(member.tokens.accessToken, video.id, action)).statusCode).toBe(403);
+      expect((await post(uploader.tokens.accessToken, photo.id, action)).statusCode).toBe(400);
+    }
+    const signed = await post(uploader.tokens.accessToken, video.id, 'poster-upload');
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json()).toMatchObject({
+      headers: { 'Content-Type': 'image/jpeg', 'Content-Length': '32' },
+      uploadUrl: expect.stringContaining(encodeURIComponent(`${video.storageKey}.poster.jpg`)),
+      expiresAt: expect.any(String),
+    });
+    expect((await post(owner.tokens.accessToken, video.id, 'poster-upload')).statusCode).toBe(200);
+    expect((await post(uploader.tokens.accessToken, video.id, 'poster-complete')).statusCode).toBe(
+      409,
+    );
+    const list = (path: string) =>
+      app.inject({
+        method: 'GET',
+        url: `${base}${path}`,
+        headers: auth(uploader.tokens.accessToken),
+      });
+    expect(
+      (await list(`/events/${event.id}/media`))
+        .json()
+        .items.find((row: { id: string }) => row.id === video.id).hasPoster,
+    ).toBe(false);
+    storage.put(`${video.storageKey}.poster.jpg`, jpeg(32));
+    expect((await post(uploader.tokens.accessToken, video.id, 'poster-complete')).statusCode).toBe(
+      200,
+    );
+    expect((await list(`/media/${video.id}/download`)).json().posterUrl).toContain(
+      encodeURIComponent(`${video.storageKey}.poster.jpg`),
+    );
+    for (const path of [`/events/${event.id}/media`, `/folders/${folder.id}/media`]) {
+      expect(
+        (await list(path)).json().items.find((row: { id: string }) => row.id === video.id)
+          .hasPoster,
+      ).toBe(true);
+    }
+    expect(
+      await prisma.gatheringAuditLog.count({
+        where: { targetId: video.id, action: 'GATHERING_MEDIA_POSTER_COMPLETE' },
+      }),
+    ).toBe(1);
+    useObjectStorage('unconfigured');
+    for (const action of ['poster-upload', 'poster-complete'])
+      expect((await post(uploader.tokens.accessToken, video.id, action)).statusCode).toBe(503);
+    useObjectStorage(storage);
+    await prisma.gatheringMembership.update({
+      where: { groupId_userId: { groupId: group.id, userId: uploader.user.id } },
+      data: { status: 'SUSPENDED' },
+    });
+    for (const action of ['poster-upload', 'poster-complete'])
+      expect((await post(uploader.tokens.accessToken, video.id, action)).statusCode).toBe(403);
+    await prisma.gatheringMembership.update({
+      where: { groupId_userId: { groupId: group.id, userId: uploader.user.id } },
+      data: { status: 'ACTIVE' },
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `${base}/media/${video.id}`,
+          headers: auth(owner.tokens.accessToken),
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(storage.objects.has(`${video.storageKey}.poster.jpg`)).toBe(false);
+    for (const action of ['poster-upload', 'poster-complete'])
+      expect((await post(uploader.tokens.accessToken, video.id, action)).statusCode).toBe(404);
+  });
+
   it('삭제 집계를 갱신하고 폴더 삭제는 행사 연결 레거시 자산을 보존한다', async () => {
     const owner = await register('삭제집계');
     const token = owner.tokens.accessToken;
@@ -165,7 +274,11 @@ describe('행사 사진·영상', () => {
       const albums = await get('/albums');
       expect(
         albums.events.find((row: { eventId: string }) => row.eventId === event.id),
-      ).toMatchObject({ photoCount: photos, videoCount: videos, startsAt: '2026-04-01T00:00:00.000Z' });
+      ).toMatchObject({
+        photoCount: photos,
+        videoCount: videos,
+        startsAt: '2026-04-01T00:00:00.000Z',
+      });
       expect(albums.folders[0]).toMatchObject({
         createdAt: folder.createdAt.toISOString(),
         photoCount: photos,

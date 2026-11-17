@@ -4,6 +4,7 @@ import type { GatheringMediaView } from '@member/contracts';
 export function presentMedia(asset: GatheringMediaAsset, viewerId: string): GatheringMediaView {
   return {
     id: asset.id,
+    hasPoster: asset.posterStorageKey !== null,
     kind: asset.kind,
     mimeType: asset.mimeType,
     sizeBytes: Number(asset.sizeBytes),

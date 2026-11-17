@@ -1,4 +1,7 @@
-import { buildGatheringObjectKey as buildKey, buildMemberBookProfileKey as buildProfileKey } from '@member/gathering-domain';
+import {
+  buildGatheringObjectKey as buildKey,
+  buildMemberBookProfileKey as buildProfileKey,
+} from '@member/gathering-domain';
 import type { GatheringObjectFolder } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { readStorageConfig } from './config.js';
@@ -41,7 +44,11 @@ export function buildGatheringObjectKey(input: {
   }
 }
 
-export function buildProfileObjectKey(input: { prefixEnv: string; userId: string; objectId: string }) {
+export function buildProfileObjectKey(input: {
+  prefixEnv: string;
+  userId: string;
+  objectId: string;
+}) {
   try {
     return buildProfileKey(input);
   } catch {
@@ -53,7 +60,7 @@ export function assertGatheringStorageConfigured() {
   if (forceUnconfigured) {
     throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
   }
-  if (devStorageEnabled() || readStorageConfig()) return;
+  if (override || devStorageEnabled() || readStorageConfig()) return;
   throw new AppError(503, 'STORAGE_UNCONFIGURED', '파일 저장소가 설정되지 않았습니다.');
 }
 

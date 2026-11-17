@@ -483,10 +483,26 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ sizeBytes }) },
     );
   },
-  downloadMedia(groupId: string, assetId: string) {
-    return request<{ url: string; expiresAt: string; mimeType: string; kind: 'PHOTO' | 'VIDEO' }>(
-      `/api/gathering/groups/${groupId}/media/${assetId}/download`,
+  posterUpload(groupId: string, assetId: string, sizeBytes: number) {
+    return request<{ uploadUrl: string; headers: Record<string, string>; expiresAt: string }>(
+      `/api/gathering/groups/${groupId}/media/${assetId}/poster-upload`,
+      { method: 'POST', body: JSON.stringify({ sizeBytes }) },
     );
+  },
+  posterComplete(groupId: string, assetId: string) {
+    return request<{ ok: boolean }>(
+      `/api/gathering/groups/${groupId}/media/${assetId}/poster-complete`,
+      { method: 'POST' },
+    );
+  },
+  downloadMedia(groupId: string, assetId: string) {
+    return request<{
+      url: string;
+      posterUrl: string | null;
+      expiresAt: string;
+      mimeType: string;
+      kind: 'PHOTO' | 'VIDEO';
+    }>(`/api/gathering/groups/${groupId}/media/${assetId}/download`);
   },
   deleteMedia(groupId: string, assetId: string) {
     return request<{ ok: boolean }>(`/api/gathering/groups/${groupId}/media/${assetId}`, {

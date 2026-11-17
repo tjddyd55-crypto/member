@@ -78,3 +78,40 @@ export function gatheringSwitchItems(groups: readonly GatheringSwitchTarget[], c
       selected: group.id === currentId,
     }));
 }
+
+export type DrawerItem = {
+  id: string;
+  label: string;
+  href: string;
+  icon?: 'settings-outline' | 'shield-checkmark-outline' | 'people-outline' | 'swap-horizontal-outline' | 'calendar-outline' | 'add-outline';
+  selected?: boolean;
+};
+
+export type DrawerGroup = { id: string; name: string; permissions: readonly string[] };
+export type HandoverActions = { nominate: boolean; accept: boolean; confirm: boolean; finalize: boolean; cancel: boolean };
+
+/** Uses the same grants as settings/manage and the entry checks in officers. */
+export function groupMenuItems(group: DrawerGroup | null, actions?: HandoverActions | null): DrawerItem[] {
+  if (!group) return [];
+  const has = (permission: string) => group.permissions.includes(permission);
+  const base = `/(app)/groups/${group.id}`;
+  const items: DrawerItem[] = [];
+  if (has('GROUP_SETTINGS')) items.push({ id: 'settings', label: '모임 설정', href: `${base}/settings`, icon: 'settings-outline' });
+  if (['GROUP_SETTINGS', 'INVITE_MANAGE', 'MEMBER_MANAGE'].some(has)) items.push({ id: 'manage', label: '관리', href: `${base}/manage`, icon: 'shield-checkmark-outline' });
+  if (has('MEMBER_READ')) items.push({ id: 'officers', label: '집행부', href: `${base}/officers`, icon: 'people-outline' });
+  if (has('HANDOVER') || (actions && Object.values(actions).some(Boolean))) items.push({ id: 'handover', label: '차기 협의회장 인계', href: `${base}/handover`, icon: 'swap-horizontal-outline' });
+  return items;
+}
+
+export function drawerSections(groups: readonly GatheringSwitchTarget[], currentId?: string, group: DrawerGroup | null = null, actions?: HandoverActions | null) {
+  const sections: { id: string; title: string; items: DrawerItem[] }[] = [
+    { id: 'groups', title: '내 모임', items: [
+      ...gatheringSwitchItems(groups, currentId),
+      { id: 'all-groups', label: '모든 모임 보기', href: '/(app)/groups' },
+      { id: 'create', label: '+ 모임 만들기', href: '/(app)/groups/create', icon: 'add-outline' },
+    ] },
+  ];
+  if (currentId && group?.id === currentId) sections.push({ id: 'current', title: group.name, items: groupMenuItems(group, actions) });
+  sections.push({ id: 'global', title: '전체', items: GLOBAL_MENU_ROUTES.filter((item) => item.id !== 'groups').map((item) => ({ ...item, icon: 'calendar-outline' })) });
+  return sections;
+}

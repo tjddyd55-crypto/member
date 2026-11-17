@@ -38,7 +38,7 @@ describe('t48 화면 구조', () => {
     for (const text of ['내 역할', '최근 행사', '최근 사진', '재무 요약', 'api.finance'])
       expect(home).not.toContain(text);
     expect(home).not.toContain('eventsTimeline');
-    expect(source('src/features/group/AppChrome.tsx')).toContain("['settings', '모임 설정']");
+    expect(source('src/features/group/app-menu.ts')).toContain("label: '모임 설정'");
   });
   it.each([
     [

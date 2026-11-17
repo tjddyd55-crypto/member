@@ -13,13 +13,14 @@ import { CommonActions } from '@react-navigation/native';
 import { router, useGlobalSearchParams, usePathname } from 'expo-router';
 import { store } from 'expo-router/build/global-state/router-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { GatheringGroupSummary } from '@member/contracts';
+import type { GatheringGroupDetail, GatheringGroupSummary } from '@member/contracts';
 import { api } from '../../api/client';
+import { loadDrawerGroup } from './load-drawer-group';
 import { theme } from '../../theme';
 import {
   compactHeaderTitle,
-  GLOBAL_MENU_ROUTES,
-  gatheringSwitchItems,
+  drawerSections,
+  type HandoverActions,
   globalMenuNavigation,
   rootResetTarget,
   routeHeaderTitle,
@@ -43,6 +44,8 @@ export function AppChrome({ children }: { children: ReactNode }) {
   const [namedGroup, setNamedGroup] = useState<{ id: string; name: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<GatheringGroupSummary[]>([]);
+  const [menuGroup, setMenuGroup] = useState<GatheringGroupDetail | null>(null);
+  const [handoverActions, setHandoverActions] = useState<HandoverActions | null>(null);
   const { width } = useWindowDimensions();
   const title = compactHeaderTitle({
     groupName: visibleGroupName(namedGroup, groupId),
@@ -69,12 +72,31 @@ export function AppChrome({ children }: { children: ReactNode }) {
     };
   }, [groupId]);
 
+  useEffect(() => {
+    setMenuGroup(null);
+    setHandoverActions(null);
+    if (!open) return;
+    let active = true;
+    void api.groups().then((result) => { if (active) setGroups(result.items); }).catch(() => { if (active) setGroups([]); });
+    if (groupId) {
+      void loadDrawerGroup({
+        loadGroup: () => api.group(groupId),
+        loadHandover: () => api.handover(groupId),
+        isActive: () => active,
+        onGroup: (group) => {
+          setNamedGroup({ id: group.id, name: group.name });
+          setMenuGroup(group);
+        },
+        onActions: setHandoverActions,
+      });
+    }
+    return () => { active = false; };
+  }, [open, groupId]);
+
   const showMenu = () => {
+    setMenuGroup(null);
+    setHandoverActions(null);
     setOpen(true);
-    void api
-      .groups()
-      .then((result) => setGroups(result.items))
-      .catch(() => setGroups([]));
   };
 
   const go = (href: string) => {
@@ -115,60 +137,39 @@ export function AppChrome({ children }: { children: ReactNode }) {
             <View
               style={[
                 styles.drawer,
-                { width: Math.min(320, width - 2 * theme.layout.horizontalGutter), paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left },
+                { width: Math.min(320, width - 2 * theme.layout.horizontalGutter), paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right },
               ]}
             >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="메뉴 닫기"
-                onPress={() => setOpen(false)}
-                style={styles.close}
-              >
-                <Text style={styles.closeLabel}>닫기</Text>
-              </Pressable>
+              <View style={styles.drawerHeader}>
+                <Text style={styles.appTitle}>JCI KOREA</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="메뉴 닫기" onPress={() => setOpen(false)} style={styles.close}>
+                  <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+                </Pressable>
+              </View>
               <ScrollView style={styles.menuScroll} contentContainerStyle={styles.menuContent}>
-                {GLOBAL_MENU_ROUTES.map((item) => (
-                  <Pressable
-                    key={item.id}
-                    accessibilityRole="button"
-                    onPress={() => go(item.href)}
-                    style={styles.item}
-                  >
-                    <Text style={styles.itemLabel}>{item.label}</Text>
-                  </Pressable>
-                ))}
-                {groupId
-                  ? [
-                      ['settings', '모임 설정'],
-                      ['manage', '관리'],
-                      ['officers', '집행부'],
-                      ['handover', '차기 협의회장 인계'],
-                    ].map(([route, label]) => (
+                {drawerSections(groups, groupId, menuGroup, handoverActions).map((section, index) => (
+                  <View key={section.id}>
+                    {index > 0 ? <View style={styles.divider} /> : null}
+                    <Text accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.sectionTitle}>{section.title}</Text>
+                    {section.items.map((item) => (
                       <Pressable
-                        key={route}
+                        key={item.id}
                         accessibilityRole="button"
-                        style={styles.item}
-                        onPress={() => {
-                          setOpen(false);
-                          router.push(`/(app)/groups/${groupId}/${route}` as '/(app)/groups');
-                        }}
+                        accessibilityState={{ selected: Boolean(item.selected) }}
+                        onPress={() => go(item.href)}
+                        style={[styles.item, item.selected && styles.selectedItem]}
                       >
-                        <Text style={styles.itemLabel}>{label}</Text>
+                        <View style={styles.itemIcon}>
+                          {item.selected ? (
+                            <Ionicons name="checkmark" size={20} color={theme.colors.primary.default} />
+                          ) : item.icon ? (
+                            <Ionicons name={item.icon} size={20} color={theme.colors.text.secondary} />
+                          ) : null}
+                        </View>
+                        <Text style={[styles.itemLabel, item.selected && styles.selectedLabel]} numberOfLines={1}>{item.label}</Text>
                       </Pressable>
-                    ))
-                  : null}
-                {gatheringSwitchItems(groups, groupId).map((item) => (
-                  <Pressable
-                    key={item.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: item.selected }}
-                    onPress={() => go(item.href)}
-                    style={styles.item}
-                  >
-                    <Text style={styles.itemLabel} numberOfLines={2}>
-                      {item.selected ? `${item.label} · 보는 중` : item.label}
-                    </Text>
-                  </Pressable>
+                    ))}
+                  </View>
                 ))}
               </ScrollView>
             </View>
@@ -227,16 +228,14 @@ const styles = StyleSheet.create({
   menuScroll: { flex: 1 },
   menuContent: { paddingBottom: theme.space[16] },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
-  close: {
-    minHeight: theme.layout.buttonMinHeight,
-    justifyContent: 'center',
-    paddingHorizontal: theme.layout.horizontalGutter,
-  },
-  closeLabel: { fontSize: 16, color: theme.colors.text.primary },
-  item: {
-    minHeight: theme.layout.buttonMinHeight,
-    justifyContent: 'center',
-    paddingHorizontal: theme.layout.horizontalGutter,
-  },
-  itemLabel: { fontSize: 16, lineHeight: 22, color: theme.colors.text.primary },
+  drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.layout.horizontalGutter },
+  appTitle: { fontSize: 13, fontWeight: '600', color: theme.colors.text.secondary },
+  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 12, fontWeight: '600', color: theme.colors.text.secondary, paddingHorizontal: theme.layout.horizontalGutter, paddingTop: 12, paddingBottom: 8 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border.default, marginHorizontal: theme.layout.horizontalGutter, marginVertical: 8 },
+  item: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: theme.layout.horizontalGutter },
+  itemIcon: { width: 20, alignItems: 'center', justifyContent: 'center' },
+  selectedItem: { backgroundColor: theme.colors.primary.soft },
+  selectedLabel: { color: theme.colors.primary.default, fontWeight: '700' },
+  itemLabel: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 22, color: theme.colors.text.primary },
 });

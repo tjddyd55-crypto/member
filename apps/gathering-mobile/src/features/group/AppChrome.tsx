@@ -15,6 +15,7 @@ import { store } from 'expo-router/build/global-state/router-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GatheringGroupDetail, GatheringGroupSummary } from '@member/contracts';
 import { api } from '../../api/client';
+import { loadDrawerGroup } from './load-drawer-group';
 import { theme } from '../../theme';
 import {
   compactHeaderTitle,
@@ -78,13 +79,16 @@ export function AppChrome({ children }: { children: ReactNode }) {
     let active = true;
     void api.groups().then((result) => { if (active) setGroups(result.items); }).catch(() => { if (active) setGroups([]); });
     if (groupId) {
-      void Promise.all([api.group(groupId), api.handover(groupId).catch(() => null)])
-        .then(([group, handover]) => {
-          if (!active) return;
+      void loadDrawerGroup({
+        loadGroup: () => api.group(groupId),
+        loadHandover: () => api.handover(groupId),
+        isActive: () => active,
+        onGroup: (group) => {
           setNamedGroup({ id: group.id, name: group.name });
           setMenuGroup(group);
-          setHandoverActions(handover?.actions ?? null);
-        }).catch(() => { if (active) setMenuGroup(null); });
+        },
+        onActions: setHandoverActions,
+      });
     }
     return () => { active = false; };
   }, [open, groupId]);
@@ -155,8 +159,13 @@ export function AppChrome({ children }: { children: ReactNode }) {
                         onPress={() => go(item.href)}
                         style={[styles.item, item.selected && styles.selectedItem]}
                       >
-                        {item.selected ? <Ionicons name="checkmark" size={18} color={theme.colors.primary.default} /> : null}
-                        {item.icon ? <Ionicons name={item.icon} size={20} color={theme.colors.text.secondary} /> : null}
+                        <View style={styles.itemIcon}>
+                          {item.selected ? (
+                            <Ionicons name="checkmark" size={20} color={theme.colors.primary.default} />
+                          ) : item.icon ? (
+                            <Ionicons name={item.icon} size={20} color={theme.colors.text.secondary} />
+                          ) : null}
+                        </View>
                         <Text style={[styles.itemLabel, item.selected && styles.selectedLabel]} numberOfLines={1}>{item.label}</Text>
                       </Pressable>
                     ))}
@@ -225,6 +234,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '600', color: theme.colors.text.secondary, paddingHorizontal: theme.layout.horizontalGutter, paddingTop: 12, paddingBottom: 8 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border.default, marginHorizontal: theme.layout.horizontalGutter, marginVertical: 8 },
   item: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: theme.layout.horizontalGutter },
+  itemIcon: { width: 20, alignItems: 'center', justifyContent: 'center' },
   selectedItem: { backgroundColor: theme.colors.primary.soft },
   selectedLabel: { color: theme.colors.primary.default, fontWeight: '700' },
   itemLabel: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 22, color: theme.colors.text.primary },

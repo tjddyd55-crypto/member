@@ -81,7 +81,8 @@ describe('앨범·선택·연속 일정 UI', () => {
       expect(combined).not.toContain(removed);
     expect(combined).toContain('등록된 사진이 없습니다');
     expect(combined).toContain('사진·영상을 불러오지 못했습니다.');
-    expect(combined).toContain('전송 {progress.loaded}/{progress.total}');
+    expect(combined).toContain('<ProgressBar percent={progress.percent}');
+    expect(combined).toContain('{progress.completed}/{progress.count}');
   });
   it('그룹 및 전체 일정에 월 이동 없이 같은 자동 페이징 목록을 표시한다', () => {
     const events = source('src/features/schedule/EventsPane.tsx');

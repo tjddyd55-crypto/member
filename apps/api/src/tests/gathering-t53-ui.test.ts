@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
+import { businessInfo, privacyPolicy } from '@member/contracts';
 import { formatPhone, phoneDigits } from '../../../gathering-mobile/src/utils/phone';
 import { mediaGridLayout } from '../../../gathering-mobile/src/features/media/grid-layout';
 const root = new URL('../../../gathering-mobile/', import.meta.url);
@@ -84,7 +85,9 @@ describe('t53 phone display and full bleed gallery', () => {
       };
       visit(ast);
     }
-    expect(displays).toHaveLength(2);
+    // The operator contact moved from JSX into the shared app/API legal policy.
+    expect(displays).toHaveLength(1);
+    expect(privacyPolicy.paragraphs.join(' ')).toContain(formatPhone(businessInfo.customerServicePhone));
   });
 
   it.each([360, 390])('event and album grids share the same 6px edges at %ipx', (width) => {

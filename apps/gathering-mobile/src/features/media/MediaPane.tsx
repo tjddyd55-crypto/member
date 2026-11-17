@@ -3,8 +3,9 @@ import { SelectCheckbox } from '../../design/SelectCheckbox';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { canOpenMediaPicker } from './picker-access';
 import type { GatheringMediaView } from '@member/contracts';
 import {
   canRetryTransfer,
@@ -212,8 +213,11 @@ export function MediaPane({
 
   const pickAssets = async (kind: 'PHOTO' | 'VIDEO') => {
     if (uploadReason) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const canOpen = await canOpenMediaPicker(
+      Platform.OS,
+      ImagePicker.requestMediaLibraryPermissionsAsync,
+    );
+    if (!canOpen) {
       setMessage('앨범 접근을 허용해야 사진·영상을 올릴 수 있습니다.');
       return;
     }

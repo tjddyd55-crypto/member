@@ -147,3 +147,5 @@ export type MemberDetail = MemberListItem & {
   joinedAt: string | null;
   privacy: Record<string, 'MEMBERS' | 'ADMINS' | 'PRIVATE'>;
 };
+
+export { businessInfo, privacyPolicy, termsPolicy } from './gathering-legal.js';

@@ -1,20 +1,64 @@
-# 표시 이름, 번들 식별자, 실기기
+# JCI KOREA 스토어 출시와 실기기 확인
 
-표시 이름은 `JCI KOREA` 한 곳이다. 상수 파일은 `apps/gathering-mobile/app-identity.ts`이고 `app.config.ts`와 화면 문구가 그 값을 쓴다. 이 이름은 공식 승인이나 제휴를 뜻하지 않는다. JCIM이라는 표기는 쓰지 않는다.
+표시 이름은 `JCI KOREA`이며 이름 사용 허락을 받았다. iOS bundleIdentifier와 Android package는 모두 `kr.jcikorea.app`이다. `apps/gathering-mobile/app-identity.ts`와 Node 설정용 `app-identity.js`의 `IOS_BUNDLE_ID` / `ANDROID_PACKAGE`를 같게 유지한다. 회원수첩 앱(`apps/mobile`)은 변경하지 않는다.
 
-회원수첩 앱(`apps/mobile`)의 표시 이름은 그대로 둔다. 두 모듈을 한 스토어 앱으로 합치기 전에 회원수첩 이름을 바꾸지 않는다.
+`kr.jcikorea.app`은 이전 `kr.gathering.mobile` 개발 빌드와 다른 앱으로 설치된다. 기존 설치의 세션·로컬 저장값을 공유하지 않는다.
 
-## 임시 번들 식별자
+## 운영 빌드와 제출
 
-`PROVISIONAL_IOS_BUNDLE_ID`와 `PROVISIONAL_ANDROID_PACKAGE`만 수정한다. 다른 파일에 식별자를 복사하지 않는다.
+앱 버전은 `1.0.0`. EAS `cli.appVersionSource: remote`와 production의 `autoIncrement: true`로 iOS buildNumber / Android versionCode를 관리한다. 기존 development / development-device / preview 프로필은 유지한다.
 
-스토어 제출 전 절차:
+production은 store 배포, Android AAB, iOS 실기기 빌드이며 다음 값을 쓴다.
 
-1. 상표와 사용 허락을 확인한다. 허락 전에는 제출하지 않는다.
-2. `app-identity.ts`의 두 상수를 확정 식별자로 바꾼다.
-3. Apple Developer와 Google Play에 그 식별자로 앱을 등록한다.
-4. `EXPO_PUBLIC_EAS_PROJECT_ID`를 모임 앱 `.env`에 넣는다. 예제 파일에는 값을 비워 둔다.
-5. 개발 빌드를 실기기에 설치해 로그인, 모임, 행사, 참석, 알림 권한을 확인한다.
+- API: `https://gathering-api-production.up.railway.app`
+- EAS project ID: `f5a017a3-82f8-4d73-bc8a-ecd249e994f3`
+- expo-updates를 사용하지 않아 channel은 설정하지 않는다.
+
+`apps/gathering-mobile`에서 실행한다.
+
+```bash
+npx eas-cli build -p android --profile production
+npx eas-cli build -p ios --profile production
+npx eas-cli submit -p android --profile production --latest
+npx eas-cli submit -p ios --profile production --latest
+```
+
+사용자가 준비할 사항:
+
+1. Apple Developer 계정과 권한. iOS `eas build`에서 Apple ID로 로그인해 배포 인증서와 프로비저닝을 설정한다.
+2. App Store Connect에 `kr.jcikorea.app` 앱을 만들고 `eas.json` submit.production.ios의 `REPLACE_WITH_APPLE_ID`, `REPLACE_WITH_ASC_APP_ID`, `REPLACE_WITH_APPLE_TEAM_ID`를 실제 Apple ID, 숫자 App Store Connect 앱 ID, Team ID로 교체한다. 이 값들은 JSON 주석 대신 둔 자리표시자다.
+3. Play Console에서 package `kr.jcikorea.app` 앱을 만든다. **첫 AAB는 Play Console에서 수동 업로드**한다. 이후 자동 제출용 서비스 계정에 Play Console 권한을 부여하고 JSON 키를 `apps/gathering-mobile/secrets/play-service-account.json`에 둔다. secrets 디렉터리는 gitignore 대상이며 키를 커밋하지 않는다.
+4. Android 자동 제출은 internal 트랙의 draft 상태다. 각 스토어의 앱 설명, 스크린샷, 개인정보/Data safety, 심사 계정, 연령 등급을 작성하고 최종 제출한다.
+
+## 권한과 임시 이미지
+
+사진 권한 문구는 `행사 사진과 영상을 올리기 위해 사진 보관함에 접근합니다.`이다. iOS의 사진 접근 요청은 유지하며 카메라, 마이크, 사진 보관함 추가 권한을 선언하지 않는다.
+
+Android 사진·영상·영수증 선택은 `launchImageLibraryAsync`의 시스템 Photo Picker를 사용한다(이전 Android는 Play services 백포트). 미디어/저장소 권한 없이 선택한 URI의 임시 접근 권한을 사용한다. 앱에는 MediaLibrary나 보관함 저장·전체 미디어 검색 기능이 없으며 `prepare.ts`는 선택 URI를 앱 캐시에 복사해 처리·업로드한다. 따라서 Android 12 이하도 READ_EXTERNAL_STORAGE가 필요 없다. Android에서는 공통 `canOpenMediaPicker`가 `requestMediaLibraryPermissionsAsync` 호출을 건너뛰어 권한 거부로 선택기가 막히지 않게 한다. iOS/웹의 기존 권한 확인은 유지한다.
+
+명시적으로 요청하는 Android 권한은 POST_NOTIFICATIONS다. READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED, READ_MEDIA_AUDIO, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, RECORD_AUDIO, CAMERA, SYSTEM_ALERT_WINDOW는 모두 blockedPermissions로 제거한다. 실제 네이티브 빌드에는 네트워크·알림 등 라이브러리 권한이 추가될 수 있다. `npx expo config --type introspect`의 androidManifest에서 `tools:node="remove"` 항목은 부여되는 권한이 아닌 병합 제거 지시문이다. Play 제출용 AAB의 최종 Manifest도 확인한다. 이번 introspect 검증에서 제거 지시문을 제외한 병합 Manifest 권한은 `android.permission.INTERNET`, `android.permission.VIBRATE`, `android.permission.POST_NOTIFICATIONS`이며, 위 차단 권한은 모두 `tools:node="remove"`로 확인했다.
+
+Android 12 이하 및 13+에서 미디어 권한을 부여하지 않은 상태로 사진·영상과 영수증 선택, 취소, 업로드를 실기기에서 확인한다.
+
+iOS 비면제 암호화 사용 여부는 false, supportsTablet은 false다. expo-splash-screen 패키지가 설치되어 있지 않아 top-level splash를 사용한다.
+
+`assets/icon.png`, `adaptive-icon.png`, `splash-icon.png`, `notification-icon.png`는 **임시 이미지**다. 남색 `#1B3A6B`와 흰색 JCI 글자를 사용하며 adaptive foreground는 투명 배경의 66% 안전 영역 안에 둔다. notification은 96×96 흰색 단색/투명이다. 출시 전에 공식 JCI KOREA 로고로 교체한다. 재생성:
+
+```bash
+node apps/gathering-mobile/scripts/generate-placeholder-assets.mjs
+```
+
+## 공개 법적 고지와 심사 동선
+
+API 배포 후 사용할 URL:
+
+- https://gathering-api-production.up.railway.app/legal/privacy
+- https://gathering-api-production.up.railway.app/legal/terms
+- https://gathering-api-production.up.railway.app/legal/account-deletion
+
+인증·DB 조회 없는 한국어 HTML이다. 개인정보와 약관은 `packages/contracts/src/gathering-legal.ts`를 앱과 API가 공유한다. 기존 운영자 이메일 `tjddyd55@naver.com`을 삭제 문의에도 사용한다. 사업자 정보가 실제 운영 주체와 맞는지 확인해야 하며 정책은 여전히 법률 검토 전 초안이다. 검토 결과 기존 스플래시·로그인 등의 DISCLAIMER에는 공식 승인·제휴를 부인하는 문구가 남아 있다. 이름 사용 허락과 별개로 이 화면 문구의 최종 표현을 운영자가 확인해야 한다. 삭제 후 남는 모임 기록과 내부 이력에 자동 삭제 기한이 없는 현재 동작을 공개 안내에 명시했다. 실제 보존 기간 확정은 운영자가 해야 한다.
+
+개인정보·약관은 로그인 화면의 링크 또는 `/legal/privacy`, `/legal/terms`로 로그인 없이 접근한다. 계정 삭제는 `로그인 → 내 모임 → 내 정보 및 설정 → 계정 삭제 → 장부 보존에 동의 → 비밀번호 입력 → 삭제`다. 기존에는 프로필 등록 후 프로필 진입 버튼이 사라져, 내 모임에 항상 보이는 설정 진입 버튼을 추가했다. 회장은 먼저 인계해야 한다.
 
 ## 실기기에서 볼 것
 

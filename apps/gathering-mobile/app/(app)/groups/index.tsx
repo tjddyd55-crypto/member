@@ -45,6 +45,11 @@ export default function GroupsScreen() {
     <Screen>
       <Title>{APP_NAME}</Title>
       <Body>내 모임</Body>
+      <Button
+        label="내 정보 및 설정"
+        variant="text"
+        onPress={() => router.push('/(app)/profile')}
+      />
       {!profile ? (
         <Button label="이름과 소속 로컬 등록" onPress={() => router.push('/(app)/profile')} />
       ) : null}
@@ -85,7 +90,11 @@ export default function GroupsScreen() {
           </Text>
         </Pressable>
       ))}
-      <Button label="전체 일정" variant="secondary" onPress={() => router.push('/(app)/calendar')} />
+      <Button
+        label="전체 일정"
+        variant="secondary"
+        onPress={() => router.push('/(app)/calendar')}
+      />
       <Button label="모임 만들기" onPress={() => router.push('/(app)/groups/create')} />
       <TextField
         label="초대 코드"

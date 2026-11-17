@@ -1,15 +1,13 @@
 import type { ExpoConfig } from 'expo/config';
-import {
-  APP_DISPLAY_NAME,
-  PROVISIONAL_ANDROID_PACKAGE,
-  PROVISIONAL_IOS_BUNDLE_ID,
-} from './app-identity.js';
+import { APP_DISPLAY_NAME, ANDROID_PACKAGE, IOS_BUNDLE_ID } from './app-identity.js';
 
 const config: ExpoConfig = {
   owner: 'tjddyd55',
   name: APP_DISPLAY_NAME,
   slug: 'jci-korea-gathering',
-  version: '0.1.0',
+  version: '1.0.0',
+  icon: './assets/icon.png',
+  splash: { image: './assets/splash-icon.png', resizeMode: 'contain', backgroundColor: '#1B3A6B' },
   orientation: 'portrait',
   scheme: 'jcikorea',
   userInterfaceStyle: 'light',
@@ -19,12 +17,13 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-secure-store',
     'expo-video',
-    'expo-notifications',
+    ['expo-notifications', { icon: './assets/notification-icon.png', color: '#1B3A6B' }],
     [
       'expo-image-picker',
       {
-        photosPermission: '행사 사진과 영상을 올리기 위해 앨범 접근이 필요합니다.',
+        photosPermission: '행사 사진과 영상을 올리기 위해 사진 보관함에 접근합니다.',
         microphonePermission: false,
+        cameraPermission: false,
       },
     ],
   ],
@@ -39,13 +38,31 @@ const config: ExpoConfig = {
   },
   ios: {
     supportsTablet: false,
-    bundleIdentifier: PROVISIONAL_IOS_BUNDLE_ID,
+    config: { usesNonExemptEncryption: false },
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+      NSPhotoLibraryUsageDescription: '행사 사진과 영상을 올리기 위해 사진 보관함에 접근합니다.',
+    },
+    bundleIdentifier: IOS_BUNDLE_ID,
   },
   android: {
+    permissions: ['android.permission.POST_NOTIFICATIONS'],
+    blockedPermissions: [
+      'android.permission.READ_MEDIA_IMAGES',
+      'android.permission.READ_MEDIA_VIDEO',
+      'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
+      'android.permission.READ_MEDIA_AUDIO',
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+      'android.permission.RECORD_AUDIO',
+      'android.permission.CAMERA',
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    ],
     adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#1B3A6B',
     },
-    package: PROVISIONAL_ANDROID_PACKAGE,
+    package: ANDROID_PACKAGE,
     softwareKeyboardLayoutMode: 'resize',
   },
 };

@@ -68,5 +68,8 @@ Prisma는 저장소 루트의 `DATABASE_URL`을 읽는다. `apps/api/.env.exampl
 
 ## 브랜치
 
-작업 브랜치: `feature/mobile-member-book-foundation`  
-`main` merge / production 배포는 별도 승인 후 진행합니다.
+브랜치 규칙:
+
+- `develop`: 개발 통합 브랜치. 푸시하면 Railway jci-korea **development** 환경(`api`, `gathering-admin`)이 자동 배포됩니다. 작업 PR은 `develop`으로 보냅니다.
+- `main`: 운영 브랜치. `develop`을 fast-forward로 승격하면 **production** 환경(`gathering-api`, `gathering-admin-prod`)이 자동 배포됩니다.
+- `feature/mobile-member-book-foundation`, `release/gathering`은 이전 이름이며 더 이상 배포에 쓰이지 않습니다.

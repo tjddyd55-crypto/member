@@ -12,7 +12,7 @@
 | API 서비스 | `f5b14779-0b73-4fc7-a20c-d4c564353827` |
 | Postgres | `3675af02-9ed7-453c-87de-00d392a2f50e` |
 
-API는 저장소 루트에서 `npm run start -w @member/api`로 뜨고 `/health`가 200이다. `feature/mobile-member-book-foundation`에 병합되면 이 Development API가 배포되고, 배포 전에 `npm run db:migrate:deploy`가 대기 중인 마이그레이션을 적용한다. 지금 배포된 커밋은 `4f7c7352`다. 관리자 풀리퀘스트는 리뷰와 환경 변수가 준비되기 전에는 foundation에 넣지 않는다. Production은 대상이 아니다. 별도 관리자 서비스는 아직 없다. 앱 서비스도 같은 Development 데이터베이스를 쓴다. 새 데이터베이스는 만들지 않는다.
+API는 저장소 루트에서 `npm run start -w @member/api`로 뜨고 `/health`가 200이다. `develop`에 병합되면 이 Development API가 배포되고(이전에는 `feature/mobile-member-book-foundation`), 배포 전에 `npm run db:migrate:deploy`가 대기 중인 마이그레이션을 적용한다. 지금 배포된 커밋은 `4f7c7352`다. 관리자 풀리퀘스트는 리뷰와 환경 변수가 준비되기 전에는 foundation에 넣지 않는다. Production은 대상이 아니다. 별도 관리자 서비스는 아직 없다. 앱 서비스도 같은 Development 데이터베이스를 쓴다. 새 데이터베이스는 만들지 않는다.
 
 ## 로컬 실행
 

@@ -23,6 +23,7 @@ import { AlbumsPane } from '../../../../src/features/media/AlbumsPane';
 import { EventsPane } from '../../../../src/features/schedule/EventsPane';
 import {
   Body,
+  FormError,
   Button,
   EmptyState,
   ErrorState,
@@ -279,7 +280,7 @@ function MembersPane({ groupId }: { groupId: string }) {
         <ErrorState message={message} onRetry={() => void load(query)} />
       ) : null}
       {status === 'ready' && items.length === 0 ? <EmptyState title="회원이 없습니다" /> : null}
-      {blockError ? <Body>{blockError}</Body> : null}
+      {blockError ? <FormError>{blockError}</FormError> : null}
       {items.map((member) => (
         <CompactMemberRow key={member.membershipId} member={member}>
           {member.phone

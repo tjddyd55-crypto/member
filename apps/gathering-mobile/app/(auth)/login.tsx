@@ -1,9 +1,19 @@
 import { useState } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Alert, Keyboard, Pressable, Text } from 'react-native';
 import { Redirect, router } from 'expo-router';
+import { gatheringLoginSchema } from '@member/contracts';
 import { normalizeKoreanMobile } from '@member/gathering-domain';
 import { useAuth } from '../../src/auth/AuthProvider';
-import { Body, Button, Disclaimer, Notice, Screen, TextField, Title } from '../../src/design/ui';
+import {
+  Body,
+  Button,
+  FormError,
+  Disclaimer,
+  Notice,
+  Screen,
+  TextField,
+  Title,
+} from '../../src/design/ui';
 import { IDENTITY_LIMITATION } from '../../src/copy';
 import { theme } from '../../src/theme';
 
@@ -13,13 +23,23 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const showError = (message: string) => {
+    setError(message);
+    Alert.alert('로그인할 수 없습니다', message);
+  };
 
   if (user) return <Redirect href="/" />;
 
   const onSubmit = async () => {
+    Keyboard.dismiss();
     setError(null);
     if (!normalizeKoreanMobile(phone)) {
-      setError('010으로 시작하는 휴대폰 번호를 입력하세요.');
+      showError('010으로 시작하는 휴대폰 번호를 입력하세요.');
+      return;
+    }
+    const parsed = gatheringLoginSchema.safeParse({ phone, password });
+    if (!parsed.success) {
+      showError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
       return;
     }
     setLoading(true);
@@ -27,7 +47,13 @@ export default function LoginScreen() {
       await login(phone, password);
       router.replace('/');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '로그인에 실패했습니다.');
+      showError(
+        caught instanceof TypeError
+          ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.'
+          : caught instanceof Error
+            ? caught.message
+            : '로그인에 실패했습니다.',
+      );
     } finally {
       setLoading(false);
     }
@@ -52,7 +78,7 @@ export default function LoginScreen() {
         secureTextEntry
         autoComplete="password"
       />
-      {error ? <Text style={{ color: theme.colors.status.error }}>{error}</Text> : null}
+      {error ? <FormError>{error}</FormError> : null}
       <Button label="로그인" onPress={() => void onSubmit()} loading={loading} />
       <Button
         label="계정 만들기"

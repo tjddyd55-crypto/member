@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Text } from 'react-native';
+import { Alert, Keyboard, Text } from 'react-native';
 import { router } from 'expo-router';
 import { gatheringRecoveryRedeemSchema } from '@member/contracts';
 import { api } from '../../src/api/client';
 import { IDENTITY_LIMITATION } from '../../src/copy';
-import { Body, Button, Notice, Screen, TextField, Title } from '../../src/design/ui';
+import { Body, Button, FormError, Notice, Screen, TextField, Title } from '../../src/design/ui';
 import { theme } from '../../src/theme';
 
 export default function RecoveryScreen() {
@@ -15,8 +15,13 @@ export default function RecoveryScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const showError = (message: string) => {
+    setError(message);
+    Alert.alert('계정을 복구할 수 없습니다', message);
+  };
 
   const redeem = async () => {
+    Keyboard.dismiss();
     setError(null);
     setMessage(null);
     const parsed = gatheringRecoveryRedeemSchema.safeParse({
@@ -25,7 +30,7 @@ export default function RecoveryScreen() {
       newPassword: password,
     });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
+      showError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
       return;
     }
     setLoading(true);
@@ -33,20 +38,33 @@ export default function RecoveryScreen() {
       await api.redeemRecovery(parsed.data);
       setMessage('비밀번호를 바꿨습니다. 새 비밀번호로 로그인하세요.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '복구에 실패했습니다.');
+      showError(
+        caught instanceof TypeError
+          ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.'
+          : caught instanceof Error
+            ? caught.message
+            : '복구에 실패했습니다.',
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const requestReview = async () => {
+    Keyboard.dismiss();
     setError(null);
     setLoading(true);
     try {
       const result = await api.requestRecovery({ phone, note });
       setMessage(result.message);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '요청에 실패했습니다.');
+      showError(
+        caught instanceof TypeError
+          ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.'
+          : caught instanceof Error
+            ? caught.message
+            : '요청에 실패했습니다.',
+      );
     } finally {
       setLoading(false);
     }
@@ -75,7 +93,7 @@ export default function RecoveryScreen() {
       <TextField label="연락 메모" value={note} onChangeText={setNote} />
       <Button label="검토 요청" variant="secondary" onPress={() => void requestReview()} />
       {message ? <Text style={{ color: theme.colors.text.primary }}>{message}</Text> : null}
-      {error ? <Text style={{ color: theme.colors.status.error }}>{error}</Text> : null}
+      {error ? <FormError>{error}</FormError> : null}
       <Button label="로그인으로" variant="text" onPress={() => router.replace('/(auth)/login')} />
     </Screen>
   );

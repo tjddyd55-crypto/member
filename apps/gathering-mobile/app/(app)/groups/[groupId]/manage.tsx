@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringInviteView, GatheringMemberView } from '@member/contracts';
 import { api } from '../../../../src/api/client';
-import { Body, Button, ErrorState, LoadingState, Notice, Screen, Title } from '../../../../src/design/ui';
+import { Body, FormError, Button, ErrorState, LoadingState, Notice, Screen, Title } from '../../../../src/design/ui';
 import { theme } from '../../../../src/theme';
 
 function inviteState(invite: GatheringInviteView) {
@@ -117,7 +117,7 @@ export default function ManageScreen() {
                   <Button label="공유 (카카오 등)" variant="secondary" onPress={() => void shareLink()} />
                 </View>
               ) : null}
-              {error ? <Body>{error}</Body> : null}
+              {error ? <FormError>{error}</FormError> : null}
               <Body>발급한 링크</Body>
               {invites.length === 0 ? <Body>아직 없습니다.</Body> : null}
               {invites.map((invite) => (

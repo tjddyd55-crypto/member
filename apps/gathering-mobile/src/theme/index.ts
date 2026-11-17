@@ -6,6 +6,7 @@ export const theme = {
     bg: {
       default: '#FFFFFF',
       subtle: '#F4F7FB',
+      danger: '#FFF1F0',
     },
     text: {
       ...colors.text,

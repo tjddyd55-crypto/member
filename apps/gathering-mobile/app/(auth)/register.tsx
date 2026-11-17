@@ -1,10 +1,18 @@
 import { useState } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Alert, Keyboard, Pressable, Text } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { gatheringRegisterSchema } from '@member/contracts';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { DIRECTORY_CONSENT, IDENTITY_LIMITATION } from '../../src/copy';
-import { Body, Button, Disclaimer, Notice, Screen, TextField, Title } from '../../src/design/ui';
+import {
+  Button,
+  FormError,
+  Disclaimer,
+  Notice,
+  Screen,
+  TextField,
+  Title,
+} from '../../src/design/ui';
 import { theme } from '../../src/theme';
 
 export default function RegisterScreen() {
@@ -16,10 +24,15 @@ export default function RegisterScreen() {
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const showError = (message: string) => {
+    setError(message);
+    Alert.alert('가입할 수 없습니다', message);
+  };
 
   if (user) return <Redirect href="/" />;
 
   const onSubmit = async () => {
+    Keyboard.dismiss();
     setError(null);
     const parsed = gatheringRegisterSchema.safeParse({
       name,
@@ -29,7 +42,7 @@ export default function RegisterScreen() {
       directoryConsent: consent ? true : false,
     });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
+      showError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
       return;
     }
     setLoading(true);
@@ -37,7 +50,13 @@ export default function RegisterScreen() {
       await register(parsed.data);
       router.replace('/');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '가입에 실패했습니다.');
+      showError(
+        caught instanceof TypeError
+          ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.'
+          : caught instanceof Error
+            ? caught.message
+            : '가입에 실패했습니다.',
+      );
     } finally {
       setLoading(false);
     }
@@ -61,6 +80,9 @@ export default function RegisterScreen() {
         placeholder="예: 서울 ○○"
       />
       <TextField label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry />
+      <Text style={{ ...theme.typography.bodySmall, color: theme.colors.text.secondary }}>
+        8자 이상, 영문·숫자 포함
+      </Text>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: consent }}
@@ -70,7 +92,7 @@ export default function RegisterScreen() {
           {consent ? '☑' : '☐'} {DIRECTORY_CONSENT}
         </Text>
       </Pressable>
-      {error ? <Body>{error}</Body> : null}
+      {error ? <FormError>{error}</FormError> : null}
       <Button label="가입하고 복구 코드 받기" onPress={() => void onSubmit()} loading={loading} />
       <Button label="로그인으로" variant="text" onPress={() => router.back()} />
       <Disclaimer />

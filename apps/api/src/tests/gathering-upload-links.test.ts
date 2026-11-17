@@ -607,10 +607,13 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     });
     const remove = vi.spyOn(storage, 'remove');
     expect((await manage(secretary.tokens.accessToken, 'DELETE')).statusCode).toBe(200);
-    expect(remove).toHaveBeenCalledTimes(rows.length * 2);
+    expect(remove).toHaveBeenCalledTimes(
+      rows.length * 2 + rows.filter((row) => row.kind === 'VIDEO').length,
+    );
     for (const row of rows) {
       expect(remove).toHaveBeenCalledWith(row.storageKey);
       expect(remove).toHaveBeenCalledWith(`${row.storageKey}-pending`);
+      if (row.kind === 'VIDEO') expect(remove).toHaveBeenCalledWith(`${row.storageKey}.poster.jpg`);
       expect(await prisma.gatheringMediaAsset.findUnique({ where: { id: row.id } })).toMatchObject({
         status: 'DELETED',
         deletedAt: expect.any(Date),

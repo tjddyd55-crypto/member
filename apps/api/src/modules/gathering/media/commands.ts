@@ -20,7 +20,11 @@ import { GatheringAuditAction } from '../constants.js';
 import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
 import { gatheringUploadLimiter } from '../rate-limit.js';
-import { buildGatheringObjectKey, currentObjectStorage } from '../storage/r2.js';
+import {
+  assertGatheringStorageConfigured,
+  buildGatheringObjectKey,
+  currentObjectStorage,
+} from '../storage/r2.js';
 import { isSubscriptionActive, loadBillableUsage, loadGroupQuotaBytes } from '../storage/usage.js';
 import { rejectMedia, rejectUploadDecision } from './errors.js';
 import { presentMedia } from './present.js';
@@ -270,6 +274,11 @@ export async function removeMediaAssets(
   for (const asset of assets) {
     await storage.remove(asset.storageKey);
     await storage.remove(pendingObjectKey(asset.storageKey));
+    const posterKeys = new Set([
+      ...(asset.kind === 'VIDEO' ? [`${asset.storageKey}.poster.jpg`] : []),
+      ...(asset.posterStorageKey ? [asset.posterStorageKey] : []),
+    ]);
+    for (const key of posterKeys) await storage.remove(key).catch(() => undefined);
   }
   const mark = async (db: Prisma.TransactionClient) => {
     for (const asset of assets) await markDeleted(db, asset.id, groupId, actorUserId);
@@ -593,4 +602,56 @@ export async function storageSummary(userId: string, groupId: string) {
     quotaBytes: await loadGroupQuotaBytes(prisma, groupId),
     subscriptionActive,
   };
+}
+
+async function requirePosterAsset(userId: string, groupId: string, assetId: string) {
+  const access = await requireGroupMember(userId, groupId);
+  const asset = await prisma.gatheringMediaAsset.findFirst({
+    where: { id: assetId, groupId, status: 'READY', deletedAt: null },
+  });
+  if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
+  assertCanDelete(access, asset.uploaderUserId);
+  if (asset.kind !== 'VIDEO')
+    throw new AppError(400, 'VIDEO_REQUIRED', '영상만 썸네일을 올릴 수 있습니다.');
+  assertGatheringStorageConfigured();
+  return asset;
+}
+
+export async function createPosterUpload(
+  userId: string,
+  groupId: string,
+  assetId: string,
+  sizeBytes: number,
+) {
+  const asset = await requirePosterAsset(userId, groupId, assetId);
+  const target = await currentObjectStorage().presignPut({
+    key: `${asset.storageKey}.poster.jpg`,
+    contentType: 'image/jpeg',
+    sizeBytes,
+    expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+  });
+  return { uploadUrl: target.url, headers: target.headers, expiresAt: target.expiresAt };
+}
+
+export async function completePosterUpload(userId: string, groupId: string, assetId: string) {
+  const asset = await requirePosterAsset(userId, groupId, assetId);
+  const key = `${asset.storageKey}.poster.jpg`;
+  if (!(await currentObjectStorage().head(key))) {
+    throw new AppError(409, 'OBJECT_MISSING', '업로드된 파일을 찾지 못했습니다.');
+  }
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.gatheringMediaAsset.updateMany({
+      where: { id: assetId, status: 'READY', deletedAt: null },
+      data: { posterStorageKey: key },
+    });
+    if (!updated.count) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
+    await writeGatheringAudit(tx, {
+      groupId,
+      actorUserId: userId,
+      action: 'GATHERING_MEDIA_POSTER_COMPLETE',
+      targetType: 'GatheringMediaAsset',
+      targetId: assetId,
+    });
+  });
+  return { ok: true };
 }

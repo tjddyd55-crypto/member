@@ -121,6 +121,14 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
     expiresInSeconds: SIGNED_URL_TTL_SECONDS,
   });
   return {
+    posterUrl: asset.posterStorageKey
+      ? (
+          await currentObjectStorage().presignGet({
+            key: asset.posterStorageKey,
+            expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+          })
+        ).url
+      : null,
     url: target.url,
     expiresAt: target.expiresAt,
     mimeType: asset.mimeType,

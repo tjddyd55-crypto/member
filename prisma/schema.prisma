@@ -874,6 +874,7 @@ model GatheringMediaAsset {
   uploaderUserId String
   kind           GatheringMediaKind
   storageKey     String                 @unique
+  posterStorageKey String?
   originalName   String?
   mimeType       String
   sizeBytes      BigInt

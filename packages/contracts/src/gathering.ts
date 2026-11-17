@@ -378,6 +378,7 @@ export type GatheringInvitePreview = {
 };
 
 export type GatheringMediaView = {
+  hasPoster: boolean;
   id: string;
   kind: 'PHOTO' | 'VIDEO';
   mimeType: string;

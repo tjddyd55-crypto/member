@@ -1,3 +1,4 @@
+import { uploadVideoPoster, videoThumbnail } from './video-posters';
 import { ProgressBar } from '../../design/ProgressBar';
 import { useAppAlert } from '../../design/dialog';
 import { SelectCheckbox } from '../../design/SelectCheckbox';
@@ -152,6 +153,8 @@ export function MediaPane({
       if (!uploadUrl || !headers || !signedUrlStillFresh(job.expiresAt)) {
         const fresh = await refreshUpload(job);
         if (fresh === 'ready') {
+          if (job.file.kind === 'VIDEO')
+            await uploadVideoPoster(groupId, job.assetId, job.file.uri);
           updateJob(job.id, {
             state: 'done',
             loaded: job.file.sizeBytes,
@@ -169,6 +172,7 @@ export function MediaPane({
       if (target.kind === 'event')
         await api.completeMedia(groupId, target.id, job.assetId, job.file.sizeBytes);
       else await api.completeFolderMedia(groupId, target.id, job.assetId, job.file.sizeBytes);
+      if (job.file.kind === 'VIDEO') await uploadVideoPoster(groupId, job.assetId, job.file.uri);
       job.uploadUrl = undefined;
       updateJob(job.id, {
         state: 'done',
@@ -598,13 +602,19 @@ function MediaThumb({
 }) {
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => {
-    // Videos have no poster field in the API. Only the fullscreen viewer creates a player.
-    if (item.kind !== 'PHOTO') return;
     let active = true;
     void api
       .downloadMedia(groupId, item.id)
-      .then((result) => {
-        if (active) setUri(result.url);
+      .then(async (result) => {
+        if (item.kind === 'PHOTO') {
+          if (active) setUri(result.url);
+        } else if (result.posterUrl) {
+          if (active) setUri(result.posterUrl);
+        } else if (Platform.OS !== 'web') {
+          const poster = await videoThumbnail(item.id, result.url);
+          if (active) setUri(poster);
+          if (item.canDelete || item.mine) void uploadVideoPoster(groupId, item.id, result.url);
+        }
       })
       .catch(() => {
         if (active) setUri(null);
@@ -612,7 +622,7 @@ function MediaThumb({
     return () => {
       active = false;
     };
-  }, [groupId, item.id, item.kind]);
+  }, [groupId, item.id, item.kind, item.hasPoster, item.canDelete, item.mine]);
   return (
     <Pressable
       accessibilityRole="imagebutton"
@@ -628,13 +638,16 @@ function MediaThumb({
         item.kind === 'VIDEO' && styles.videoCell,
       ]}
     >
-      {item.kind === 'VIDEO' ? (
-        <Text style={styles.playLabel}>▶</Text>
-      ) : uri ? (
+      {uri ? (
         <Image source={{ uri }} style={styles.thumb} />
-      ) : (
+      ) : item.kind === 'PHOTO' ? (
         <Text style={styles.cellLabel}>사진</Text>
-      )}
+      ) : null}
+      {item.kind === 'VIDEO' ? (
+        <View style={styles.playBadge}>
+          <Text style={styles.playLabel}>▶</Text>
+        </View>
+      ) : null}
       {selecting && item.canDelete ? (
         <SelectCheckbox selected={Boolean(selected)} size={20} />
       ) : null}
@@ -670,6 +683,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 6 - theme.layout.horizontalGutter,
   },
   videoCell: { backgroundColor: theme.colors.text.primary },
+  playBadge: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   playLabel: { color: '#FFFFFF', fontSize: 18 },
   cell: {
     width: 104,

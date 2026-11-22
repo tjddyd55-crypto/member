@@ -957,6 +957,20 @@ model GatheringFinanceYear {
   @@map("gathering_finance_years")
 }
 
+model GatheringFinanceYearRangeBackup {
+  id                String   @id
+  financeYearId     String   @unique
+  groupId           String
+  year              Int
+  status            String
+  startsAt          DateTime @db.Timestamp(3)
+  endsAt            DateTime @db.Timestamp(3)
+  openingBalanceWon Int
+  backedUpAt        DateTime @default(now()) @db.Timestamp(3)
+
+  @@map("gathering_finance_year_range_backups")
+}
+
 model GatheringFinanceTransaction {
   id            String                  @id @default(cuid())
   groupId       String

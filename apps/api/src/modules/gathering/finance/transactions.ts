@@ -7,7 +7,7 @@ import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
-import { lockGroupOpenYear, lockOpenYearForInstant } from './years.js';
+import { lockGroupOpenYear, lockOpenYearById, lockOpenYearForInstant } from './years.js';
 
 export type TransactionInput = {
   direction: GatheringEntryDirection;
@@ -73,9 +73,11 @@ export async function updateTransaction(
     await lockGroup(tx, groupId);
     await assertGatheringWritable(tx, groupId);
     const current = await requireMutable(tx, groupId, transactionId);
-    assertYearOpen(current.financeYear.status);
-    const year = await lockOpenYearForInstant(tx, groupId, parsed.paidAt);
-    assertSelectedYear(year.year, current.eventId === null ? input.year : undefined);
+    let year = await lockOpenYearById(tx, groupId, current.financeYearId);
+    if (parsed.paidAt.getTime() !== current.paidAt.getTime()) {
+      year = await lockOpenYearForInstant(tx, groupId, parsed.paidAt);
+      assertSelectedYear(year.year, current.eventId === null ? input.year : undefined);
+    }
     const row = await tx.gatheringFinanceTransaction.update({
       where: { id: current.id },
       data: {

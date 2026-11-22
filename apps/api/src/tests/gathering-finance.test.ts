@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { fiscalYearOf, fiscalYearRange } from '@member/gathering-domain';
+import { readFile } from 'node:fs/promises';
+import { fiscalYearOf, fiscalYearRange, summarizeFinance } from '@member/gathering-domain';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { gatheringAuthLimiter } from '../modules/gathering/rate-limit.js';
@@ -97,6 +99,254 @@ async function createEvent(token: string, groupId: string, startsAt: string) {
   expect(res.statusCode).toBe(200);
   return res.json() as { id: string };
 }
+
+describe('회계연도 달력 정렬 마이그레이션', () => {
+  it('회계연도 범위를 한 번만 백업하고 정렬 후 기존 거래를 수정할 수 있다', async () => {
+    const owner = await register('달력정렬회장');
+    const group = await createGroup(owner.tokens.accessToken, '달력 정렬 모임');
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-03-02T03:00:00.000Z');
+    const sql = await readFile(
+      new URL(
+        '../../../../prisma/migrations/20261122140000_gathering_finance_year_calendar_align/migration.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const rollback = new Error('Roll back migration test data');
+
+    // The migration scans all groups. Roll it back to leave other test DB rows untouched.
+    await expect(
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SET LOCAL TIME ZONE 'Asia/Seoul'`;
+          const legacyRange = (year: number) => ({
+            startsAt: new Date(`${year - 1}-12-23T15:00:00.000Z`),
+            endsAt: new Date(`${year}-12-23T14:59:59.999Z`),
+          });
+          const open = await tx.gatheringFinanceYear.update({
+            where: { groupId_year: { groupId: group.id, year: group.financeYear.year } },
+            data: { year: 2026, ...legacyRange(2026), openingBalanceWon: 1000 },
+          });
+          const closed = await tx.gatheringFinanceYear.create({
+            data: {
+              groupId: group.id,
+              year: 2024,
+              status: 'CLOSED',
+              ...legacyRange(2024),
+              openingBalanceWon: 500,
+              closedAt: new Date('2024-12-24T00:00:00.000Z'),
+            },
+          });
+          const lateDecember = new Date('2025-12-25T01:00:00+09:00');
+          const entry = { groupId: group.id, createdByUserId: owner.user.id, eventId: event.id };
+          const transactions = await tx.gatheringFinanceTransaction.createManyAndReturn({
+            data: [
+              {
+                ...entry,
+                financeYearId: open.id,
+                direction: 'INCOME',
+                label: '행사 수입',
+                amountWon: 5000,
+                paidAt: new Date('2026-03-02T03:00:00Z'),
+              },
+              {
+                ...entry,
+                financeYearId: open.id,
+                direction: 'EXPENSE',
+                label: '12월 행사 지출',
+                amountWon: 2000,
+                paidAt: lateDecember,
+              },
+              {
+                ...entry,
+                eventId: null,
+                financeYearId: closed.id,
+                direction: 'INCOME',
+                label: '마감 수입',
+                amountWon: 3000,
+                paidAt: new Date('2024-03-02T03:00:00Z'),
+              },
+            ],
+          });
+          const due = await tx.gatheringMemberDue.create({
+            data: {
+              groupId: group.id,
+              userId: owner.user.id,
+              financeYearId: open.id,
+              amountWon: 700,
+              paidAmountWon: 700,
+              paidAt: lateDecember,
+              status: 'PAID',
+            },
+          });
+          const receipt = await tx.gatheringReceiptAsset.create({
+            data: {
+              groupId: group.id,
+              eventId: event.id,
+              financeYearId: open.id,
+              uploadedByUserId: owner.user.id,
+              storageKey: `calendar-test/${group.id}`,
+              mimeType: 'application/pdf',
+              sizeBytes: 32,
+            },
+          });
+          const snapshot = await tx.gatheringFinanceCloseSnapshot.create({
+            data: {
+              groupId: group.id,
+              financeYearId: closed.id,
+              closedByUserId: owner.user.id,
+              payloadJson: JSON.stringify({ ...legacyRange(2024), closingBalanceWon: 3500 }),
+              contentHash: 'legacy-test-hash',
+            },
+          });
+
+          async function summarizeYear(id: string) {
+            const year = await tx.gatheringFinanceYear.findUniqueOrThrow({ where: { id } });
+            const entries = await tx.gatheringFinanceTransaction.findMany({
+              where: { financeYearId: id },
+            });
+            const dues = await tx.gatheringMemberDue.findMany({ where: { financeYearId: id } });
+            return summarizeFinance({
+              openingBalanceWon: year.openingBalanceWon,
+              entries,
+              duesPaidWon: dues.reduce((total, item) => total + item.paidAmountWon, 0),
+            });
+          }
+
+          const openTotals = await summarizeYear(open.id);
+          const closedTotals = await summarizeYear(closed.id);
+          expect(openTotals).toMatchObject({
+            incomeWon: 5700,
+            expenseWon: 2000,
+            balanceWon: 4700,
+            eventIncomeWon: 5000,
+          });
+          expect(closedTotals).toMatchObject({
+            incomeWon: 3000,
+            expenseWon: 0,
+            balanceWon: 3500,
+            eventIncomeWon: 0,
+          });
+
+          await tx.$executeRawUnsafe(sql);
+
+          for (const original of [open, closed]) {
+            const year = await tx.gatheringFinanceYear.findUniqueOrThrow({
+              where: { id: original.id },
+            });
+            expect(year).toEqual({
+              ...original,
+              startsAt: new Date(`${original.year - 1}-12-31T15:00:00.000Z`),
+              endsAt: new Date(`${original.year}-12-31T14:59:59.999Z`),
+            });
+          }
+          expect(lateDecember.getTime()).toBeLessThan(Date.parse('2025-12-31T15:00:00.000Z'));
+          expect(
+            transactions.find((item) => item.paidAt.getTime() === lateDecember.getTime())
+              ?.financeYearId,
+          ).toBe(open.id);
+          for (const transaction of transactions) {
+            expect(
+              await tx.gatheringFinanceTransaction.findUniqueOrThrow({
+                where: { id: transaction.id },
+              }),
+            ).toEqual(transaction);
+          }
+          expect(await tx.gatheringMemberDue.findUniqueOrThrow({ where: { id: due.id } })).toEqual(
+            due,
+          );
+          expect(
+            await tx.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: receipt.id } }),
+          ).toEqual(receipt);
+          expect(
+            await tx.gatheringFinanceCloseSnapshot.findUniqueOrThrow({
+              where: { id: snapshot.id },
+            }),
+          ).toEqual(snapshot);
+          expect(await summarizeYear(open.id)).toEqual(openTotals);
+          expect(await summarizeYear(closed.id)).toEqual(closedTotals);
+
+          const backups = () =>
+            tx.gatheringFinanceYearRangeBackup.findMany({
+              where: { groupId: group.id },
+              orderBy: { year: 'asc' },
+            });
+          const originalBackups = await backups();
+          expect(originalBackups).toEqual(
+            [closed, open].map(({ id, closedAt, ...fields }) => ({
+              ...fields,
+              id: `rangbak_${id}`,
+              financeYearId: id,
+              backedUpAt: expect.any(Date),
+            })),
+          );
+
+          // PostgreSQL assigns a new tuple location even for an UPDATE that writes identical values.
+          const yearVersions = () => tx.$queryRaw`
+        SELECT ctid::text, "id", "startsAt", "endsAt"
+        FROM "gathering_finance_years" ORDER BY "id"
+      `;
+          const alignedVersions = await yearVersions();
+          await tx.$executeRawUnsafe(sql);
+          expect(await yearVersions()).toEqual(alignedVersions);
+          expect(await backups()).toEqual(originalBackups);
+
+          const { startsAt, endsAt } = fiscalYearRange(2025);
+          const previous = await tx.gatheringFinanceYear.create({
+            data: { groupId: group.id, year: 2025, startsAt, endsAt },
+          });
+          const previousTotals = await summarizeYear(previous.id);
+          const expense = transactions.find((item) => item.direction === 'EXPENSE')!;
+          const updateExpense = (paidAt: string) =>
+            app.inject({
+              method: 'PUT',
+              url: `/api/gathering/groups/${group.id}/transactions/${expense.id}`,
+              headers: auth(owner.tokens.accessToken),
+              payload: {
+                direction: expense.direction,
+                label: '수정된 12월 행사 지출',
+                amountWon: expense.amountWon,
+                paidAt,
+              },
+            });
+
+          // Run API writes in the transaction that holds the migrated dates.
+          const transaction = prisma.$transaction;
+          prisma.$transaction = ((run: (client: Prisma.TransactionClient) => Promise<unknown>) =>
+            run(tx)) as typeof prisma.$transaction;
+          try {
+            for (const paidAt of [lateDecember.toISOString(), '2026-03-03T03:00:00Z']) {
+              const edited = await updateExpense(paidAt);
+              expect(edited.statusCode).toBe(200);
+              expect(edited.json()).toMatchObject({
+                fiscalYear: 2026,
+                label: '수정된 12월 행사 지출',
+              });
+              expect(
+                await tx.gatheringFinanceTransaction.findUniqueOrThrow({ where: { id: expense.id } }),
+              ).toMatchObject({ financeYearId: open.id, paidAt: new Date(paidAt) });
+              expect(await summarizeYear(open.id)).toEqual(openTotals);
+              expect(await summarizeYear(previous.id)).toEqual(previousTotals);
+            }
+
+            const moved = await updateExpense('2025-12-26T01:00:00+09:00');
+            expect(moved.statusCode).toBe(200);
+            expect(moved.json().fiscalYear).toBe(2025);
+            expect(
+              await tx.gatheringFinanceTransaction.findUniqueOrThrow({ where: { id: expense.id } }),
+            ).toMatchObject({ financeYearId: previous.id });
+            expect((await summarizeYear(open.id)).expenseWon).toBe(0);
+            expect((await summarizeYear(previous.id)).expenseWon).toBe(expense.amountWon);
+          } finally {
+            prisma.$transaction = transaction;
+          }
+          throw rollback;
+        },
+        { timeout: 30000 },
+      ),
+    ).rejects.toBe(rollback);
+  });
+});
 
 describe('행사 장부와 영수증', () => {
   it('행사 수정·거래·영수증은 실제 역할별로 서버가 허용하며 일반 회원은 조회만 한다', async () => {

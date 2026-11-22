@@ -38,7 +38,15 @@ import { FiscalYearTabs } from './FiscalYearTabs';
 
 const WON = new Intl.NumberFormat('ko-KR');
 
-export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWrite: boolean }) {
+export function GroupFinancePane({
+  groupId,
+  canWrite,
+  canAttach = canWrite,
+}: {
+  groupId: string;
+  canWrite: boolean;
+  canAttach?: boolean;
+}) {
   const [summary, setSummary] = useState<GatheringFinanceSummary | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
@@ -111,7 +119,16 @@ export function GroupFinancePane({ groupId, canWrite }: { groupId: string; canWr
             <MoneyCard label="전체 지출" value={summary.expenseWon} />
             <MoneyCard label="현재 잔액" value={summary.balanceWon} />
           </View>
-          <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 회비 ${WON.format(summary.duesWon)}원`}</Body>
+          <Body>{`행사 수입 ${WON.format(summary.eventIncomeWon)}원 · 일반 수입 ${WON.format(summary.generalIncomeWon ?? 0)}원 · 회비 ${WON.format(summary.duesWon)}원`}</Body>
+          <Text style={styles.line}>일반 수입·지출</Text>
+          <FinanceLedgerPane
+            key={summary.year}
+            groupId={groupId}
+            canWrite={writable}
+            canAttach={canAttach && !closed}
+            generalYear={summary}
+            onTransactionsChanged={() => load()}
+          />
           <View style={styles.segment}>
             <Pressable
               accessibilityRole="tab"
@@ -265,24 +282,43 @@ function dueLabel(status: string) {
   return '미납';
 }
 
-export function EventFinancePane({
-  groupId,
-  eventId,
-  canWrite,
-  canAttach,
-  startsAt,
-  active = true,
-}: {
-  groupId: string;
+type LedgerPermissions = { groupId: string; canWrite: boolean; canAttach: boolean };
+type EventLedgerProps = LedgerPermissions & {
   eventId: string;
-  canWrite: boolean;
-  canAttach: boolean;
   startsAt: string;
   active?: boolean;
-}) {
+  generalYear?: never;
+  onTransactionsChanged?: never;
+};
+
+type GeneralLedgerProps = LedgerPermissions & {
+  generalYear: GatheringFinanceSummary;
+  onTransactionsChanged: () => Promise<void>;
+  eventId?: never;
+  startsAt?: never;
+  active?: never;
+};
+
+export function EventFinancePane(props: EventLedgerProps) {
+  return <FinanceLedgerPane key={props.eventId} {...props} />;
+}
+
+function FinanceLedgerPane(props: EventLedgerProps | GeneralLedgerProps) {
+  const {
+    groupId,
+    eventId,
+    canWrite,
+    canAttach,
+    startsAt,
+    active = true,
+    generalYear,
+    onTransactionsChanged,
+  } = props;
+  const year = generalYear?.year;
+  const scope = props.generalYear ? props.generalYear.year : props.eventId;
   const { alert, dialog } = useAppAlert();
   const toast = useToast();
-  const [items, setItems] = useState<GatheringTransactionView[]>([]);
+  const [eventItems, setItems] = useState<GatheringTransactionView[]>([]);
   const [receipts, setReceipts] = useState<GatheringReceiptView[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
@@ -313,14 +349,18 @@ export function EventFinancePane({
     setMessage('');
     setFormError('');
     try {
-      const [ledger, files, summary] = await Promise.all([
-        api.eventTransactions(groupId, eventId),
-        api.eventReceipts(groupId, eventId),
-        api.finance(groupId),
+      const [files, eventLedger] = await Promise.all([
+        api.receipts(groupId, scope),
+        eventId === undefined
+          ? null
+          : Promise.all([api.eventTransactions(groupId, eventId), api.finance(groupId)]),
       ]);
-      setItems(ledger.items);
+      if (eventLedger) {
+        const [ledger, summary] = eventLedger;
+        setItems(ledger.items);
+        setYears(summary.years);
+      }
       setReceipts(files.items);
-      setYears(summary.years);
       // A failed/expired thumbnail must not hide the ledger or remaining receipts.
       const urls = await Promise.all(
         files.items
@@ -339,18 +379,20 @@ export function EventFinancePane({
       setMessage(error instanceof Error ? error.message : '회계를 불러오지 못했습니다.');
       setStatus('error');
     }
-  }, [eventId, groupId]);
+  }, [eventId, groupId, scope]);
   const load = useRefreshLoad(read);
   useInvalidatedRefresh(groupId, 'finance', load, active);
-  const eventYear = financeYearState(startsAt, years);
-  const { addTransaction: writable, attachReceipt: attachable } = eventFinanceActions(
-    canWrite,
-    canAttach,
-    startsAt,
-    years,
+  const eventYear = startsAt === undefined ? undefined : financeYearState(startsAt, years);
+  const { addTransaction: writable, attachReceipt: attachable } = startsAt === undefined
+    ? { addTransaction: canWrite, attachReceipt: canAttach }
+    : eventFinanceActions(canWrite, canAttach, startsAt, years);
+  const paidYear = financeYearState(
+    paidAtFromCalendarDate(paidOn),
+    generalYear ? [generalYear] : years,
   );
-  const paidYear = financeYearState(paidAtFromCalendarDate(paidOn), years);
-  const totals = summarizeLedger(0, items);
+  const items = generalYear ? generalYear.general?.items ?? [] : eventItems;
+  const totals = generalYear?.general ?? summarizeLedger(0, items);
+  const refreshTransactions = onTransactionsChanged ?? load;
 
   const save = async () => {
     if (saving || !canWrite || selectedTransaction?.locked) return;
@@ -371,7 +413,9 @@ export function EventFinancePane({
       setFormError(
         paidYear === 'CLOSED'
           ? '마감된 회계연도의 거래는 추가할 수 없습니다.'
-          : '거래 날짜에 해당하는 회계연도가 열려 있지 않습니다.',
+          : generalYear
+            ? '선택한 회계연도의 거래 날짜를 입력해 주세요.'
+            : '거래 날짜에 해당하는 회계연도가 열려 있지 않습니다.',
       );
       return;
     }
@@ -384,14 +428,16 @@ export function EventFinancePane({
         paidAt: paidAtFromCalendarDate(paidOn),
         note: note.trim() || null,
         adjustment: selectedTransaction?.adjustment,
+        year,
       };
       if (selectedTransaction) await api.updateTransaction(groupId, selectedTransaction.id, body);
-      else await api.createTransaction(groupId, eventId, body);
+      else if (eventId !== undefined) await api.createTransaction(groupId, eventId, body);
+      else await api.createGeneralTransaction(groupId, body);
       setReceiptUploadMessage('');
       toast('저장되었습니다.');
       setEditing(false);
       setMessage('');
-      await load();
+      await refreshTransactions();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : '거래를 저장하지 못했습니다.');
     } finally {
@@ -446,7 +492,7 @@ export function EventFinancePane({
         try {
           setProgress({ index: index + 1, count: files.length, percent: 0 });
           if (!file.sizeBytes) throw new Error('파일 크기를 확인하지 못했습니다.');
-          const created = await api.createReceiptUploads(groupId, eventId, [
+          const created = await api.createReceiptUploads(groupId, scope, [
             { mimeType: file.mimeType, sizeBytes: file.sizeBytes, originalName: file.originalName },
           ]);
           const target = created.items[0];
@@ -459,7 +505,7 @@ export function EventFinancePane({
                 total > 0 ? Math.max(0, Math.min(99, Math.round((loaded / total) * 100))) : 0,
             }),
           );
-          await api.completeReceipt(groupId, eventId, target.id, file.sizeBytes);
+          await api.completeReceipt(groupId, scope, target.id, file.sizeBytes);
           setProgress({ index: index + 1, count: files.length, percent: 100 });
           completed += 1;
         } catch (error) {
@@ -489,8 +535,8 @@ export function EventFinancePane({
       setMessage(error instanceof Error ? error.message : '영수증을 열지 못했습니다.');
     }
   };
-  if (status === 'loading') return <LoadingState />;
-  if (status === 'error')
+  if (!generalYear && status === 'loading') return <LoadingState />;
+  if (!generalYear && status === 'error')
     return (
       <View style={styles.stack}>
         {!editing && !viewer ? dialog : null}
@@ -508,7 +554,9 @@ export function EventFinancePane({
       </View>
       {message ? <Notice>{message}</Notice> : null}
       {receiptUploadMessage ? <Notice>{receiptUploadMessage}</Notice> : null}
-      {items.length === 0 ? <Body>등록된 거래가 없습니다</Body> : null}
+      {items.length === 0 ? (
+        <Body>{generalYear ? '일반 수입·지출이 없습니다' : '등록된 거래가 없습니다'}</Body>
+      ) : null}
       {items.map((item) => (
         <Pressable
           key={item.id}
@@ -550,7 +598,12 @@ export function EventFinancePane({
             setAmount('');
             setNote('');
             setDirection('EXPENSE');
-            setPaidOn(new Date());
+            const today = new Date();
+            setPaidOn(
+              generalYear && financeYearState(today.toISOString(), [generalYear]) !== 'OPEN'
+                ? calendarDateFromPaidAt(generalYear.startsAt)
+                : today,
+            );
             setFormError('');
             setEditing(true);
           }}
@@ -591,6 +644,9 @@ export function EventFinancePane({
             />
             <TextField label="비고" value={note} onChangeText={setNote} multiline maxLength={500} />
             {formError ? <Notice>{formError}</Notice> : null}
+            {generalYear && paidYear === 'MISSING' ? (
+              <Notice>선택한 회계연도의 거래 날짜를 입력해 주세요.</Notice>
+            ) : null}
             <Button
               label="저장"
               loading={saving}
@@ -621,7 +677,7 @@ export function EventFinancePane({
                             setReceiptUploadMessage('');
                             toast('삭제되었습니다.');
                             setEditing(false);
-                            await load();
+                            await refreshTransactions();
                           })
                           .catch((error: unknown) =>
                             setFormError(
@@ -647,7 +703,11 @@ export function EventFinancePane({
         </Modal>
       ) : null}
       <Text style={styles.line}>영수증</Text>
-      {receipts.length === 0 ? <Body>등록된 영수증이 없습니다</Body> : null}
+      {generalYear && status === 'loading' ? <LoadingState /> : null}
+      {generalYear && status === 'error' ? (
+        <Button label="영수증 다시 불러오기" variant="text" onPress={() => void load()} />
+      ) : null}
+      {status === 'ready' && receipts.length === 0 ? <Body>등록된 영수증이 없습니다</Body> : null}
       <View style={styles.row}>
         {receipts.map((receipt) => (
           <Pressable

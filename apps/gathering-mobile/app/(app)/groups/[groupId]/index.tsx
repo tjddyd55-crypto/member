@@ -128,6 +128,7 @@ export default function GroupDetailScreen() {
             <GroupFinancePane
               groupId={group.id}
               canWrite={group.permissions.includes('FINANCE_WRITE')}
+              canAttach={group.permissions.includes('RECEIPT_WRITE')}
             />
           ) : null}
         </>

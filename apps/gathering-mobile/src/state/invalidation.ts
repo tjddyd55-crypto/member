@@ -34,7 +34,7 @@ export function invalidateMutation(path: string, method: string) {
   )
     invalidate(groupId, 'media');
   if (
-    /^(transactions\/|finance\/dues)/.test(resource) ||
+    /^(transactions\/|finance\/(?:dues|general-transactions)$)/.test(resource) ||
     /^events\/[^/]+\/transactions$/.test(resource) ||
     /receipts\/[^/]+\/complete$/.test(resource)
   )

@@ -60,3 +60,16 @@ export function buildMemberBookProfileKey(input: {
   requirePart(input.objectId);
   return `${input.prefixEnv}/member-book/profiles/${input.userId}/${input.objectId}`;
 }
+
+export function buildGatheringFinanceReceiptKey(input: {
+  prefixEnv: string;
+  groupId: string;
+  financeYearId: string;
+  objectId: string;
+}) {
+  requirePrefix(input.prefixEnv);
+  requirePart(input.groupId);
+  requirePart(input.financeYearId);
+  requirePart(input.objectId);
+  return `${input.prefixEnv}/gatherings/${input.groupId}/finance/${input.financeYearId}/receipts/${input.objectId}`;
+}

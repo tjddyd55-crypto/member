@@ -1,5 +1,5 @@
 import type { GatheringEntryDirection, GatheringFinanceTransaction, Prisma } from '@prisma/client';
-import { fiscalYearOf, parseWon } from '@member/gathering-domain';
+import { parseWon } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
@@ -7,7 +7,7 @@ import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
-import { lockGroupOpenYear, readFiscalPeriod } from './years.js';
+import { lockGroupOpenYear, lockOpenYearForInstant } from './years.js';
 
 export type TransactionInput = {
   direction: GatheringEntryDirection;
@@ -16,23 +16,24 @@ export type TransactionInput = {
   paidAt: string;
   note?: string | null;
   adjustment?: boolean;
+  year?: number;
 };
 
 export async function createTransaction(
   userId: string,
   groupId: string,
-  eventId: string,
+  eventId: string | null,
   input: TransactionInput,
 ) {
   const access = await requireGroupMember(userId, groupId);
   assertPermission(access, 'FINANCE_WRITE');
   const parsed = parseTransaction(input);
-  await requireEvent(groupId, eventId);
+  if (eventId !== null) await requireEvent(groupId, eventId);
   const created = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
     await assertGatheringWritable(tx, groupId);
-    const period = await readFiscalPeriod(tx, groupId);
-    const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt, period));
+    const year = await lockOpenYearForInstant(tx, groupId, parsed.paidAt);
+    assertSelectedYear(year.year, eventId === null ? input.year : undefined);
     const row = await tx.gatheringFinanceTransaction.create({
       data: {
         groupId,
@@ -47,14 +48,14 @@ export async function createTransaction(
         createdByUserId: userId,
       },
     });
+    await writeGatheringAudit(tx, {
+      groupId,
+      actorUserId: access.userId,
+      action: GatheringAuditAction.FINANCE_WRITE,
+      targetType: 'GatheringFinanceTransaction',
+      targetId: row.id,
+    });
     return { row, fiscalYear: year.year };
-  });
-  await writeGatheringAudit(prisma, {
-    groupId,
-    actorUserId: access.userId,
-    action: GatheringAuditAction.FINANCE_WRITE,
-    targetType: 'GatheringFinanceTransaction',
-    targetId: created.row.id,
   });
   return presentTransaction(created.row, created.fiscalYear);
 }
@@ -71,10 +72,10 @@ export async function updateTransaction(
   const updated = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
     await assertGatheringWritable(tx, groupId);
-    const period = await readFiscalPeriod(tx, groupId);
     const current = await requireMutable(tx, groupId, transactionId);
     assertYearOpen(current.financeYear.status);
-    const year = await lockGroupOpenYear(tx, groupId, fiscalYearOf(parsed.paidAt, period));
+    const year = await lockOpenYearForInstant(tx, groupId, parsed.paidAt);
+    assertSelectedYear(year.year, current.eventId === null ? input.year : undefined);
     const row = await tx.gatheringFinanceTransaction.update({
       where: { id: current.id },
       data: {
@@ -87,14 +88,14 @@ export async function updateTransaction(
         adjustment: parsed.adjustment,
       },
     });
+    await writeGatheringAudit(tx, {
+      groupId,
+      actorUserId: access.userId,
+      action: GatheringAuditAction.FINANCE_WRITE,
+      targetType: 'GatheringFinanceTransaction',
+      targetId: row.id,
+    });
     return { row, fiscalYear: year.year };
-  });
-  await writeGatheringAudit(prisma, {
-    groupId,
-    actorUserId: access.userId,
-    action: GatheringAuditAction.FINANCE_WRITE,
-    targetType: 'GatheringFinanceTransaction',
-    targetId: updated.row.id,
   });
   return presentTransaction(updated.row, updated.fiscalYear);
 }
@@ -148,6 +149,12 @@ export function presentTransaction(row: GatheringFinanceTransaction, fiscalYear:
     adjustment: row.adjustment,
     fiscalYear,
   };
+}
+
+function assertSelectedYear(year: number, selectedYear?: number) {
+  if (selectedYear !== undefined && year !== selectedYear) {
+    throw new AppError(400, 'FINANCE_YEAR_MISMATCH', '거래 날짜가 선택한 회계연도에 속하지 않습니다.');
+  }
 }
 
 function parseTransaction(input: TransactionInput) {

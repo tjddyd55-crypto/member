@@ -43,8 +43,26 @@ describe('그룹 회계 화면 구조', () => {
       pane.indexOf('<MoneyCard label="기초잔액"'),
     );
   });
+  it('합계와 행사 장부 탭 사이에 일반 장부를 표시한다', () => {
+    expect(pane).toContain('행사 수입');
+    expect(pane).toContain('일반 수입');
+    expect(pane).toContain('회비');
+    expect(pane.indexOf('일반 수입·지출')).toBeGreaterThan(pane.indexOf('summary.generalIncomeWon'));
+    expect(pane.indexOf('일반 수입·지출')).toBeLessThan(pane.indexOf('행사별 장부'));
+  });
   it('기존 회계연도 카드 목록을 제거한다', () => {
     expect(pane).not.toContain('{item.year} 회계연도');
     expect(pane).not.toContain('summary.years.map');
   });
+});
+
+it('설정에서 자동 회계연도 안내와 선택한 해의 저장 기간을 표시한다', () => {
+  const source = readFileSync(
+    new URL('../../../gathering-mobile/app/(app)/groups/%5BgroupId%5D/settings.tsx', import.meta.url),
+    'utf8',
+  );
+  expect(source).toContain('회계연도는 매년 1월 1일부터 12월 31일까지입니다 (자동).');
+  expect(source).toContain('formatRange(selected.startsAt, selected.endsAt)');
+  expect(source).not.toContain('DateTimeField');
+  expect(source).not.toContain('회계 시작일 저장');
 });

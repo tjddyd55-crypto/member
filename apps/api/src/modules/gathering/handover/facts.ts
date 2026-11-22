@@ -21,7 +21,7 @@ export async function loadHandoverFacts(
   ]);
   const totals = summarizeFinance({
     openingBalanceWon: financeYear.openingBalanceWon,
-    entries: transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
+    entries: transactions,
     duesPaidWon: dues.reduce((sum, row) => sum + row.paidAmountWon, 0),
   });
   return {

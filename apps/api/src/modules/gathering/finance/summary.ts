@@ -2,6 +2,7 @@ import { summarizeFinance } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { requireGroupMember } from '../access.js';
+import { presentTransaction } from './transactions.js';
 
 export async function financeSummary(userId: string, groupId: string, year?: number) {
   await requireGroupMember(userId, groupId, 'read');
@@ -22,7 +23,7 @@ export async function financeSummary(userId: string, groupId: string, year?: num
   const includeDues = await duesCountInBalance(financeYear.id, financeYear.status);
   const totals = summarizeFinance({
     openingBalanceWon: financeYear.openingBalanceWon,
-    entries: transactions.map((row) => ({ direction: row.direction, amountWon: row.amountWon })),
+    entries: transactions,
     duesPaidWon: includeDues ? duesPaidWon : 0,
   });
   if (!includeDues) totals.duesWon = duesPaidWon;
@@ -55,6 +56,17 @@ export async function financeSummary(userId: string, groupId: string, year?: num
       status: row.status,
     })),
     events: eventTotals(transactions),
+    general: {
+      incomeWon: totals.generalIncomeWon,
+      expenseWon: totals.generalExpenseWon,
+      netWon: totals.generalIncomeWon - totals.generalExpenseWon,
+      items: transactions
+        .filter((row) => row.eventId === null)
+        .map((row) => ({
+          ...presentTransaction(row, financeYear.year),
+          locked: financeYear.status === 'CLOSED',
+        })),
+    },
   };
 }
 
@@ -84,14 +96,15 @@ async function selectYear(groupId: string, year?: number) {
 
 function eventTotals(
   transactions: Array<{
-    eventId: string;
+    eventId: string | null;
     direction: 'INCOME' | 'EXPENSE';
     amountWon: number;
-    event: { id: string; title: string };
+    event: { id: string; title: string } | null;
   }>,
 ) {
   const grouped = new Map<string, { eventId: string; title: string; incomeWon: number; expenseWon: number; netWon: number }>();
   for (const row of transactions) {
+    if (row.eventId === null || row.event === null) continue;
     const current = grouped.get(row.eventId) ?? {
       eventId: row.eventId,
       title: row.event.title,

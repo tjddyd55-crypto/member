@@ -1,14 +1,23 @@
 import type { Prisma } from '@prisma/client';
-import type { FiscalPeriod } from '@member/gathering-domain';
+import { calendarYearKst } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { lockFinanceYear, lockGroup } from '../locks.js';
 
-export async function readFiscalPeriod(tx: Prisma.TransactionClient, groupId: string): Promise<FiscalPeriod> {
-  const group = await tx.gatheringGroup.findUniqueOrThrow({
-    where: { id: groupId },
-    select: { fiscalStartMonth: true, fiscalStartDay: true },
+export function findYearContaining(tx: Prisma.TransactionClient, groupId: string, instant: Date) {
+  return tx.gatheringFinanceYear.findFirst({
+    where: { groupId, startsAt: { lte: instant }, endsAt: { gte: instant } },
+    orderBy: { year: 'desc' },
   });
-  return { startMonth: group.fiscalStartMonth, startDay: group.fiscalStartDay };
+}
+
+export async function lockOpenYearForInstant(tx: Prisma.TransactionClient, groupId: string, instant: Date) {
+  await lockGroup(tx, groupId);
+  const stored = await findYearContaining(tx, groupId, instant);
+  if (stored) return lockOpenYearById(tx, groupId, stored.id);
+
+  const calendarYear = calendarYearKst(instant);
+  throw new AppError(409, 'FINANCE_YEAR_OUTSIDE_WINDOW',
+    `해당 날짜를 포함하는 회계연도가 없습니다. ${calendarYear}년 회계 기간을 확인하세요.`);
 }
 
 export async function lockGroupOpenYear(tx: Prisma.TransactionClient, groupId: string, year: number) {

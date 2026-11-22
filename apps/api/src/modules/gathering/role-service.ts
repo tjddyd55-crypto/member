@@ -1,10 +1,10 @@
 import type { GatheringRole as PrismaGatheringRole } from '@prisma/client';
-import { fiscalYearOf, type GatheringRole } from '@member/gathering-domain';
+import { calendarYearKst, type GatheringRole } from '@member/gathering-domain';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
 import { writeGatheringAudit } from './audit.js';
-import { readFiscalPeriod } from './finance/years.js';
+import { findYearContaining } from './finance/years.js';
 import { GatheringAuditAction } from './constants.js';
 
 type AssignInput = {
@@ -42,7 +42,7 @@ async function grantRole(
 ) {
   const now = new Date();
   return prisma.$transaction(async (tx) => {
-    const period = await readFiscalPeriod(tx, groupId);
+    const year = await findYearContaining(tx, groupId, now);
     const created = await tx.gatheringRoleAssignment.create({
       data: {
         groupId,
@@ -59,7 +59,7 @@ async function grantRole(
         userId: input.userId,
         role: input.role,
         title: input.role === 'EXECUTIVE' ? input.title : null,
-        fiscalYear: fiscalYearOf(now, period),
+        fiscalYear: year?.year ?? calendarYearKst(now),
         startedAt: now,
       },
     });

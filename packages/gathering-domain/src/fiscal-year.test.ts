@@ -6,24 +6,24 @@ function kst(isoLocal: string): Date {
 }
 
 describe('회계연도 귀속', () => {
-  it('12월 24일부터 다음 해 12월 23일까지를 한 회계연도로 본다', () => {
+  it('1월 1일부터 12월 31일까지를 한 회계연도로 본다', () => {
     const range = fiscalYearRange(2026);
-    expect(range.startsAt.toISOString()).toBe(kst('2025-12-24T00:00:00.000').toISOString());
-    expect(range.endsAt.toISOString()).toBe(kst('2026-12-23T23:59:59.999').toISOString());
+    expect(range.startsAt.toISOString()).toBe(kst('2026-01-01T00:00:00.000').toISOString());
+    expect(range.endsAt.toISOString()).toBe(kst('2026-12-31T23:59:59.999').toISOString());
     expect(fiscalYearOf(range.startsAt)).toBe(2026);
     expect(fiscalYearOf(range.endsAt)).toBe(2026);
     expect(fiscalYearOf(new Date(range.endsAt.getTime() + 1))).toBe(2027);
   });
 
-  it('12월 23일 밤 결제는 그 해, 자정을 넘긴 12월 24일 결제는 다음 해다', () => {
-    expect(fiscalYearOf(kst('2026-12-23T23:30:00.000'))).toBe(2026);
-    expect(fiscalYearOf(kst('2026-12-24T00:00:00.000'))).toBe(2027);
-    expect(fiscalYearOf(kst('2026-12-24T00:30:00.000'))).toBe(2027);
+  it('12월 31일 밤 결제는 그 해, 1월 1일 결제는 다음 해다', () => {
+    expect(fiscalYearOf(kst('2026-12-31T23:30:00.000'))).toBe(2026);
+    expect(fiscalYearOf(kst('2027-01-01T00:00:00.000'))).toBe(2027);
+    expect(fiscalYearOf(kst('2027-01-01T00:30:00.000'))).toBe(2027);
   });
 
   it('UTC 자정과 한국시간 자정을 혼동하지 않는다', () => {
-    expect(fiscalYearOf(new Date('2026-12-23T15:00:00.000Z'))).toBe(2027);
-    expect(fiscalYearOf(new Date('2026-12-23T14:59:59.999Z'))).toBe(2026);
+    expect(fiscalYearOf(new Date('2026-12-31T15:00:00.000Z'))).toBe(2027);
+    expect(fiscalYearOf(new Date('2026-12-31T14:59:59.999Z'))).toBe(2026);
   });
 
   it('행사 다음 날 새벽 결제는 같은 행사에 두되 귀속 연도는 결제일 기준이다', () => {
@@ -35,21 +35,21 @@ describe('회계연도 귀속', () => {
     expect(sameYear.paymentFiscalYear).toBe(2026);
 
     const boundary = attributePayment({
-      eventStartsAt: kst('2026-12-23T22:00:00.000'),
-      paidAt: kst('2026-12-24T00:30:00.000'),
+      eventStartsAt: kst('2026-12-31T22:00:00.000'),
+      paidAt: kst('2027-01-01T00:30:00.000'),
     });
     expect(boundary.eventFiscalYear).toBe(2026);
     expect(boundary.paymentFiscalYear).toBe(2027);
     expect(boundary.sameFiscalYear).toBe(false);
   });
 
-  it('앨범 연도는 한국 달력 연도이고 회계연도 경계와 다르다', () => {
+  it('앨범 연도는 한국 달력 연도이며 기본 회계연도와 일치한다', () => {
     expect(calendarYearKst(new Date('2026-12-31T15:30:00.000Z'))).toBe(2027);
     expect(calendarYearKst(kst('2026-12-31T23:00:00.000'))).toBe(2026);
     const range = calendarYearRange(2026);
     expect(calendarYearKst(range.startsAt)).toBe(2026);
     expect(calendarYearKst(range.endsAt)).toBe(2026);
-    expect(fiscalYearOf(range.endsAt)).toBe(2027);
+    expect(fiscalYearOf(range.endsAt)).toBe(2026);
   });
 
   it('모임이 정한 시작일 직전부터 다음 시작 직전까지를 한 해로 본다', () => {
@@ -61,7 +61,7 @@ describe('회계연도 귀속', () => {
     expect(fiscalYearOf(kst('2026-06-01T00:00:00.000'), june)).toBe(2027);
   });
 
-  it('기간을 바꿔도 열린 해에 있던 시작과 끝은 새 창 안에 남는다', () => {
+  it('지정한 기간이 주어진 범위의 시작과 끝을 덮는다', () => {
     const previous = fiscalYearRange(2026);
     const june = { startMonth: 6, startDay: 1 };
     const windows = fiscalWindowsCovering(previous.startsAt, previous.endsAt, june);

@@ -6,7 +6,7 @@ import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
-import { lockGroupOpenYear, lockOpenYearForInstant } from './years.js';
+import { lockGroupOpenYear, lockOpenYearById, lockOpenYearForInstant } from './years.js';
 
 export type DueInput = {
   userId?: string;
@@ -40,9 +40,20 @@ export async function upsertDue(actorId: string, groupId: string, input: DueInpu
   const saved = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
     await assertGatheringWritable(tx, groupId);
-    const year = paidAt
-      ? await lockOpenYearForInstant(tx, groupId, paidAt)
-      : await lockGroupOpenYear(tx, groupId, input.year);
+    const existing = paidAt
+      ? await tx.gatheringMemberDue.findFirst({
+          where: { groupId, userId, paidAt, financeYear: { year: input.year } },
+          select: { financeYearId: true },
+        })
+      : null;
+    let year;
+    if (existing) {
+      year = await lockOpenYearById(tx, groupId, existing.financeYearId);
+    } else if (paidAt) {
+      year = await lockOpenYearForInstant(tx, groupId, paidAt);
+    } else {
+      year = await lockGroupOpenYear(tx, groupId, input.year);
+    }
     if (year.year !== input.year) {
       throw new AppError(409, 'PAYMENT_YEAR_MISMATCH', '납부일은 그 회계연도에 속해야 합니다.');
     }

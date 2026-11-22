@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { readFile } from 'node:fs/promises';
 import { fiscalYearOf, fiscalYearRange, summarizeFinance } from '@member/gathering-domain';
@@ -100,7 +101,7 @@ async function createEvent(token: string, groupId: string, startsAt: string) {
 }
 
 describe('회계연도 달력 정렬 마이그레이션', () => {
-  it('열린 연도와 마감 연도의 범위만 정렬하고 원본을 한 번만 백업한다', async () => {
+  it('회계연도 범위를 한 번만 백업하고 정렬 후 기존 거래를 수정할 수 있다', async () => {
     const owner = await register('달력정렬회장');
     const group = await createGroup(owner.tokens.accessToken, '달력 정렬 모임');
     const event = await createEvent(owner.tokens.accessToken, group.id, '2026-03-02T03:00:00.000Z');
@@ -289,6 +290,56 @@ describe('회계연도 달력 정렬 마이그레이션', () => {
           await tx.$executeRawUnsafe(sql);
           expect(await yearVersions()).toEqual(alignedVersions);
           expect(await backups()).toEqual(originalBackups);
+
+          const { startsAt, endsAt } = fiscalYearRange(2025);
+          const previous = await tx.gatheringFinanceYear.create({
+            data: { groupId: group.id, year: 2025, startsAt, endsAt },
+          });
+          const previousTotals = await summarizeYear(previous.id);
+          const expense = transactions.find((item) => item.direction === 'EXPENSE')!;
+          const updateExpense = (paidAt: string) =>
+            app.inject({
+              method: 'PUT',
+              url: `/api/gathering/groups/${group.id}/transactions/${expense.id}`,
+              headers: auth(owner.tokens.accessToken),
+              payload: {
+                direction: expense.direction,
+                label: '수정된 12월 행사 지출',
+                amountWon: expense.amountWon,
+                paidAt,
+              },
+            });
+
+          // Run API writes in the transaction that holds the migrated dates.
+          const transaction = prisma.$transaction;
+          prisma.$transaction = ((run: (client: Prisma.TransactionClient) => Promise<unknown>) =>
+            run(tx)) as typeof prisma.$transaction;
+          try {
+            for (const paidAt of [lateDecember.toISOString(), '2026-03-03T03:00:00Z']) {
+              const edited = await updateExpense(paidAt);
+              expect(edited.statusCode).toBe(200);
+              expect(edited.json()).toMatchObject({
+                fiscalYear: 2026,
+                label: '수정된 12월 행사 지출',
+              });
+              expect(
+                await tx.gatheringFinanceTransaction.findUniqueOrThrow({ where: { id: expense.id } }),
+              ).toMatchObject({ financeYearId: open.id, paidAt: new Date(paidAt) });
+              expect(await summarizeYear(open.id)).toEqual(openTotals);
+              expect(await summarizeYear(previous.id)).toEqual(previousTotals);
+            }
+
+            const moved = await updateExpense('2025-12-26T01:00:00+09:00');
+            expect(moved.statusCode).toBe(200);
+            expect(moved.json().fiscalYear).toBe(2025);
+            expect(
+              await tx.gatheringFinanceTransaction.findUniqueOrThrow({ where: { id: expense.id } }),
+            ).toMatchObject({ financeYearId: previous.id });
+            expect((await summarizeYear(open.id)).expenseWon).toBe(0);
+            expect((await summarizeYear(previous.id)).expenseWon).toBe(expense.amountWon);
+          } finally {
+            prisma.$transaction = transaction;
+          }
           throw rollback;
         },
         { timeout: 30000 },

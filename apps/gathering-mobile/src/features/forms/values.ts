@@ -75,14 +75,6 @@ export function paidAtFromCalendarDate(date: Date) {
   return new Date(`${date.getFullYear()}-${month}-${day}T12:00:00+09:00`).toISOString();
 }
 
-export function fiscalMonthDay(date: Date) {
-  return { fiscalStartMonth: date.getMonth() + 1, fiscalStartDay: date.getDate() };
-}
-
-export function dateForMonthDay(month: number, day: number) {
-  return new Date(2024, month - 1, day, 12, 0, 0, 0);
-}
-
 export function composeAddress(road: string, detail: string) {
   const base = road.trim();
   const extra = detail.trim();

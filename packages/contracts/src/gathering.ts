@@ -79,8 +79,6 @@ export const gatheringGroupUpdateSchema = z
     name: gatheringDisplayNameSchema.optional(),
     description: z.string().trim().max(500).nullable().optional(),
     inviteRequiresApproval: z.boolean().optional(),
-    fiscalStartMonth: z.number().int().min(1).max(12).optional(),
-    fiscalStartDay: z.number().int().min(1).max(31).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, '변경할 항목이 없습니다.');
 
@@ -426,7 +424,7 @@ export type GatheringAlbumYear = {
 
 export type GatheringTransactionView = {
   id: string;
-  eventId: string;
+  eventId: string | null;
   direction: 'INCOME' | 'EXPENSE';
   label: string;
   amountWon: number;
@@ -466,6 +464,9 @@ export type GatheringFinanceSummary = {
   expenseWon: number;
   balanceWon: number;
   eventIncomeWon: number;
+  generalIncomeWon: number;
+  generalExpenseWon: number;
+  general: { incomeWon: number; expenseWon: number; netWon: number; items: GatheringTransactionView[] };
   duesWon: number;
   years: Array<{ year: number; status: string; startsAt: string; endsAt: string }>;
   dues: GatheringDueView[];

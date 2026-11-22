@@ -4,7 +4,6 @@ import {
   dateFromDateInput,
   dateInputValue,
   eventStartsAt,
-  fiscalMonthDay,
   focusedFieldScrollY,
   formatKoreanDate,
   keyboardAvoidingBehavior,
@@ -19,7 +18,6 @@ describe('모임 입력', () => {
     const startsAt = eventStartsAt(new Date(2026, 10, 20, 1, 2, 3), new Date(2026, 0, 1, 19, 30, 45));
     expect(startsAt).toBe(new Date('2026-11-20T19:30:00').toISOString());
     expect(paidAtFromCalendarDate(new Date(2026, 10, 20, 23, 15))).toBe('2026-11-20T03:00:00.000Z');
-    expect(fiscalMonthDay(new Date(2024, 2, 1, 8))).toEqual({ fiscalStartMonth: 3, fiscalStartDay: 1 });
     expect(formatKoreanDate(new Date(2026, 10, 20))).toContain('2026');
     const picked = new Date(2026, 10, 20, 19, 30, 0);
     expect(dateInputValue(picked)).toBe('2026-11-20');

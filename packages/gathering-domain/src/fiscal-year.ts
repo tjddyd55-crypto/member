@@ -1,9 +1,9 @@
 /**
  * 모임 회계연도.
  *
- * 회계연도 Y는 한국시간 (Y-1)년 12월 24일 00:00:00.000 부터
- * Y년 12월 23일 23:59:59.999 까지다.
- * 12월 23일이 지나도 자동으로 마감하지 않는다. 마감은 인계 승인 트랜잭션만 한다.
+ * 기본 회계연도는 한국시간 1월 1일 00:00:00.000부터
+ * 같은 해 12월 31일 23:59:59.999까지다.
+ * 마감은 인계 승인 트랜잭션에서 처리한다.
  * 거래의 회계연도는 행사 시작일이 아니라 실제 결제일(paidAt)로 정한다.
  * 저장 시각은 UTC, 경계 판단은 Asia/Seoul(UTC+9, 서머타임 없음)이다.
  */
@@ -15,13 +15,13 @@ export type FiscalYearRange = {
   endsAt: Date;
 };
 
-/** 회계연도가 시작되는 달과 날. 기본은 12월 24일. 끝은 다음 시작 직전이다. */
+/** 회계연도가 시작되는 달과 날. 기본은 1월 1일. 끝은 다음 시작 직전이다. */
 export type FiscalPeriod = {
   startMonth: number;
   startDay: number;
 };
 
-export const DEFAULT_FISCAL_PERIOD: FiscalPeriod = { startMonth: 12, startDay: 24 };
+export const DEFAULT_FISCAL_PERIOD: FiscalPeriod = { startMonth: 1, startDay: 1 };
 
 export function isValidFiscalPeriod(period: FiscalPeriod) {
   if (!Number.isInteger(period.startMonth) || period.startMonth < 1 || period.startMonth > 12) return false;
@@ -63,7 +63,7 @@ export function fiscalYearOf(instant: Date, period: FiscalPeriod = DEFAULT_FISCA
   return windowStarting(startCalendarYear, period).fiscalYear;
 }
 
-/** 앨범 연도는 회계연도가 아니라 행사 시작의 한국 달력 연도다. */
+/** 앨범 연도는 행사 시작의 한국 달력 연도다. */
 export function calendarYearKst(instant: Date): number {
   return kstParts(instant).year;
 }

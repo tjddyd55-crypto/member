@@ -3,7 +3,6 @@ import { z } from 'zod';
 import {
   gatheringAcceptInviteSchema,
   gatheringGroupCreateSchema,
-  gatheringGroupUpdateSchema,
   gatheringInviteCreateSchema,
   gatheringMemberQuerySchema,
   gatheringMembershipDecisionSchema,
@@ -50,8 +49,7 @@ export const gatheringGroupRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch('/api/gathering/groups/:groupId', auth, async (request) => {
     const params = groupParams.parse(request.params);
-    const body = gatheringGroupUpdateSchema.parse(request.body);
-    return updateGroup(requireGatheringUserId(request), params.groupId, body);
+    return updateGroup(requireGatheringUserId(request), params.groupId, request.body);
   });
 
   app.get('/api/gathering/groups/:groupId/members', auth, async (request) => {

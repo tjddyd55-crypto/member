@@ -108,6 +108,11 @@ async function clearStoredSession() {
   refreshGate.notifyCleared();
 }
 
+function receiptPath(groupId: string, scope: string | number) {
+  const segment = typeof scope === 'number' ? `finance/years/${scope}` : `events/${scope}`;
+  return `/api/gathering/groups/${groupId}/${segment}/receipts`;
+}
+
 export const api = {
   register(body: unknown) {
     return request<GatheringSessionResponse>(
@@ -199,8 +204,6 @@ export const api = {
     body: {
       inviteRequiresApproval?: boolean;
       name?: string;
-      fiscalStartMonth?: number;
-      fiscalStartDay?: number;
     },
   ) {
     return request<GatheringGroupDetail>(`/api/gathering/groups/${groupId}`, {
@@ -548,6 +551,12 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
     );
   },
+  createGeneralTransaction(groupId: string, body: unknown) {
+    return request<GatheringTransactionView>(
+      `/api/gathering/groups/${groupId}/finance/general-transactions`,
+      { method: 'POST', body: JSON.stringify(body) },
+    );
+  },
   saveDue(groupId: string, body: unknown) {
     return request<{ id: string; status: string }>(
       `/api/gathering/groups/${groupId}/finance/dues`,
@@ -557,26 +566,26 @@ export const api = {
       },
     );
   },
-  eventReceipts(groupId: string, eventId: string) {
+  receipts(groupId: string, scope: string | number) {
     return request<{ items: GatheringReceiptView[] }>(
-      `/api/gathering/groups/${groupId}/events/${eventId}/receipts`,
+      receiptPath(groupId, scope),
     );
   },
   createReceiptUploads(
     groupId: string,
-    eventId: string,
+    scope: string | number,
     items: Array<{ mimeType: string; sizeBytes: number; originalName?: string }>,
   ) {
     return request<{
       items: Array<{ id: string; uploadUrl: string; headers: Record<string, string> }>;
-    }>(`/api/gathering/groups/${groupId}/events/${eventId}/receipts/uploads`, {
+    }>(`${receiptPath(groupId, scope)}/uploads`, {
       method: 'POST',
       body: JSON.stringify({ items }),
     });
   },
-  completeReceipt(groupId: string, eventId: string, receiptId: string, sizeBytes: number) {
+  completeReceipt(groupId: string, scope: string | number, receiptId: string, sizeBytes: number) {
     return request<GatheringReceiptView>(
-      `/api/gathering/groups/${groupId}/events/${eventId}/receipts/${receiptId}/complete`,
+      `${receiptPath(groupId, scope)}/${receiptId}/complete`,
       { method: 'POST', body: JSON.stringify({ sizeBytes }) },
     );
   },

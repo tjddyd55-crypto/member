@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGatheringObjectKey, buildMemberBookProfileKey, ObjectKeyError } from './object-key.js';
+import { buildGatheringFinanceReceiptKey, buildGatheringObjectKey, buildMemberBookProfileKey, ObjectKeyError } from './object-key.js';
 
 describe('저장 키', () => {
   it('행사 사진·영상·영수증과 회원수첩 프로필 경로를 나눈다', () => {
@@ -54,5 +54,15 @@ describe('저장 키', () => {
         objectId: 'file1',
       }),
     ).toThrow(ObjectKeyError);
+  });
+});
+
+describe('회계연도 영수증 저장 경로', () => {
+  const parts = { prefixEnv: 'dev', groupId: 'group-1', financeYearId: 'year_2', objectId: 'file-3' };
+  it('모임과 회계연도로 일반 영수증을 구분한다', () => {
+    expect(buildGatheringFinanceReceiptKey(parts)).toBe('dev/gatherings/group-1/finance/year_2/receipts/file-3');
+  });
+  it('경로 구분자가 들어간 회계연도 ID를 거부한다', () => {
+    expect(() => buildGatheringFinanceReceiptKey({ ...parts, financeYearId: '../year' })).toThrow(ObjectKeyError);
   });
 });

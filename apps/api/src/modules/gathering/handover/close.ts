@@ -1,6 +1,5 @@
 import type { GatheringFinanceYear, GatheringHandover, Prisma } from '@prisma/client';
-import { fiscalYearRange } from '@member/gathering-domain';
-import { readFiscalPeriod } from '../finance/years.js';
+import { calendarYearRange } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { writeGatheringAudit } from '../audit.js';
 import { loadHandoverFacts } from './facts.js';
@@ -20,10 +19,21 @@ export async function closeFinanceYear(
   await installSuccessor(tx, handover, financeYear.year + 1, actorId, now);
   const nextYear = financeYear.year + 1;
   const facts = await loadHandoverFacts(tx, financeYear);
-  const range = fiscalYearRange(nextYear, await readFiscalPeriod(tx, handover.groupId));
+  const range = calendarYearRange(nextYear);
   const existing = await tx.gatheringFinanceYear.findUnique({
     where: { groupId_year: { groupId: handover.groupId, year: nextYear } },
   });
+  const overlap = await tx.gatheringFinanceYear.findFirst({
+    where: {
+      groupId: handover.groupId,
+      year: { not: nextYear },
+      startsAt: { lte: range.endsAt },
+      endsAt: { gte: range.startsAt },
+    },
+  });
+  if (overlap) {
+    throw new AppError(409, 'NEXT_YEAR_OVERLAP', '다음 회계연도 기간이 기존 회계연도와 겹칩니다.');
+  }
   if (existing) {
     const reusable = await emptyOpenYear(tx, existing.id);
     if (

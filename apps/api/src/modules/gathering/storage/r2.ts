@@ -1,4 +1,5 @@
 import {
+  buildGatheringFinanceReceiptKey as buildFinanceReceiptKey,
   buildGatheringObjectKey as buildKey,
   buildMemberBookProfileKey as buildProfileKey,
 } from '@member/gathering-domain';
@@ -39,6 +40,14 @@ export function buildGatheringObjectKey(input: {
 }) {
   try {
     return buildKey(input);
+  } catch {
+    throw new AppError(400, 'INVALID_STORAGE_KEY', '저장 경로를 만들 수 없습니다.');
+  }
+}
+
+export function buildGatheringFinanceReceiptKey(input: Parameters<typeof buildFinanceReceiptKey>[0]) {
+  try {
+    return buildFinanceReceiptKey(input);
   } catch {
     throw new AppError(400, 'INVALID_STORAGE_KEY', '저장 경로를 만들 수 없습니다.');
   }

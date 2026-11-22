@@ -1,4 +1,4 @@
-import { fiscalYearOf, parseWon, parseWonAllowZero, dueStanding } from '@member/gathering-domain';
+import { parseWon, parseWonAllowZero, dueStanding } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
@@ -6,7 +6,7 @@ import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { assertGatheringWritable } from '../entitlement.js';
 import { lockGroup } from '../locks.js';
-import { lockGroupOpenYear, readFiscalPeriod } from './years.js';
+import { lockGroupOpenYear, lockOpenYearForInstant } from './years.js';
 
 export type DueInput = {
   userId?: string;
@@ -40,9 +40,10 @@ export async function upsertDue(actorId: string, groupId: string, input: DueInpu
   const saved = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
     await assertGatheringWritable(tx, groupId);
-    const period = await readFiscalPeriod(tx, groupId);
-    const year = await lockGroupOpenYear(tx, groupId, input.year);
-    if (paidAt && fiscalYearOf(paidAt, period) !== year.year) {
+    const year = paidAt
+      ? await lockOpenYearForInstant(tx, groupId, paidAt)
+      : await lockGroupOpenYear(tx, groupId, input.year);
+    if (year.year !== input.year) {
       throw new AppError(409, 'PAYMENT_YEAR_MISMATCH', '납부일은 그 회계연도에 속해야 합니다.');
     }
     return tx.gatheringMemberDue.upsert({

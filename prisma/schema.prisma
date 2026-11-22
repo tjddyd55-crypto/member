@@ -661,8 +661,8 @@ model GatheringGroup {
   name                   String
   description            String?
   inviteRequiresApproval Boolean  @default(false)
-  fiscalStartMonth       Int      @default(12)
-  fiscalStartDay         Int      @default(24)
+  fiscalStartMonth       Int      @default(1)
+  fiscalStartDay         Int      @default(1)
   createdByUserId        String
   /// 운영 정지. 이용권 갱신으로 풀리지 않는다. null 이면 정지되지 않음.
   suspendedAt            DateTime?
@@ -960,7 +960,7 @@ model GatheringFinanceYear {
 model GatheringFinanceTransaction {
   id            String                  @id @default(cuid())
   groupId       String
-  eventId       String
+  eventId       String?
   financeYearId String
   direction     GatheringEntryDirection
   label         String
@@ -973,7 +973,7 @@ model GatheringFinanceTransaction {
   updatedAt     DateTime                @updatedAt
 
   group       GatheringGroup      @relation(fields: [groupId], references: [id])
-  event       GatheringEvent      @relation(fields: [eventId], references: [id])
+  event       GatheringEvent?      @relation(fields: [eventId], references: [id], onDelete: Restrict)
   financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
   createdBy   User                @relation("GatheringTransactionCreator", fields: [createdByUserId], references: [id])
 
@@ -1007,7 +1007,7 @@ model GatheringMemberDue {
 model GatheringReceiptAsset {
   id              String                @id @default(cuid())
   groupId         String
-  eventId         String
+  eventId         String?
   financeYearId   String
   storageKey      String                @unique
   originalName    String?
@@ -1022,7 +1022,7 @@ model GatheringReceiptAsset {
   deletedAt       DateTime?
 
   group       GatheringGroup       @relation(fields: [groupId], references: [id])
-  event       GatheringEvent       @relation(fields: [eventId], references: [id])
+  event       GatheringEvent?       @relation(fields: [eventId], references: [id], onDelete: Restrict)
   financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
   uploader    User                 @relation("GatheringReceiptUploader", fields: [uploadedByUserId], references: [id])
 

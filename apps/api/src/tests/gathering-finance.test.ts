@@ -507,10 +507,10 @@ describe('행사 장부와 영수증', () => {
     }
   });
 
-  it('12월 24일 결제는 다음 회계연도이고, 마감된 해는 고칠 수 없다', async () => {
+  it('1월 1일 결제는 다음 회계연도이고, 마감된 해는 고칠 수 없다', async () => {
     const owner = await register('경계회장');
     const group = await createGroup(owner.tokens.accessToken, '경계 모임');
-    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-12-23T13:00:00.000Z');
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-12-31T13:00:00.000Z');
     const missing = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
@@ -519,11 +519,11 @@ describe('행사 장부와 영수증', () => {
         direction: 'EXPENSE',
         label: '심야 택시',
         amountWon: 18000,
-        paidAt: '2026-12-23T15:30:00.000Z',
+        paidAt: '2026-12-31T15:30:00.000Z',
       },
     });
     expect(missing.statusCode).toBe(409);
-    expect(missing.json().error.code).toBe('FINANCE_YEAR_NOT_OPEN');
+    expect(missing.json().error.code).toBe('FINANCE_YEAR_OUTSIDE_WINDOW');
     const range = fiscalYearRange(2027);
     await prisma.gatheringFinanceYear.create({
       data: {
@@ -543,7 +543,7 @@ describe('행사 장부와 영수증', () => {
         direction: 'EXPENSE',
         label: '심야 택시',
         amountWon: 18000,
-        paidAt: '2026-12-23T15:30:00.000Z',
+        paidAt: '2026-12-31T15:30:00.000Z',
         adjustment: true,
         note: '전년 행사 비용을 다음 해에 정정',
       },
@@ -558,7 +558,7 @@ describe('행사 장부와 영수증', () => {
         direction: 'EXPENSE',
         label: '정정',
         amountWon: 1000,
-        paidAt: '2026-12-23T15:30:00.000Z',
+        paidAt: '2026-12-31T15:30:00.000Z',
         adjustment: true,
       },
     });
@@ -575,7 +575,7 @@ describe('행사 장부와 영수증', () => {
         direction: 'EXPENSE',
         label: '심야 택시',
         amountWon: 19000,
-        paidAt: '2026-12-23T15:30:00.000Z',
+        paidAt: '2026-12-31T15:30:00.000Z',
         note: '마감 후 수정',
       },
     });
@@ -677,7 +677,7 @@ describe('행사 장부와 영수증', () => {
       method: 'PATCH',
       url: `/api/gathering/groups/${group.id}/events/${event.id}`,
       headers: auth(owner.tokens.accessToken),
-      payload: { startsAt: '2026-12-24T15:00:00.000Z' },
+      payload: { startsAt: '2026-12-31T15:00:00.000Z' },
     });
     storage.put(row.storageKey, pdf(32));
     const ready = await app.inject({
@@ -694,30 +694,49 @@ describe('행사 장부와 영수증', () => {
     expect(saved.status).toBe('READY');
   });
 
-  it('빈 해의 시작일만 바꾸고, 회비 납부는 행사 수입과 따로 한 번만 합친다', async () => {
+  it('기존 12월 24일 시작 기간에 결제를 귀속하고 기간 밖 결제를 거절한다', async () => {
+    const owner = await register('기존기간회장');
+    const group = await createGroup(owner.tokens.accessToken, '기존 기간 모임');
+    const legacy = fiscalYearRange(2026, { startMonth: 12, startDay: 24 });
+    const year = await prisma.gatheringFinanceYear.update({
+      where: { groupId_year: { groupId: group.id, year: 2026 } },
+      data: { startsAt: legacy.startsAt, endsAt: legacy.endsAt },
+    });
+    const event = await createEvent(owner.tokens.accessToken, group.id, '2026-03-01T03:00:00.000Z');
+    const pay = (paidAt: string) => app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { direction: 'INCOME', label: '참가비', amountWon: 4000, paidAt },
+    });
+    const inside = await pay(legacy.startsAt.toISOString());
+    expect(inside.statusCode).toBe(200);
+    expect(inside.json().fiscalYear).toBe(2026);
+    const outside = await pay('2026-12-24T00:00:00+09:00');
+    expect(outside.statusCode).toBe(409);
+    expect(outside.json().error.code).toBe('FINANCE_YEAR_OUTSIDE_WINDOW');
+    expect(await prisma.gatheringFinanceTransaction.count({ where: { financeYearId: year.id } })).toBe(1);
+  });
+
+  it('빈 해의 시작일 변경도 거절하고, 회비 납부는 행사 수입과 따로 한 번만 합친다', async () => {
     const owner = await register('기간회장');
     const group = await createGroup(owner.tokens.accessToken, '기간 모임');
+    const where = { groupId: group.id };
+    const before = await prisma.gatheringFinanceYear.findMany({ where });
+    expect(before).toHaveLength(1);
+    expect(before[0]).toMatchObject({
+      startsAt: new Date('2026-01-01T00:00:00+09:00'),
+      endsAt: new Date('2026-12-31T23:59:59.999+09:00'),
+    });
     const shifted = await app.inject({
       method: 'PATCH',
       url: `/api/gathering/groups/${group.id}`,
       headers: auth(owner.tokens.accessToken),
       payload: { fiscalStartMonth: 6, fiscalStartDay: 1 },
     });
-    expect(shifted.statusCode).toBe(200);
-    const previous = fiscalYearRange(group.financeYear.year);
-    const june = { startMonth: 6, startDay: 1 };
-    const openYears = await prisma.gatheringFinanceYear.findMany({
-      where: { groupId: group.id, status: 'OPEN' },
-      orderBy: { year: 'asc' },
-    });
-    for (const instant of [previous.startsAt, previous.endsAt]) {
-      const covered = openYears.find((row) => row.startsAt <= instant && instant <= row.endsAt);
-      expect(covered?.year).toBe(fiscalYearOf(instant, june));
-    }
-    expect(shifted.json().financeYear.year).toBe(openYears[openYears.length - 1]?.year);
-    expect(shifted.json().financeYear.startsAt).toBe(
-      openYears[openYears.length - 1]?.startsAt.toISOString(),
-    );
+    expect(shifted.statusCode).toBe(400);
+    expect(shifted.json().error.code).toBe('INVALID_PERIOD');
+    expect(await prisma.gatheringFinanceYear.findMany({ where })).toEqual(before);
     const invalid = await app.inject({
       method: 'PATCH',
       url: `/api/gathering/groups/${group.id}`,
@@ -738,9 +757,7 @@ describe('행사 장부와 영수증', () => {
       },
     });
     expect(income.statusCode).toBe(200);
-    expect(income.json().fiscalYear).toBe(
-      fiscalYearOf(new Date('2026-03-01T03:00:00.000Z'), { startMonth: 6, startDay: 1 }),
-    );
+    expect(income.json().fiscalYear).toBe(2026);
     const listed = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
@@ -752,29 +769,14 @@ describe('행사 장부와 영수증', () => {
       include: { financeYear: true },
     });
     expect(income.json().fiscalYear).toBe(stored.financeYear.year);
-    const later = await app.inject({
-      method: 'POST',
-      url: `/api/gathering/groups/${group.id}/events/${event.id}/transactions`,
-      headers: auth(owner.tokens.accessToken),
-      payload: {
-        direction: 'INCOME',
-        label: '찬조금',
-        amountWon: 1000,
-        paidAt: '2026-07-01T03:00:00.000Z',
-      },
-    });
-    expect(later.statusCode).toBe(200);
-    expect(later.json().fiscalYear).toBe(2027);
-    expect(later.json().fiscalYear).not.toBe(fiscalYearOf(new Date('2026-07-01T03:00:00.000Z')));
-    await prisma.gatheringFinanceTransaction.delete({ where: { id: later.json().id as string } });
     const locked = await app.inject({
       method: 'PATCH',
       url: `/api/gathering/groups/${group.id}`,
       headers: auth(owner.tokens.accessToken),
       payload: { fiscalStartMonth: 1, fiscalStartDay: 1 },
     });
-    expect(locked.statusCode).toBe(409);
-    expect(locked.json().error.code).toBe('PERIOD_LOCKED');
+    expect(locked.statusCode).toBe(400);
+    expect(locked.json().error.code).toBe('INVALID_PERIOD');
     const due = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${group.id}/finance/dues`,
@@ -817,7 +819,7 @@ describe('행사 장부와 영수증', () => {
     expect(closedView.json().eventIncomeWon).toBe(4000);
   });
 
-  it('대기·실패 영수증은 기간을 잠그지 않고, 완료된 영수증만 잠근다', async () => {
+  it('영수증 상태와 관계없이 기간 변경을 거절하고 저장된 귀속을 유지한다', async () => {
     const owner = await register('영수증기간');
     const group = await createGroup(owner.tokens.accessToken, '영수증 기간');
     const event = await createEvent(owner.tokens.accessToken, group.id, '2026-03-01T03:00:00.000Z');
@@ -843,7 +845,7 @@ describe('행사 장부와 영수증', () => {
       headers: auth(owner.tokens.accessToken),
       payload: { fiscalStartMonth: 6, fiscalStartDay: 1 },
     });
-    expect(shifted.statusCode).toBe(200);
+    expect(shifted.statusCode).toBe(400);
     const pending = await prisma.gatheringReceiptAsset.findUniqueOrThrow({
       where: { id: pendingId },
       include: { financeYear: true, event: true },
@@ -851,7 +853,7 @@ describe('행사 장부와 영수증', () => {
     expect(pending.financeYear.startsAt <= pending.event.startsAt).toBe(true);
     expect(pending.event.startsAt <= pending.financeYear.endsAt).toBe(true);
     expect(pending.financeYear.year).toBe(
-      fiscalYearOf(pending.event.startsAt, { startMonth: 6, startDay: 1 }),
+      fiscalYearOf(pending.event.startsAt),
     );
 
     const readyOwner = await register('완료영수증');
@@ -885,8 +887,8 @@ describe('행사 장부와 영수증', () => {
       headers: auth(readyOwner.tokens.accessToken),
       payload: { fiscalStartMonth: 6, fiscalStartDay: 1 },
     });
-    expect(locked.statusCode).toBe(409);
-    expect(locked.json().error.code).toBe('PERIOD_LOCKED');
+    expect(locked.statusCode).toBe(400);
+    expect(locked.json().error.code).toBe('INVALID_PERIOD');
   });
 
   it('이미 마감한 해의 잔액은 회비를 합치기 전 스냅샷과 다음 해 기초잔액을 유지한다', async () => {
@@ -962,6 +964,184 @@ describe('행사 장부와 영수증', () => {
   });
 });
 
+describe('일반 수입·지출', () => {
+  it('행사 수입과 회비를 분리해 집계하고 일반 거래와 영수증을 마감에 포함한다', async () => {
+    const owner = await register('일반회계회장');
+    const treasurer = await register('일반회계재무');
+    const member = await register('일반회계회원');
+    const token = owner.tokens.accessToken;
+    const group = await createGroup(token, '일반 장부 모임');
+    const { year } = group.financeYear;
+    const url = `/api/gathering/groups/${group.id}`;
+    const general = `${url}/finance/general-transactions`;
+    const receipts = `${url}/finance/years/${year}/receipts`;
+    const paidAt = `${year}-06-01T03:00:00.000Z`;
+    const income = { direction: 'INCOME', label: '지원금', amountWon: 2000, paidAt, year };
+    const expense = { direction: 'EXPENSE', label: '운영비', amountWon: 1500, paidAt, year };
+    const upload = { items: [{ mimeType: 'application/pdf', sizeBytes: 32 }] };
+    await join(token, treasurer.tokens.accessToken, group.id);
+    await join(token, member.tokens.accessToken, group.id);
+
+    const call = async (
+      method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+      path: string,
+      payload?: object,
+      actor = token,
+      status = 200,
+    ) => {
+      const response = await app.inject({ method, url: path, headers: auth(actor), payload });
+      expect(response.statusCode, `${method} ${path}: ${response.body}`).toBe(status);
+      return response.json();
+    };
+    await call('POST', `${url}/officers`, { userId: treasurer.user.id, role: 'TREASURER' });
+    const treasurerToken = treasurer.tokens.accessToken;
+    const memberToken = member.tokens.accessToken;
+    const event = await createEvent(token, group.id, paidAt);
+    const eventPath = `${url}/events/${event.id}/transactions`;
+    const eventRow = await call('POST', eventPath, { ...income, amountWon: 4000, label: '행사비' });
+    expect(eventRow.eventId).toBe(event.id);
+    await call('POST', `${url}/finance/dues`, {
+      year, userId: member.user.id, amountWon: 1000, paidAmountWon: 1000, paidAt,
+    }, treasurerToken);
+    const summaryPath = `${url}/finance?year=${year}`;
+    const before = await call('GET', summaryPath);
+    expect(before).toMatchObject({ eventIncomeWon: 4000, duesWon: 1000, incomeWon: 5000 });
+
+    expect((await call('POST', general, { ...income, year: year - 1 }, treasurerToken, 400)).error.code)
+      .toBe('FINANCE_YEAR_MISMATCH');
+    await call('POST', general, income, memberToken, 403);
+    const incomeRow = await call('POST', general, income, treasurerToken);
+    const expenseRow = await call('POST', general, expense, treasurerToken);
+    expect(incomeRow.eventId).toBeNull();
+    expect(expenseRow.eventId).toBeNull();
+
+    const incomePath = `${url}/transactions/${incomeRow.id}`;
+    await call('PUT', incomePath, income, memberToken, 403);
+    await call('DELETE', incomePath, undefined, memberToken, 403);
+    const edited = await call('PUT', incomePath, {
+      ...income, eventId: event.id, note: '일반 거래 메모',
+    }, treasurerToken);
+    expect(edited).toMatchObject({ eventId: null, note: '일반 거래 메모' });
+    const editedEvent = await call('PUT', `${url}/transactions/${eventRow.id}`, {
+      ...income, label: '행사비', amountWon: 4000, eventId: null,
+    }, treasurerToken);
+    expect(editedEvent.eventId).toBe(event.id);
+
+    const temporary = await call('POST', general, { ...expense, label: '삭제할 거래' }, treasurerToken);
+    await call('DELETE', `${url}/transactions/${temporary.id}`, undefined, treasurerToken);
+    expect(await prisma.gatheringFinanceTransaction.findUnique({ where: { id: temporary.id } })).toBeNull();
+    for (const method of ['GET', 'POST'] as const) {
+      await call(method, `${url}/events/missing/transactions`, method === 'POST' ? income : undefined, token, 404);
+    }
+    expect((await call('GET', eventPath)).items.map((row: { id: string }) => row.id))
+      .toEqual([eventRow.id]);
+
+    const expected = {
+      eventIncomeWon: 4000, generalIncomeWon: 2000, generalExpenseWon: 1500,
+      duesWon: 1000, incomeWon: 7000, expenseWon: 1500, balanceWon: before.openingBalanceWon + 5500,
+    };
+    const summary = await call('GET', summaryPath, undefined, memberToken);
+    expect(summary).toMatchObject(expected);
+    expect(summary.events).toEqual([
+      { eventId: event.id, title: '정산 행사', incomeWon: 4000, expenseWon: 0, netWon: 4000 },
+    ]);
+    expect(summary.general).toMatchObject({ incomeWon: 2000, expenseWon: 1500, netWon: 500 });
+    expect(summary.general.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: incomeRow.id, eventId: null }),
+      expect.objectContaining({ id: expenseRow.id, eventId: null }),
+    ]));
+    expect(summary.general.items).toHaveLength(2);
+
+    await call('POST', `${receipts}/uploads`, upload, memberToken, 403);
+    const reserved = await call('POST', `${receipts}/uploads`, upload, treasurerToken);
+    const receiptId = reserved.items[0].id as string;
+    const receipt = await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id: receiptId } });
+    expect(receipt.eventId).toBeNull();
+    expect(receipt.storageKey).toContain(`/gatherings/${group.id}/finance/${receipt.financeYearId}/receipts/`);
+    expect(receipt.storageKey).not.toContain('/events/');
+    const complete = `${receipts}/${receiptId}/complete`;
+    await call('POST', `${url}/events/${event.id}/receipts/${receiptId}/complete`, { sizeBytes: 32 }, treasurerToken, 404);
+    storage.put(receipt.storageKey, pdf(32));
+    await call('POST', complete, { sizeBytes: 32 }, treasurerToken);
+    expect((await call('GET', receipts, undefined, memberToken)).items).toMatchObject([{ id: receiptId }]);
+    expect((await call('GET', `${url}/events/${event.id}/receipts`)).items).toEqual([]);
+    const download = `${url}/receipts/${receiptId}/download`;
+    expect((await call('GET', download, undefined, memberToken)).mimeType).toBe('application/pdf');
+
+    const handoverPath = `${url}/handover`;
+    const handover = await call('POST', handoverPath, {
+      toUserId: member.user.id, idempotencyKey: 'general-finance-close-01',
+    });
+    const close = `${handoverPath}/${handover.id}`;
+    await call('POST', `${close}/accept`, undefined, memberToken);
+    const { preview } = await call('GET', handoverPath);
+    expect(preview).toMatchObject({ balanceWon: expected.balanceWon, receiptCount: 1 });
+    await call('POST', `${close}/confirm`, preview);
+    const closed = await call('POST', `${close}/finalize`);
+    expect(closed.balanceWon).toBe(expected.balanceWon);
+    const snapshot = await prisma.gatheringFinanceCloseSnapshot.findUniqueOrThrow({
+      where: { id: closed.snapshotId },
+    });
+    expect(JSON.parse(snapshot.payloadJson)).toMatchObject({
+      closingBalanceWon: expected.balanceWon,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({ id: eventRow.id, eventId: event.id }),
+        expect.objectContaining({ id: incomeRow.id, eventId: null }),
+        expect.objectContaining({ id: expenseRow.id, eventId: null }),
+      ]),
+      receipts: [expect.objectContaining({ id: receiptId, eventId: null })],
+    });
+    expect(await call('GET', `${url}/finance?year=${year + 1}`)).toMatchObject({
+      openingBalanceWon: expected.balanceWon,
+    });
+    expect(await call('GET', summaryPath)).toMatchObject({ ...expected, status: 'CLOSED' });
+
+    // 마감은 임원 역할을 종료하므로 새 회장이 재무를 다시 임명한다.
+    await call('POST', `${url}/officers`, { userId: treasurer.user.id, role: 'TREASURER' }, memberToken);
+    const { year: _selectedYear, ...incomeWithoutYear } = income;
+    expect((await call('POST', general, incomeWithoutYear, treasurerToken, 409)).error.code)
+      .toBe('FINANCE_YEAR_CLOSED');
+    const original = await prisma.gatheringFinanceTransaction.findUnique({ where: { id: incomeRow.id } });
+    const originalReceipt = await prisma.gatheringReceiptAsset.findUnique({ where: { id: receiptId } });
+    for (const [method, path, body] of [
+      ['POST', general, income],
+      ['PUT', incomePath, { ...income, year: year + 1, paidAt: `${year + 1}-06-01T03:00:00Z` }],
+      ['DELETE', incomePath, undefined],
+      ['POST', `${receipts}/uploads`, upload],
+      ['POST', complete, { sizeBytes: 32 }],
+    ] as const) {
+      expect((await call(method, path, body, treasurerToken, 409)).error.code).toBe('FINANCE_YEAR_CLOSED');
+    }
+    await call('DELETE', `${url}/receipts/${receiptId}`, undefined, treasurerToken, 403);
+    expect(await prisma.gatheringFinanceTransaction.findUnique({ where: { id: incomeRow.id } })).toEqual(original);
+    expect(await prisma.gatheringReceiptAsset.findUnique({ where: { id: receiptId } })).toEqual(originalReceipt);
+    await call('GET', download, undefined, memberToken);
+  });
+
+  it('이미 예약된 일반 영수증은 연도 마감 후 완료해도 변경되지 않는다', async () => {
+    const owner = await register('일반영수증마감');
+    const token = owner.tokens.accessToken;
+    const group = await createGroup(token, '일반 영수증 마감');
+    const path = `/api/gathering/groups/${group.id}/finance/years/${group.financeYear.year}/receipts`;
+    const reserved = await app.inject({
+      method: 'POST', url: `${path}/uploads`, headers: auth(token),
+      payload: { items: [{ mimeType: 'application/pdf', sizeBytes: 32 }] },
+    });
+    expect(reserved.statusCode).toBe(200);
+    const id = reserved.json().items[0].id as string;
+    const receipt = await prisma.gatheringReceiptAsset.findUniqueOrThrow({ where: { id } });
+    await prisma.gatheringFinanceYear.update({
+      where: { id: receipt.financeYearId }, data: { status: 'CLOSED' },
+    });
+    const complete = await app.inject({
+      method: 'POST', url: `${path}/${id}/complete`, headers: auth(token), payload: { sizeBytes: 32 },
+    });
+    expect(complete.statusCode).toBe(409);
+    expect(complete.json().error.code).toBe('FINANCE_YEAR_CLOSED');
+    expect(await prisma.gatheringReceiptAsset.findUnique({ where: { id } })).toEqual(receipt);
+  });
+});
+
 async function cleanup() {
   if (groupIds.length === 0) return;
   await prisma.gatheringReceiptAsset.deleteMany({ where: { groupId: { in: groupIds } } });
@@ -980,6 +1160,7 @@ async function cleanup() {
   await prisma.gatheringInvite.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringMembership.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringFinanceCloseSnapshot.deleteMany({ where: { groupId: { in: groupIds } } });
+  await prisma.gatheringHandover.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringFinanceYear.deleteMany({ where: { groupId: { in: groupIds } } });
   await prisma.gatheringGroup.deleteMany({ where: { id: { in: groupIds } } });
   await prisma.gatheringAuditLog.deleteMany({ where: { actorUserId: { in: userIds } } });

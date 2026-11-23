@@ -52,6 +52,8 @@ export default function GroupsScreen() {
       />
       {!profile ? (
         <Button label="이름과 소속 로컬 등록" onPress={() => router.push('/(app)/profile')} />
+      ) : !profile.birthDate || !profile.sex ? (
+        <Button label="생년월일과 성별 등록" onPress={() => router.push('/(app)/profile')} />
       ) : null}
       <TextField
         label="모임 검색"

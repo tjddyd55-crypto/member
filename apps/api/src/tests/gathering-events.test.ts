@@ -49,6 +49,8 @@ async function register(name: string) {
       password: 'Passw0rd!',
       localJcName: '서울테스트',
       directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE',
     },
   });
   expect(res.statusCode).toBe(200);

@@ -13,13 +13,15 @@ import { attachProfile, hashNewPassword, insertGatheringAccount } from './accoun
 import { GatheringAuditAction } from './constants.js';
 import { sessionBody, toAuthProfile, toAuthUser } from './presenters/auth.js';
 import { issueGatheringSession } from './sessions.js';
-import { IDENTITY_LIMITATION_KO } from '@member/gathering-domain';
+import { IDENTITY_LIMITATION_KO, parseBirthDate } from '@member/gathering-domain';
 
 type RegisterInput = {
   name: string;
   phone: string;
   password: string;
   localJcName: string;
+  birthDate: string;
+  sex: 'MALE' | 'FEMALE';
   userAgent?: string;
 };
 
@@ -73,17 +75,46 @@ export async function loginGatheringAccount(
 
 export async function completeGatheringProfile(
   userId: string,
-  input: { name: string; localJcName: string },
+  input: { name: string; localJcName: string; birthDate: string; sex: 'MALE' | 'FEMALE' },
 ) {
   const existing = await prisma.gatheringProfile.findUnique({ where: { userId } });
-  if (existing) {
-    throw new AppError(409, 'PROFILE_EXISTS', '이미 모임 프로필이 있습니다.');
-  }
   const recoveryCodes = await prisma.$transaction(async (tx) => {
+    if (existing) {
+      await tx.gatheringProfile.update({
+        where: { userId },
+        data: {
+          displayName: input.name,
+          birthDate: parseBirthDate(input.birthDate),
+          sex: input.sex,
+        },
+      });
+      const affiliation = await tx.gatheringLocalAffiliation.findFirst({
+        where: { userId, isCurrent: true },
+      });
+      if (affiliation) {
+        await tx.gatheringLocalAffiliation.update({
+          where: { id: affiliation.id },
+          data: { localJcName: input.localJcName },
+        });
+      } else {
+        await tx.gatheringLocalAffiliation.create({
+          data: { userId, localJcName: input.localJcName, isCurrent: true },
+        });
+      }
+      await writeGatheringAudit(tx, {
+        actorUserId: userId,
+        action: GatheringAuditAction.PROFILE_UPDATE,
+        targetType: 'GatheringProfile',
+        targetId: userId,
+      });
+      return undefined;
+    }
     const codes = await attachProfile(tx, {
       userId,
       name: input.name,
       localJcName: input.localJcName,
+      birthDate: input.birthDate,
+      sex: input.sex,
       now: new Date(),
     });
     await writeGatheringAudit(tx, {

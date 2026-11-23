@@ -71,6 +71,8 @@ describe('회원수첩 로그인과 세션 회귀', () => {
         password: 'Passw0rd!',
         localJcName: '테스트로컬',
         directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE',
       },
     });
     expect(registered.statusCode).toBe(200);

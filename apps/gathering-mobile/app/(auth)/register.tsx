@@ -13,6 +13,7 @@ import {
   TextField,
   Title,
 } from '../../src/design/ui';
+import { BirthDateField, SexField } from '../../src/features/forms/demographics';
 import { theme } from '../../src/theme';
 
 export default function RegisterScreen() {
@@ -20,6 +21,8 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [localJcName, setLocalJcName] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [sex, setSex] = useState<'MALE' | 'FEMALE' | ''>('');
   const [password, setPassword] = useState('');
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +42,8 @@ export default function RegisterScreen() {
       phone,
       password,
       localJcName,
+      birthDate,
+      sex,
       directoryConsent: consent ? true : false,
     });
     if (!parsed.success) {
@@ -79,6 +84,8 @@ export default function RegisterScreen() {
         onChangeText={setLocalJcName}
         placeholder="예: 서울 ○○"
       />
+      <BirthDateField value={birthDate} onChange={setBirthDate} />
+      <SexField value={sex} onChange={setSex} />
       <TextField label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry />
       <Text style={{ ...theme.typography.bodySmall, color: theme.colors.text.secondary }}>
         8자 이상, 영문·숫자 포함

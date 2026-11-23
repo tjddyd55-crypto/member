@@ -16,7 +16,7 @@ const password = 'ManualPass123!';
 const groupPath = (id: string) => `/api/gathering/groups/${id}`;
 const manualPath = (id: string) => `${groupPath(id)}/manual-members`;
 const newPhone = () => `010${randomInt(10000000, 100000000)}`;
-const input = (phone = newPhone()) => ({ name: '  수기 회원  ', phone, localJcName: '  서울JC  ' });
+const input = (phone = newPhone()) => ({ name: '  수기 회원  ', phone, localJcName: '  서울JC  ', birthDate: '1985-04-20', sex: 'FEMALE' as const });
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 beforeAll(async () => {
@@ -85,6 +85,8 @@ async function register(phone = newPhone()) {
       phone,
       password,
       directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE',
     }),
   );
   users.push(result.user.id);
@@ -131,7 +133,7 @@ describe('앱 미가입 회원', () => {
     const phone = newPhone();
     const formatted = `010-${phone.slice(3, 7)}-${phone.slice(7)}`;
     const data = input(formatted);
-    for (const field of ['name', 'phone', 'localJcName'] as const) {
+    for (const field of ['name', 'phone', 'localJcName', 'birthDate', 'sex'] as const) {
       failure(
         await call('POST', manualPath(id), owner.token, { ...data, [field]: undefined }),
         400,
@@ -150,8 +152,12 @@ describe('앱 미가입 회원', () => {
       displayName: '수기 회원',
       phone,
       localJcName: '서울JC',
+      birthDate: '1985-04-20',
+      sex: 'FEMALE',
+      age: expect.any(Number),
       status: 'ACTIVE',
     });
+    expect(member.age).toBeGreaterThanOrEqual(41);
     expect(await prisma.user.findUnique({ where: { phone } })).toBeNull();
     expect(
       await prisma.gatheringMembership.findUnique({ where: { id: member.membershipId } }),
@@ -170,7 +176,7 @@ describe('앱 미가입 회원', () => {
       'MANUAL_MEMBER_EXISTS',
     );
     const url = `${manualPath(id)}/${member.membershipId}`;
-    for (const field of ['name', 'phone', 'localJcName'] as const) {
+    for (const field of ['name', 'phone', 'localJcName', 'birthDate', 'sex'] as const) {
       failure(await call('PATCH', url, owner.token, { ...data, [field]: undefined }), 400);
     }
     failure(await call('PATCH', url, owner.token, input('011-1234-1234')), 400);
@@ -608,7 +614,7 @@ describe('앱 미가입 회원', () => {
       expect.arrayContaining([
         expect.objectContaining({
           isAppRegistered: false,
-          user: { id: null, name: '운영 수정', localJcName: '서울JC', phone: null },
+          user: { id: null, name: '운영 수정', localJcName: '서울JC', phone: null, birthDate: null, age: null, sex: null },
         }),
         expect.objectContaining({
           membershipId: pending.id,
@@ -641,6 +647,32 @@ describe('앱 미가입 회원', () => {
     );
   });
 
+  it('stores birth date and sex on signup and profile edit, and hides them like phone numbers', async () => {
+    const owner = await register();
+    expect(
+      ok(await call('GET', '/api/gathering/auth/me', owner.token)).profile,
+    ).toMatchObject({ birthDate: '1990-01-15', sex: 'MALE' });
+    ok(
+      await call('POST', '/api/gathering/auth/profile', owner.token, {
+        name: '앱 가입 회원',
+        localJcName: '부산JC',
+        birthDate: '1992-12-01',
+        sex: 'FEMALE',
+        directoryConsent: true,
+      }),
+    );
+    const { id } = await createGroup(owner.token);
+    const listed = ok(await call('GET', `${groupPath(id)}/members`, owner.token)).items[0];
+    expect(listed).toMatchObject({
+      birthDate: '1992-12-01',
+      sex: 'FEMALE',
+      age: expect.any(Number),
+    });
+    const empty = input();
+    delete (empty as { birthDate?: string }).birthDate;
+    failure(await call('POST', manualPath(id), owner.token, empty), 400);
+  });
+
   it('keeps roster controls and accessibility font scaling wired in both clients', () => {
     const source = (path: string) =>
       readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
@@ -651,6 +683,7 @@ describe('앱 미가입 회원', () => {
     expect(row).toContain('앱 미가입');
     expect(row).toMatch(/fontSize:\s*19/);
     expect(row).toMatch(/lineHeight:\s*26/);
+    expect(row).toContain('formatMemberDemographics');
     expect(row + members).not.toMatch(/allowFontScaling|maxFontSizeMultiplier/);
     expect(members.match(/minHeight:\s*44/g)?.length).toBeGreaterThanOrEqual(2);
     for (const label of ['앱 미가입 회원 추가', '정보 수정', '앱 계정 연결', '회원 삭제'])
@@ -659,5 +692,15 @@ describe('앱 미가입 회원', () => {
     expect(manage).toContain('새 회원으로 승인');
     expect(admin).toContain('MEMBER_WRITE');
     expect(admin).toContain('연결 승인');
+    expect(admin).toContain('생년월일');
+    expect(admin).toContain('주민등록번호는 받지 않습니다');
+    const register = source('gathering-mobile/app/(auth)/register.tsx');
+    const profile = source('gathering-mobile/app/(app)/profile.tsx');
+    const manual = source('gathering-mobile/src/features/group/ManualMemberSheet.tsx');
+    expect(register).toContain('BirthDateField');
+    expect(register).toContain('SexField');
+    expect(profile).toContain('내 정보');
+    expect(profile).toContain('BirthDateField');
+    expect(manual).toContain('BirthDateField');
   });
 });

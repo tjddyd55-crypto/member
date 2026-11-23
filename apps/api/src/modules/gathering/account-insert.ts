@@ -1,4 +1,5 @@
-import type { Prisma } from '@prisma/client';
+import type { GatheringSex, Prisma } from '@prisma/client';
+import { parseBirthDate } from '@member/gathering-domain';
 import { hashPassword } from '../../services/auth-service.js';
 import { prisma } from '../../lib/prisma.js';
 import { writeGatheringAudit } from './audit.js';
@@ -11,6 +12,8 @@ type NewAccount = {
   passwordHash: string;
   name: string;
   localJcName: string;
+  birthDate: string;
+  sex: GatheringSex;
   userAgent?: string;
 };
 
@@ -28,6 +31,8 @@ export async function insertGatheringAccount(tx: Prisma.TransactionClient, input
     userId: user.id,
     name: input.name,
     localJcName: input.localJcName,
+    birthDate: input.birthDate,
+    sex: input.sex,
     now,
   });
   await writeGatheringAudit(tx, {
@@ -42,12 +47,22 @@ export async function insertGatheringAccount(tx: Prisma.TransactionClient, input
 
 export async function attachProfile(
   tx: Prisma.TransactionClient,
-  input: { userId: string; name: string; localJcName: string; now: Date },
+  input: {
+    userId: string;
+    name: string;
+    localJcName: string;
+    birthDate: string;
+    sex: GatheringSex;
+    now: Date;
+  },
 ) {
+  const birthDate = parseBirthDate(input.birthDate);
   await tx.gatheringProfile.create({
     data: {
       userId: input.userId,
       displayName: input.name,
+      birthDate,
+      sex: input.sex,
       directoryConsentAt: input.now,
     },
   });

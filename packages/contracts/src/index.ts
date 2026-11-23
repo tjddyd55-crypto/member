@@ -115,6 +115,7 @@ export {
   gatheringMediaResolveSchema,
   gatheringMediaUploadSchema,
   gatheringAttendanceSchema,
+  gatheringBirthDateSchema,
   gatheringDueSchema,
   gatheringEventUpdateSchema,
   gatheringFinanceQuerySchema,
@@ -139,6 +140,7 @@ export {
   gatheringRefreshSchema,
   gatheringRegisterSchema,
   gatheringRoleAssignSchema,
+  gatheringSexSchema,
   gatheringTransactionSchema,
 } from './gathering.js';
 

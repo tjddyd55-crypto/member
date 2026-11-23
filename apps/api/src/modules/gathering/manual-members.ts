@@ -1,5 +1,6 @@
 import type { GatheringManualMemberInput } from '@member/contracts';
-import type { Prisma } from '@prisma/client';
+import { parseBirthDate } from '@member/gathering-domain';
+import type { GatheringSex, Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { requirePhone } from './accounts.js';
@@ -7,7 +8,7 @@ import { assertPermission, requireGroupMember } from './access.js';
 import { writeGatheringAudit } from './audit.js';
 import { memberInclude } from './group-read.js';
 import { lockGroup } from './locks.js';
-import { toMemberView } from './presenters/group.js';
+import { hideMemberContacts, toMemberView } from './presenters/group.js';
 import { grantRole } from './role-service.js';
 import { writeAdminAudit } from './admin/audit.js';
 
@@ -16,7 +17,7 @@ export type ManualMemberChange =
   | {
       action: 'UPDATE';
       membershipId: string;
-      input: Pick<GatheringManualMemberInput, 'name' | 'phone' | 'localJcName'>;
+      input: Pick<GatheringManualMemberInput, 'name' | 'phone' | 'localJcName' | 'birthDate' | 'sex'>;
     }
   | { action: 'DELETE'; membershipId: string }
   | { action: 'LINK'; membershipId: string; targetMembershipId: string };
@@ -129,6 +130,8 @@ export async function applyManualMemberChange(
       manualDisplayName: change.input.name,
       manualPhone: phone,
       manualLocalJcName: change.input.localJcName,
+      manualBirthDate: parseBirthDate(change.input.birthDate),
+      manualSex: change.input.sex,
     };
     const { id } =
       change.action === 'CREATE'
@@ -159,7 +162,7 @@ export async function applyManualMemberChange(
       await tx.gatheringMembership.findUniqueOrThrow({ where: { id }, include: memberInclude }),
     );
     return {
-      member: 'adminId' in actor && !actor.contactRead ? { ...member, phone: null } : member,
+      member: 'adminId' in actor && !actor.contactRead ? hideMemberContacts(member) : member,
     };
   });
 }
@@ -204,12 +207,16 @@ async function linkInside(
   if (!target?.userId)
     throw new AppError(404, 'MEMBER_NOT_FOUND', '연결할 앱 가입 회원을 찾을 수 없습니다.');
   const userId = target.userId;
+  const manual = await tx.gatheringMembership.findUniqueOrThrow({ where: { id: manualId } });
+  await fillProfileFromManual(tx, userId, manual);
   const linkData = {
     linkedAt: now,
     linkedByUserId: actorId,
     manualDisplayName: null,
     manualPhone: null,
     manualLocalJcName: null,
+    manualBirthDate: null,
+    manualSex: null,
   };
   const targetRecords = { groupId, OR: [{ membershipId: targetId }, { userId }] };
   if (target.status === 'PENDING') {
@@ -298,4 +305,17 @@ async function transferRecords(tx: Tx, fromId: string, membershipId: string, use
     where: { membershipId: fromId },
     data: { membershipId, userId },
   });
+}
+
+async function fillProfileFromManual(
+  tx: Tx,
+  userId: string,
+  manual: { manualBirthDate: Date | null; manualSex: GatheringSex | null },
+) {
+  const profile = await tx.gatheringProfile.findUnique({ where: { userId } });
+  if (!profile) return;
+  const birthDate = profile.birthDate ?? manual.manualBirthDate;
+  const sex = profile.sex ?? manual.manualSex;
+  if (birthDate === profile.birthDate && sex === profile.sex) return;
+  await tx.gatheringProfile.update({ where: { userId }, data: { birthDate, sex } });
 }

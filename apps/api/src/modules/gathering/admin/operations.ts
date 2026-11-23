@@ -3,6 +3,8 @@ import {
   STORAGE_QUOTA_BYTES,
   adminAllows,
   formalTermExpiry,
+  formatBirthDate,
+  koreanAge,
   type AdminCapability,
   type AdminRole,
 } from '@member/gathering-domain';
@@ -115,6 +117,7 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
             ? row.manualLocalJcName
             : (row.user?.gatheringAffiliations[0]?.localJcName ?? null),
         phone: contactRead ? (row.userId === null ? row.manualPhone : (row.user?.phone ?? null)) : null,
+        ...adminDemographics(row, contactRead),
       },
     };
   });
@@ -608,4 +611,23 @@ export async function setMemberRestriction(
 
 function isUnique(error: unknown) {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
+
+function adminDemographics(
+  row: {
+    userId: string | null;
+    manualBirthDate: Date | null;
+    manualSex: 'MALE' | 'FEMALE' | null;
+    user: { gatheringProfile: { birthDate: Date | null; sex: 'MALE' | 'FEMALE' | null } | null } | null;
+  },
+  contactRead: boolean,
+) {
+  if (!contactRead) return { birthDate: null, age: null, sex: null };
+  const birth = row.userId === null ? row.manualBirthDate : (row.user?.gatheringProfile?.birthDate ?? null);
+  const birthDate = birth ? formatBirthDate(birth) : null;
+  return {
+    birthDate,
+    age: birthDate ? koreanAge(birthDate) : null,
+    sex: row.userId === null ? row.manualSex : (row.user?.gatheringProfile?.sex ?? null),
+  };
 }

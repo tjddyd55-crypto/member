@@ -2,7 +2,7 @@ import type { GatheringGroupDetail } from '@member/contracts';
 import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
 import { blockedUserIds } from './moderation/blocks.js';
-import { toFinanceYearView, toGroupSummary, toMemberView } from './presenters/group.js';
+import { hideMemberContacts, toFinanceYearView, toGroupSummary, toMemberView } from './presenters/group.js';
 
 export const memberInclude = {
   user: {
@@ -165,7 +165,7 @@ export async function listGroupMembers(
       const view = toMemberView(member);
       if (status === 'PENDING') view.linkCandidate = candidateFor(candidates, member);
       if (!member.userId || !hidden.has(member.userId)) return view;
-      return { ...view, phone: null };
+      return hideMemberContacts(view);
     })
     .sort((left, right) => left.displayName.localeCompare(right.displayName, 'ko'));
 }

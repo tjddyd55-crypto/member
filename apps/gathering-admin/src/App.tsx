@@ -2,12 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { api, ApiError, rememberCsrf } from './api';
 import { AccountPage, AdminsPage, AuditsPage, DashboardPage, GroupPage, GroupsPage, MembersPage, SettingsPage } from './screens';
+import { JcOrganizationsPage } from './JcOrganizationsPage';
 import type { Admin } from './types';
 
 const LINKS = [
   ['/', '대시보드'],
   ['/groups', '모임'],
   ['/members', '회원'],
+  ['/jc-orgs', 'JC 조직 관리'],
   ['/audits', '운영이력'],
   ['/settings', '시스템설정'],
   ['/admins', '관리자'],
@@ -46,7 +48,7 @@ function Shell({ admin, onLogout }: { admin: Admin; onLogout: () => void }) {
   return (
     <div className="shell">
       <nav aria-label="관리 메뉴">
-        {LINKS.map(([href, label]) => (
+        {LINKS.filter(([href]) => href !== '/jc-orgs' || admin.role === 'SUPER_ADMIN').map(([href, label]) => (
           <NavLink key={href} to={href} end={href === '/'}>
             {label}
           </NavLink>
@@ -63,6 +65,7 @@ function Shell({ admin, onLogout }: { admin: Admin; onLogout: () => void }) {
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/groups/:groupId" element={<GroupPage role={admin.role} />} />
           <Route path="/members" element={<MembersPage />} />
+          <Route path="/jc-orgs" element={admin.role === 'SUPER_ADMIN' ? <JcOrganizationsPage /> : <Navigate to="/" replace />} />
           <Route path="/audits" element={<AuditsPage />} />
           <Route path="/settings" element={<SettingsPage role={admin.role} />} />
           <Route path="/admins" element={<AdminsPage role={admin.role} adminId={admin.id} />} />

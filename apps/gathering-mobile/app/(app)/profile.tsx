@@ -5,12 +5,13 @@ import { gatheringProfileSchema } from '@member/contracts';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { DIRECTORY_CONSENT } from '../../src/copy';
 import { BirthDateField, SexField } from '../../src/features/forms/demographics';
+import { JcOrgPicker, jcPickerValue } from '../../src/features/forms/JcOrgPicker';
 import { Body, Button, FormError, Notice, Screen, TextField, Title } from '../../src/design/ui';
 
 export default function ProfileScreen() {
   const { profile, completeProfile } = useAuth();
   const [name, setName] = useState(profile?.displayName ?? '');
-  const [localJcName, setLocalJcName] = useState(profile?.localJcName ?? '');
+  const [affiliation, setAffiliation] = useState(() => jcPickerValue(profile));
   const [birthDate, setBirthDate] = useState(profile?.birthDate ?? '');
   const [sex, setSex] = useState<'MALE' | 'FEMALE' | ''>(profile?.sex ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function ProfileScreen() {
     setError(null);
     const parsed = gatheringProfileSchema.safeParse({
       name,
-      localJcName,
+      localId: affiliation.local?.id,
       birthDate,
       sex,
       directoryConsent: true,
@@ -56,14 +57,17 @@ export default function ProfileScreen() {
       <Title>내 정보</Title>
       {profile ? (
         <Body>
-          {profile.displayName} · {profile.localJcName}
+          {profile.displayName} · {profile.localDisplayName}
         </Body>
       ) : (
         <Body>모임에 보일 이름, 소속 로컬, 생년월일, 성별을 등록합니다.</Body>
       )}
       <Notice>{DIRECTORY_CONSENT}</Notice>
       <TextField label="이름" value={name} onChangeText={setName} />
-      <TextField label="소속 로컬" value={localJcName} onChangeText={setLocalJcName} />
+      {profile?.affiliationNeedsReselect ? (
+        <Notice>기존에 입력한 소속 “{profile.localJcName}”을(를) 조직 목록에서 찾지 못했습니다. 지구와 로컬을 다시 선택해 주세요.</Notice>
+      ) : null}
+      <JcOrgPicker value={affiliation} onChange={setAffiliation} />
       <BirthDateField value={birthDate} onChange={setBirthDate} />
       <SexField value={sex} onChange={setSex} />
       {error ? <FormError>{error}</FormError> : null}

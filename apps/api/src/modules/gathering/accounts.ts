@@ -1,3 +1,4 @@
+import { currentAffiliation } from '../jc-org/affiliation.js';
 import { normalizeKoreanMobile } from '@member/gathering-domain';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -5,7 +6,7 @@ import type { AccountRecord } from './presenters/auth.js';
 
 const accountInclude = {
   gatheringProfile: true,
-  gatheringAffiliations: { where: { isCurrent: true }, take: 1 },
+  gatheringAffiliations: currentAffiliation,
 } as const;
 
 export function requirePhone(input: string) {

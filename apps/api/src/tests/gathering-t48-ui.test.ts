@@ -116,7 +116,7 @@ describe('t48 화면 구조', () => {
   it('t49 회원 행은 이름·소속·역할·전화와 작은 연락 버튼, 차단 메뉴를 유지한다', () => {
     const row = source('src/features/group/CompactMemberRow.tsx');
     expect(group).toContain('<CompactMemberRow');
-    expect(row).toContain('member.localJcName, visibleRoleLabels(member.roles)');
+    expect(row).toContain('member.localDisplayName, visibleRoleLabels(member.roles)');
     expect(row).toContain('formatPhone(member.phone)');
     expect(group).toContain("['전화', '문자']");
     expect(group).toContain("'tel' : 'sms'");

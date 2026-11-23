@@ -86,7 +86,7 @@ export function MemberPickerSheet({
                 {members
                   .filter(
                     (item) =>
-                      `${item.displayName} ${item.phone ?? ''} ${item.localJcName}`
+                      `${item.displayName} ${item.phone ?? ''} ${item.localDisplayName}`
                         .toLocaleLowerCase()
                         .includes(query.trim().toLocaleLowerCase()) ||
                       (!!phoneDigits(query) &&

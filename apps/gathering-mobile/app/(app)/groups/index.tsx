@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import type { GatheringGroupSummary } from '@member/contracts';
 import { api } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthProvider';
@@ -18,7 +18,7 @@ import {
 import { theme } from '../../../src/theme';
 
 export default function GroupsScreen() {
-  const { profile, logout } = useAuth();
+  const { profile, logout, refreshMe } = useAuth();
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<GatheringGroupSummary[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -41,6 +41,10 @@ export default function GroupsScreen() {
     void load();
   }, [load]);
 
+  useFocusEffect(useCallback(() => {
+    void refreshMe().catch(() => undefined);
+  }, [refreshMe]));
+
   return (
     <Screen>
       <Title>{APP_NAME}</Title>
@@ -54,6 +58,9 @@ export default function GroupsScreen() {
         <Button label="이름과 소속 로컬 등록" onPress={() => router.push('/(app)/profile')} />
       ) : !profile.birthDate || !profile.sex ? (
         <Button label="생년월일과 성별 등록" onPress={() => router.push('/(app)/profile')} />
+      ) : null}
+      {profile?.affiliationNeedsReselect ? (
+        <Button label="소속 JC를 다시 선택해 주세요" onPress={() => router.push('/(app)/profile')} />
       ) : null}
       <TextField
         label="모임 검색"

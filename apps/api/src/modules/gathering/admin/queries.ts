@@ -136,6 +136,8 @@ async function presentGroup(groupId: string, showContact: boolean) {
   return {
     id: group.id,
     name: group.name,
+    scopeDistrictId: group.scopeDistrictId,
+    scopeLocalId: group.scopeLocalId,
     createdAt: group.createdAt.toISOString(),
     creator: contact(group.createdBy, group.createdAt, showContact),
     president: president?.user ? contact(president.user, president.assignedAt, showContact) : null,

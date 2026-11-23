@@ -1,3 +1,4 @@
+import { resolveAffiliation, type AffiliationInput } from '../jc-org/affiliation.js';
 import { verifyPassword } from '../../services/auth-service.js';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -15,11 +16,10 @@ import { sessionBody, toAuthProfile, toAuthUser } from './presenters/auth.js';
 import { issueGatheringSession } from './sessions.js';
 import { IDENTITY_LIMITATION_KO, parseBirthDate } from '@member/gathering-domain';
 
-type RegisterInput = {
+type RegisterInput = AffiliationInput & {
   name: string;
   phone: string;
   password: string;
-  localJcName: string;
   birthDate: string;
   sex: 'MALE' | 'FEMALE';
   userAgent?: string;
@@ -75,10 +75,11 @@ export async function loginGatheringAccount(
 
 export async function completeGatheringProfile(
   userId: string,
-  input: { name: string; localJcName: string; birthDate: string; sex: 'MALE' | 'FEMALE' },
+  input: AffiliationInput & { name: string; birthDate: string; sex: 'MALE' | 'FEMALE' },
 ) {
-  const existing = await prisma.gatheringProfile.findUnique({ where: { userId } });
   const recoveryCodes = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR NO KEY UPDATE`;
+    const existing = await tx.gatheringProfile.findUnique({ where: { userId } });
     if (existing) {
       await tx.gatheringProfile.update({
         where: { userId },
@@ -88,19 +89,14 @@ export async function completeGatheringProfile(
           sex: input.sex,
         },
       });
-      const affiliation = await tx.gatheringLocalAffiliation.findFirst({
+      const affiliation = await resolveAffiliation(tx, input);
+      await tx.gatheringLocalAffiliation.updateMany({
         where: { userId, isCurrent: true },
+        data: { isCurrent: false },
       });
-      if (affiliation) {
-        await tx.gatheringLocalAffiliation.update({
-          where: { id: affiliation.id },
-          data: { localJcName: input.localJcName },
-        });
-      } else {
-        await tx.gatheringLocalAffiliation.create({
-          data: { userId, localJcName: input.localJcName, isCurrent: true },
-        });
-      }
+      await tx.gatheringLocalAffiliation.create({
+        data: { userId, ...affiliation, isCurrent: true },
+      });
       await writeGatheringAudit(tx, {
         actorUserId: userId,
         action: GatheringAuditAction.PROFILE_UPDATE,
@@ -112,6 +108,7 @@ export async function completeGatheringProfile(
     const codes = await attachProfile(tx, {
       userId,
       name: input.name,
+      localId: input.localId,
       localJcName: input.localJcName,
       birthDate: input.birthDate,
       sex: input.sex,

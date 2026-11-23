@@ -18,7 +18,8 @@
     "gathering:e2e": "tsx scripts/gathering-e2e/run.ts",
     "db:reset": "prisma migrate reset --schema prisma/schema.prisma --force",
     "api:dev": "npm run dev -w @member/api",
-    "mobile:start": "npm run start -w @member/mobile"
+    "mobile:start": "npm run start -w @member/mobile",
+    "jc:seed": "node apps/api/dist/scripts/jc-org-seed.js"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

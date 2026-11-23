@@ -54,7 +54,7 @@ export function LinkMemberSheet({
   }
 
   const candidates = items?.filter((item) =>
-    [item.displayName, item.localJcName, item.phone]
+    [item.displayName, item.localDisplayName, item.phone]
       .join(' ')
       .toLowerCase()
       .includes(query.trim().toLowerCase()),

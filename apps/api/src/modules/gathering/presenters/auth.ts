@@ -1,10 +1,11 @@
-import type { GatheringLocalAffiliation, GatheringProfile, User } from '@prisma/client';
+import { affiliationView, type AffiliationRecord } from '../../jc-org/affiliation.js';
+import type { GatheringProfile, User } from '@prisma/client';
 import type { GatheringAuthProfile, GatheringAuthUser } from '@member/contracts';
 import { formatBirthDate, IDENTITY_LIMITATION_KO } from '@member/gathering-domain';
 
 export type AccountRecord = User & {
   gatheringProfile: GatheringProfile | null;
-  gatheringAffiliations: GatheringLocalAffiliation[];
+  gatheringAffiliations: AffiliationRecord[];
 };
 
 type IssuedTokens = {
@@ -19,9 +20,10 @@ export function toAuthUser(user: User): GatheringAuthUser {
 
 export function toAuthProfile(user: AccountRecord): GatheringAuthProfile | null {
   if (!user.gatheringProfile) return null;
+  const affiliation = user.gatheringAffiliations[0];
   return {
     displayName: user.gatheringProfile.displayName,
-    localJcName: user.gatheringAffiliations[0]?.localJcName ?? '',
+    ...affiliationView(affiliation?.localJcName ?? '', affiliation?.local),
     birthDate: user.gatheringProfile.birthDate ? formatBirthDate(user.gatheringProfile.birthDate) : null,
     sex: user.gatheringProfile.sex,
     directoryConsentAt: user.gatheringProfile.directoryConsentAt.toISOString(),

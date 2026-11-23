@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from './api';
+import { JcOrgPicker } from './JcOrgPicker';
 import type { AdminAccount, AuditItem, GroupItem, MemberItem } from './types';
 
 function ErrorText({ error }: { error: string }) {
@@ -337,6 +338,7 @@ function ManualMemberForm({ member, onSave, onCancel }: {
       event.preventDefault();
       if (busy) return;
       const data = Object.fromEntries(new FormData(event.currentTarget)) as Record<string, string>;
+      if (!data.localId) return;
       setBusy(true);
       try {
         await onSave(data);
@@ -347,7 +349,7 @@ function ManualMemberForm({ member, onSave, onCancel }: {
       <h2>{member ? '정보 수정' : '앱 미가입 회원 추가'}</h2>
       <label>이름<input name="name" required maxLength={40} defaultValue={member?.user.name ?? ''} /></label>
       <label>휴대폰 번호<input name="phone" type="tel" required minLength={8} maxLength={20} placeholder="010-1234-5678" defaultValue={member?.user.phone ?? ''} /></label>
-      <label>소속 로컬<input name="localJcName" required maxLength={60} placeholder="예: 서울 ○○" defaultValue={member?.user.localJcName ?? ''} /></label>
+      <JcOrgPicker member={member?.user} />
       <label>생년월일<input name="birthDate" type="date" required defaultValue={member?.user.birthDate ?? ''} /></label>
       <div className="field-group">
         <span>성별</span>
@@ -437,7 +439,7 @@ function GroupMembers({ groupId, canManage, refresh, onSubmit }: {
           <label>{linking.user.name}님의 연결 대상<select required value={linkTarget} onChange={(event) => setLinkTarget(event.target.value)}>
             <option value="">앱 가입 회원 선택</option>
             {targets.map((item) => <option key={item.membershipId} value={item.membershipId}>
-              {item.user.name} · {item.user.localJcName}{item.user.phone ? ` · ${item.user.phone}` : ''}{item.status === 'PENDING' ? ' · 승인 대기' : ''}
+              {item.user.name} · {item.user.localDisplayName}{item.user.phone ? ` · ${item.user.phone}` : ''}{item.status === 'PENDING' ? ' · 승인 대기' : ''}
             </option>)}
           </select></label>
           <button type="submit" disabled={busy || !linkTarget}>계정 연결</button>
@@ -448,7 +450,7 @@ function GroupMembers({ groupId, canManage, refresh, onSubmit }: {
         <tbody>
           {items.map((item) => (
             <tr key={item.membershipId}>
-              <td><MemberName item={item} /><br />{item.user.localJcName}<br />{memberDemographics(item.user)}<br />{phoneLinks(item.user.phone)}<br />{item.status}</td>
+              <td><MemberName item={item} /><br />{item.user.localDisplayName}<br />{memberDemographics(item.user)}<br />{phoneLinks(item.user.phone)}<br />{item.status}</td>
               <td>
                 {canManage && !item.isAppRegistered ? (
                   <>
@@ -501,7 +503,7 @@ export function MembersPage() {
       <table>
         <tbody>
           {items.map((item) => (
-            <tr key={item.membershipId}><td><MemberName item={item} /></td><td>{item.group.name}</td><td>{item.user.localJcName}</td><td>{memberDemographics(item.user)}</td><td>{item.status}</td><td>{phoneLinks(item.user.phone)}</td></tr>
+            <tr key={item.membershipId}><td><MemberName item={item} /></td><td>{item.group.name}</td><td>{item.user.localDisplayName}</td><td>{memberDemographics(item.user)}</td><td>{item.status}</td><td>{phoneLinks(item.user.phone)}</td></tr>
           ))}
         </tbody>
       </table>

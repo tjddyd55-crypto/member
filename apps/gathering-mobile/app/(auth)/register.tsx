@@ -14,13 +14,14 @@ import {
   Title,
 } from '../../src/design/ui';
 import { BirthDateField, SexField } from '../../src/features/forms/demographics';
+import { JcOrgPicker, jcPickerValue } from '../../src/features/forms/JcOrgPicker';
 import { theme } from '../../src/theme';
 
 export default function RegisterScreen() {
   const { user, register } = useAuth();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [localJcName, setLocalJcName] = useState('');
+  const [affiliation, setAffiliation] = useState(() => jcPickerValue());
   const [birthDate, setBirthDate] = useState('');
   const [sex, setSex] = useState<'MALE' | 'FEMALE' | ''>('');
   const [password, setPassword] = useState('');
@@ -41,7 +42,7 @@ export default function RegisterScreen() {
       name,
       phone,
       password,
-      localJcName,
+      localId: affiliation.local?.id,
       birthDate,
       sex,
       directoryConsent: consent ? true : false,
@@ -78,12 +79,7 @@ export default function RegisterScreen() {
         onChangeText={setPhone}
         keyboardType="phone-pad"
       />
-      <TextField
-        label="소속 로컬"
-        value={localJcName}
-        onChangeText={setLocalJcName}
-        placeholder="예: 서울 ○○"
-      />
+      <JcOrgPicker value={affiliation} onChange={setAffiliation} />
       <BirthDateField value={birthDate} onChange={setBirthDate} />
       <SexField value={sex} onChange={setSex} />
       <TextField label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry />

@@ -156,3 +156,14 @@ export type MemberDetail = MemberListItem & {
 };
 
 export { businessInfo, privacyPolicy, termsPolicy } from './gathering-legal.js';
+
+export type {
+  GatheringAffiliationView,
+  GatheringGroupScope,
+  GatheringRegisterBody,
+  GatheringProfileBody,
+  JcDistrictChoice,
+  JcDistrictRef,
+  JcLocalSearchResult,
+  JcOrgChoice,
+} from './gathering.js';

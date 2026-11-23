@@ -5,7 +5,12 @@ import { prisma } from '../lib/prisma.js';
 import { currentOperatorSecret } from '../modules/gathering/subscription/service.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
-import { gatheringAuthLimiter, gatheringUploadLimiter } from '../modules/gathering/rate-limit.js';
+import {
+  gatheringAuthLimiter,
+  gatheringPublicGalleryLimiter,
+  gatheringUploadLimiter,
+} from '../modules/gathering/rate-limit.js';
+import { publicUploadInfo } from '../modules/gathering/media/links.js';
 
 let app: FastifyInstance;
 let storage: MemoryObjectStorage;
@@ -23,6 +28,7 @@ beforeEach(() => {
   storage = new MemoryObjectStorage();
   useObjectStorage(storage);
   gatheringUploadLimiter.reset();
+  gatheringPublicGalleryLimiter.reset();
 });
 
 afterAll(async () => {
@@ -83,6 +89,37 @@ async function register(name: string) {
   expect(res.statusCode).toBe(200);
   userIds.push(res.json().user.id);
   return res.json() as { tokens: { accessToken: string }; user: { id: string } };
+}
+
+function publicGet(token: string, path = '') {
+  return app.inject({ method: 'GET', url: `/api/gathering/public/uploads/${token}${path}` });
+}
+
+function publicResume(token: string, assetId: string) {
+  return app.inject({
+    method: 'POST',
+    url: `/api/gathering/public/uploads/${token}/resume`,
+    payload: { assetId },
+  });
+}
+
+async function expectUnavailable(token: string, assetId: string, status: number, code: string) {
+  const [page, list, download, resume] = await Promise.all([
+    publicGet(token),
+    publicGet(token, '/media'),
+    publicGet(token, `/media/${assetId}`),
+    publicResume(token, assetId),
+  ]);
+  expect(page.statusCode).toBe(status);
+  expect(page.headers['content-type']).toContain('text/html');
+  expect(page.headers['cache-control']).toBe('no-store');
+  expect(page.body).toContain('class="link-error"');
+  for (const response of [list, download, resume]) {
+    expect(response.statusCode).toBe(status);
+    expect(response.json().error.code).toBe(code);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(page.body).toContain(response.json().error.message);
+  }
 }
 
 describe('비회원 업로드 링크와 사진 폴더', () => {
@@ -156,9 +193,32 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     const token = link.json().token as string;
     const page = await app.inject({ method: 'GET', url: `/api/gathering/public/uploads/${token}` });
     expect(page.statusCode).toBe(200);
-    expect(page.body).toContain('정기모임');
-    expect(page.body).toContain('onloadedmetadata');
-    expect(page.body).toContain('durationMs');
+    const notice =
+      '이 링크는 사진과 영상을 올리고 이 일정의 사진을 볼 수 있습니다. 회원 명부와 재무는 볼 수 없습니다.';
+    expect(await publicUploadInfo(token)).toMatchObject({ kind: 'event', notice });
+    for (const content of [
+      '정기모임',
+      notice,
+      '사진 올리기',
+      '영상 올리기',
+      '#1B3A6B',
+      '#E8EEF7',
+      '등록된 사진이 없습니다',
+      'onloadedmetadata',
+      'durationMs',
+      'id="grid"',
+      'id="viewer"',
+    ])
+      expect(page.body).toContain(content);
+    for (const content of [
+      '이미 올린 파일은 볼 수 없습니다',
+      '업로드 링크',
+      't1.daumcdn.net',
+      'id="go"',
+    ])
+      expect(page.body).not.toContain(content);
+    expect(page.headers['referrer-policy']).toBe('no-referrer');
+    expect((await publicGet(token, '/media')).json()).toEqual({ items: [], nextCursor: null });
     const videoMissing = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${token}/reserve`,
@@ -174,6 +234,9 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       },
     });
     expect(videoReady.statusCode).toBe(200);
+    const videoId = videoReady.json().items[0].id as string;
+    expect((await publicGet(token, '/media')).json().items).toEqual([]);
+    expect((await publicGet(token, `/media/${videoId}`)).statusCode).toBe(404);
     const bad = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${token}/reserve`,
@@ -186,6 +249,11 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 30_000_000 }] },
     });
     expect(huge.statusCode).toBe(400);
+    const signPut = storage.presignPut.bind(storage);
+    const signUpload = vi.spyOn(storage, 'presignPut').mockImplementationOnce(async (input) => {
+      const target = await signPut(input);
+      return { ...target, url: target.url + '?original', expiresAt: new Date(0).toISOString() };
+    });
     const reserved = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${token}/reserve`,
@@ -194,6 +262,24 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     expect(reserved.statusCode).toBe(200);
     const assetId = reserved.json().items[0].id as string;
     const row = await prisma.gatheringMediaAsset.findUniqueOrThrow({ where: { id: assetId } });
+    const resumed = await publicResume(token, assetId);
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.headers['cache-control']).toBe('no-store');
+    expect(resumed.json()).toMatchObject({
+      status: 'PENDING',
+      id: assetId,
+      uploadUrl: expect.stringContaining('https://storage.test/put/'),
+      headers: reserved.json().items[0].headers,
+    });
+    expect(resumed.json().uploadUrl).not.toBe(reserved.json().items[0].uploadUrl);
+    expect(Date.parse(resumed.json().expiresAt)).toBeGreaterThan(Date.now());
+    expect(signUpload).toHaveBeenLastCalledWith({
+      key: `${row.storageKey}-pending`,
+      contentType: 'image/jpeg',
+      sizeBytes: 32,
+      expiresInSeconds: 600,
+    });
+    signUpload.mockRestore();
     storage.put(`${row.storageKey}-pending`, jpeg(32));
     const done = await app.inject({
       method: 'POST',
@@ -201,12 +287,59 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       payload: { assetId, sizeBytes: 32 },
     });
     expect(done.statusCode).toBe(200);
+    expect(done.json().media.id).toBe(assetId);
+    expect(done.json().media).not.toHaveProperty('uploaderUserId');
+    expect(done.json().media).not.toHaveProperty('mine');
+    const readyResume = await publicResume(token, assetId);
+    expect(readyResume.statusCode).toBe(200);
+    expect(readyResume.json()).toEqual({ status: 'READY', media: done.json().media });
+    const photoDownload = await publicGet(token, `/media/${assetId}`);
+    expect(photoDownload.statusCode).toBe(200);
+    expect(photoDownload.json()).toEqual({
+      url: expect.stringContaining('https://storage.test/get/'),
+      posterUrl: null,
+      expiresAt: expect.any(String),
+      mimeType: 'image/jpeg',
+      kind: 'PHOTO',
+    });
+    const video = await prisma.gatheringMediaAsset.update({
+      where: { id: videoId },
+      data: {
+        status: 'READY',
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+        posterStorageKey: `test/posters/${videoId}`,
+      },
+    });
+    const sign = vi.spyOn(storage, 'presignGet');
+    const videoDownload = await publicGet(token, `/media/${videoId}`);
+    expect(videoDownload.statusCode).toBe(200);
+    expect(videoDownload.json()).toEqual({
+      url: expect.stringContaining('https://storage.test/get/'),
+      posterUrl: expect.stringContaining('https://storage.test/get/'),
+      expiresAt: expect.any(String),
+      mimeType: 'video/mp4',
+      kind: 'VIDEO',
+    });
+    for (const key of [video.storageKey, video.posterStorageKey]) {
+      expect(sign).toHaveBeenCalledWith({ key, expiresInSeconds: 600 });
+    }
+    sign.mockRestore();
+    const publicList = await publicGet(token, '/media');
+    expect(publicList.statusCode).toBe(200);
+    expect(publicList.headers['cache-control']).toBe('no-store');
+    expect(publicList.json()).toEqual({
+      items: [
+        { id: assetId, kind: 'PHOTO', canDelete: false, createdAt: expect.any(String) },
+        { id: videoId, kind: 'VIDEO', canDelete: false, createdAt: expect.any(String) },
+      ],
+      nextCursor: null,
+    });
     const listed = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${groupId}/events/${eventId}/media`,
       headers: auth(member.tokens.accessToken),
     });
-    expect(listed.json().items).toHaveLength(1);
+    expect(listed.json().items).toHaveLength(2);
     const other = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${token}/complete`,
@@ -225,16 +358,15 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
     });
     expect(whilePaused.statusCode).toBe(409);
+    await expectUnavailable(token, assetId, 409, 'LINK_PAUSED');
     await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${groupId}/upload-links/${link.json().id}/revoke`,
       headers: auth(owner.tokens.accessToken),
     });
-    const revoked = await app.inject({
-      method: 'GET',
-      url: `/api/gathering/public/uploads/${token}`,
-    });
-    expect(revoked.statusCode).toBe(404);
+    await expectUnavailable(token, assetId, 404, 'LINK_NOT_FOUND');
+    await expectUnavailable('unknown-token', assetId, 404, 'LINK_NOT_FOUND');
+    expect((await publicGet('')).statusCode).toBe(404);
     const folder = await app.inject({
       method: 'POST',
       url: `/api/gathering/groups/${groupId}/folders`,
@@ -258,6 +390,7 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       payload: { items: [{ kind: 'PHOTO', mimeType: 'image/jpeg', sizeBytes: 32 }] },
     });
     expect(expired.statusCode).toBe(410);
+    await expectUnavailable(folderLink.json().token, assetId, 410, 'LINK_EXPIRED');
     const shown = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${groupId}/albums`,
@@ -272,6 +405,16 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       headers: auth(owner.tokens.accessToken),
       payload: { folderId: folder.json().id },
     });
+    const folderToken = liveFolderLink.json().token as string;
+    const folderPage = await publicGet(folderToken);
+    expect(folderPage.statusCode).toBe(200);
+    expect(folderPage.body).toContain('해외 방문');
+    expect(folderPage.body).toContain('아직 올린 사진·영상이 없습니다');
+    expect(folderPage.body).toContain('이 폴더의 사진을 볼 수 있습니다.');
+    expect((await publicGet(folderToken, `/media?eventId=${eventId}`)).json()).toEqual({
+      items: [],
+      nextCursor: null,
+    });
     const folderReserved = await app.inject({
       method: 'POST',
       url: `/api/gathering/public/uploads/${liveFolderLink.json().token}/reserve`,
@@ -282,6 +425,9 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
     const folderRow = await prisma.gatheringMediaAsset.findUniqueOrThrow({
       where: { id: folderAssetId },
     });
+    const folderResumed = await publicResume(folderToken, folderAssetId);
+    expect(folderResumed.statusCode).toBe(200);
+    expect(folderResumed.json()).toMatchObject({ status: 'PENDING', id: folderAssetId });
     storage.put(`${folderRow.storageKey}-pending`, jpeg(32));
     const folderDone = await app.inject({
       method: 'POST',
@@ -289,6 +435,14 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       payload: { assetId: folderAssetId, sizeBytes: 32 },
     });
     expect(folderDone.statusCode).toBe(200);
+    expect(folderDone.json().media.id).toBe(folderAssetId);
+    expect((await publicGet(folderToken, '/media')).json().items).toEqual([
+      { id: folderAssetId, kind: 'PHOTO', canDelete: false, createdAt: expect.any(String) },
+    ]);
+    expect((await publicGet(folderToken, `/media/${folderAssetId}`)).statusCode).toBe(200);
+    expect((await publicGet(folderToken, `/media/${assetId}?eventId=${eventId}`)).statusCode).toBe(
+      404,
+    );
     const folderMedia = await app.inject({
       method: 'GET',
       url: `/api/gathering/groups/${groupId}/folders/${folder.json().id}/media`,
@@ -310,6 +464,139 @@ describe('비회원 업로드 링크와 사진 폴더', () => {
       headers: auth(outsider.tokens.accessToken),
     });
     expect(hiddenFolder.statusCode).toBe(404);
+
+    const otherFolder = await prisma.gatheringMediaFolder.create({
+      data: { groupId, title: '다른 폴더', createdByUserId: owner.user.id },
+    });
+    const secondEvent = await prisma.gatheringEvent.create({
+      data: {
+        groupId,
+        title: '다른 행사',
+        startsAt: new Date(),
+        createdByUserId: owner.user.id,
+      },
+    });
+    const outsiderGroupId = otherGroup.json().id as string;
+    const foreignFolder = await prisma.gatheringMediaFolder.create({
+      data: {
+        groupId: outsiderGroupId,
+        title: '다른 모임 폴더',
+        createdByUserId: outsider.user.id,
+      },
+    });
+    const fixture = {
+      groupId,
+      kind: 'PHOTO' as const,
+      status: 'READY' as const,
+      uploaderUserId: owner.user.id,
+      sizeBytes: 32n,
+      mimeType: 'image/jpeg',
+    };
+    const outside = await Promise.all([
+      prisma.gatheringMediaAsset.create({
+        data: { ...fixture, folderId: otherFolder.id, storageKey: `test/${otherFolder.id}` },
+      }),
+      prisma.gatheringMediaAsset.create({
+        data: { ...fixture, eventId: secondEvent.id, storageKey: `test/${secondEvent.id}` },
+      }),
+      prisma.gatheringMediaAsset.create({
+        data: {
+          ...fixture,
+          groupId: outsiderGroupId,
+          uploaderUserId: outsider.user.id,
+          folderId: foreignFolder.id,
+          storageKey: `test/${foreignFolder.id}`,
+        },
+      }),
+      prisma.gatheringMediaAsset.create({
+        data: {
+          ...fixture,
+          folderId: folder.json().id,
+          deletedAt: new Date(),
+          storageKey: `test/deleted/${folderAssetId}`,
+        },
+      }),
+      prisma.gatheringMediaAsset.create({
+        data: {
+          ...fixture,
+          folderId: folder.json().id,
+          uploaderUserId: member.user.id,
+          status: 'PENDING',
+          storageKey: `test/member/${folderAssetId}`,
+        },
+      }),
+    ]);
+    const eventLink = await app.inject({
+      method: 'POST',
+      url: `/api/gathering/groups/${groupId}/upload-links`,
+      headers: auth(owner.tokens.accessToken),
+      payload: { eventId },
+    });
+    const eventToken = eventLink.json().token as string;
+    for (const outsiderAsset of outside) {
+      expect((await publicGet(folderToken, `/media/${outsiderAsset.id}`)).statusCode).toBe(404);
+      expect((await publicGet(eventToken, `/media/${outsiderAsset.id}`)).statusCode).toBe(404);
+      expect((await publicResume(folderToken, outsiderAsset.id)).statusCode).toBe(404);
+      expect((await publicResume(eventToken, outsiderAsset.id)).statusCode).toBe(404);
+    }
+    expect((await publicGet(eventToken, `/media/${folderAssetId}`)).statusCode).toBe(404);
+    expect((await publicResume(eventToken, folderAssetId)).statusCode).toBe(404);
+    expect((await publicResume(folderToken, assetId)).statusCode).toBe(404);
+
+    const expiredPending = await prisma.gatheringMediaAsset.create({
+      data: {
+        ...fixture,
+        folderId: folder.json().id,
+        status: 'PENDING',
+        storageKey: `test/expired/${folderAssetId}`,
+        createdAt: new Date(0),
+      },
+    });
+    const expiredKey = `${expiredPending.storageKey}-pending`;
+    storage.put(expiredKey, jpeg(32));
+    const expiredResume = await publicResume(folderToken, expiredPending.id);
+    expect(expiredResume.statusCode).toBe(409);
+    expect(expiredResume.json().error.code).toBe('UPLOAD_EXPIRED');
+    expect(await storage.head(expiredKey)).toBeNull();
+    const failedResume = await publicResume(folderToken, expiredPending.id);
+    expect(failedResume.statusCode).toBe(409);
+    expect(failedResume.json().error.code).toBe('UPLOAD_FAILED');
+    expect(
+      (
+        await publicGet(
+          folderToken,
+          `/media?groupId=${outsiderGroupId}&folderId=${foreignFolder.id}`,
+        )
+      ).json().items,
+    ).toEqual([
+      { id: folderAssetId, kind: 'PHOTO', canDelete: false, createdAt: expect.any(String) },
+    ]);
+
+    await prisma.gatheringMediaAsset.createMany({
+      data: Array.from({ length: 30 }, (_, index) => ({
+        ...fixture,
+        eventId,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        storageKey: `test/${eventId}/pagination/${index}`,
+      })),
+    });
+    const first = await publicGet(eventToken, `/media?eventId=${secondEvent.id}&limit=1`);
+    expect(first.statusCode).toBe(200);
+    expect(first.json().items).toHaveLength(30);
+    const authenticatedFirst = await app.inject({
+      method: 'GET',
+      url: `/api/gathering/groups/${groupId}/events/${eventId}/media`,
+      headers: auth(member.tokens.accessToken),
+    });
+    expect(first.json().nextCursor).toBe(authenticatedFirst.json().nextCursor);
+    const second = await publicGet(eventToken, `/media?cursor=${first.json().nextCursor}`);
+    expect(second.statusCode).toBe(200);
+    expect(second.json().items).toHaveLength(2);
+    expect(second.json().nextCursor).toBeNull();
+    const ids = [...first.json().items, ...second.json().items].map((item) => item.id);
+    expect(new Set(ids).size).toBe(32);
+    for (const outsiderAsset of outside) expect(ids).not.toContain(outsiderAsset.id);
+    expect((await publicGet(eventToken, '/media?cursor=bad')).statusCode).toBe(400);
   });
 
   it('손님 업로드는 만든 사람의 업로드 횟수를 쓰지 않는다', async () => {

@@ -1,8 +1,8 @@
 import { theme } from '../../theme';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, ScrollView } from 'react-native';
+import { Modal, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, TextField } from '../../design/ui';
+import { Button, KeyboardSheet, TextField } from '../../design/ui';
 import { officerRoles, type AssignableRole } from './MemberPickerSheet';
 export function RoleChooserSheet({
   titles,
@@ -20,10 +20,7 @@ export function RoleChooserSheet({
   const [title, setTitle] = useState('');
   return (
     <Modal transparent visible animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#0006' }}
-      >
+      <KeyboardSheet>
         <ScrollView
           style={{ maxHeight: '80%', backgroundColor: '#fff' }}
           contentContainerStyle={{
@@ -61,7 +58,7 @@ export function RoleChooserSheet({
           )}
           <Button label="취소" variant="text" onPress={onClose} />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSheet>
     </Modal>
   );
 }

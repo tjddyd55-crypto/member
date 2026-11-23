@@ -1,8 +1,8 @@
 import { theme } from '../../theme';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Keyboard, Modal, Pressable, ScrollView, View } from 'react-native';
 import type { GatheringMemberView } from '@member/contracts';
-import { Body, Button, TextField } from '../../design/ui';
+import { Body, Button, KeyboardSheet, TextField } from '../../design/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { withRo } from '../../utils/korean';
 import { phoneDigits } from '../../utils/phone';
@@ -46,10 +46,7 @@ export function MemberPickerSheet({
         if (!busy) onClose();
       }}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#0006' }}
-      >
+      <KeyboardSheet>
         <View
           style={{
             backgroundColor: '#fff',
@@ -99,7 +96,10 @@ export function MemberPickerSheet({
                     <Pressable
                       key={item.userId}
                       accessibilityRole="button"
-                      onPress={() => setSelected(item)}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setSelected(item);
+                      }}
                     >
                       <CompactMemberRow member={item} />
                     </Pressable>
@@ -110,7 +110,7 @@ export function MemberPickerSheet({
           {error ? <Body>{error}</Body> : null}
           <Button label="취소" variant="text" disabled={busy} onPress={onClose} />
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSheet>
     </Modal>
   );
 }

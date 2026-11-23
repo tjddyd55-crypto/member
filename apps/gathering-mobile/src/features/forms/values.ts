@@ -4,9 +4,17 @@ export function keyboardAvoidingBehavior(platform: string): 'padding' | undefine
   return platform === 'ios' ? 'padding' : undefined;
 }
 
-export function focusedFieldScrollY(fieldY: number, inset = 24) {
-  if (!Number.isFinite(fieldY)) return 0;
-  return Math.max(0, fieldY - inset);
+export function keyboardBottomPadding(keyboardHeight: number, minimum = 120) {
+  return keyboardHeight > 0 ? Math.max(minimum, keyboardHeight + 48) : minimum;
+}
+
+export function keyboardScrollDelta(
+  fieldBottom: number,
+  viewportBottom: number,
+  keyboardScreenY = Infinity,
+  margin = 24,
+) {
+  return Math.max(0, fieldBottom - (Math.min(viewportBottom, keyboardScreenY) - margin));
 }
 
 export function formatKoreanDate(date: Date) {
@@ -85,23 +93,29 @@ export function composeAddress(road: string, detail: string) {
 
 export function parsePostcodeMessage(raw: string) {
   try {
-    const data = JSON.parse(raw) as { roadAddress?: string; jibunAddress?: string };
-    const road = (data.roadAddress || data.jibunAddress || '').trim();
-    return road || null;
+    const data = JSON.parse(raw) as { zonecode?: string; roadAddress?: string; jibunAddress?: string };
+    const address = data.roadAddress?.trim() || data.jibunAddress?.trim();
+    if (!address) return null;
+    const zonecode = data.zonecode?.trim();
+    return zonecode ? `(${zonecode}) ${address}` : address;
   } catch {
     return null;
   }
 }
 
+export const POSTCODE_BASE_URL = 'https://postcode.map.kakao.com';
+
 export const POSTCODE_PAGE = `<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>.popup_foot, .postcode_notice, #postcode_notice { display: none !important; }</style>
+</head>
 <body style="margin:0">
 <div id="wrap" style="width:100%;height:100vh"></div>
-<script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+<script src="https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 <script>
-new daum.Postcode({
+new (window.kakao && window.kakao.Postcode ? window.kakao.Postcode : daum.Postcode)({
   oncomplete: function (data) {
-    var payload = { roadAddress: data.roadAddress || '', jibunAddress: data.jibunAddress || '' };
+    var payload = { zonecode: data.zonecode || '', roadAddress: data.roadAddress || '', jibunAddress: data.jibunAddress || '' };
     var raw = JSON.stringify(payload);
     if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
       window.ReactNativeWebView.postMessage(raw);
@@ -109,6 +123,8 @@ new daum.Postcode({
       window.parent.postMessage(raw, '*');
     }
   },
+  banner: false,
+  useBannerLink: false,
   width: '100%',
   height: '100%'
 }).embed(document.getElementById('wrap'));

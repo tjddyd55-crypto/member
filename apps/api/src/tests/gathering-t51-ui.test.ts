@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { keyboardBottomPadding } from '../../../gathering-mobile/src/features/forms/values';
 import { mediaGridLayout } from '../../../gathering-mobile/src/features/media/grid-layout';
 import { theme } from '../../../gathering-mobile/src/theme';
 const source = (path: string) =>
@@ -29,7 +30,8 @@ describe('t51 화면 구조', () => {
     expect(theme.layout.horizontalGutter).toBe(12);
     const ui = source('src/design/ui.tsx');
     expect(ui).toContain('padding: theme.layout.horizontalGutter');
-    expect(ui).toContain('paddingBottom: 120');
+    expect(ui).toContain('paddingBottom: keyboardBottomPadding(');
+    expect(keyboardBottomPadding(0)).toBe(120);
     expect(ui).toContain("['top', 'left', 'right', 'bottom']");
     const media = source('src/features/media/MediaPane.tsx');
     expect(media).toContain('marginHorizontal: 6 - theme.layout.horizontalGutter - contentInset');

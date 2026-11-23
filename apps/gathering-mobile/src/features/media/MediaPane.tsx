@@ -24,6 +24,8 @@ import { uploadBlockReason } from './upload-block';
 import { useToast } from '../../design/toast';
 import { mediaDeletePrompt } from './delete-values';
 import { mediaGridLayout } from './grid-layout';
+import { requestDownloadPermission, saveDownload } from './save-download';
+import { downloadFileName } from './viewer-values';
 
 type Job = {
   id: string;
@@ -37,6 +39,12 @@ type Job = {
   uploadUrl?: string;
   headers?: Record<string, string>;
   expiresAt?: string;
+};
+
+type DownloadJob = {
+  item: GatheringMediaView;
+  name: string;
+  state: 'queued' | 'done' | 'failed';
 };
 
 export function MediaPane({
@@ -63,6 +71,9 @@ export function MediaPane({
   const toast = useToast();
   const [linksOpen, setLinksOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const downloadPending = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [downloads, setDownloads] = useState<DownloadJob[]>([]);
   const selecting = selected.length > 0;
   const [deleting, setDeleting] = useState(false);
   const deletePending = useRef(false);
@@ -294,7 +305,7 @@ export function MediaPane({
     return () => clearTimeout(timer);
   }, [progress.done]);
   const remove = async (assets: GatheringMediaView[], index?: number) => {
-    if (deletePending.current || !assets.length) return;
+    if (deletePending.current || downloadPending.current || !assets.length) return;
     deletePending.current = true;
     setDeleting(true);
     try {
@@ -334,6 +345,58 @@ export function MediaPane({
       { text: '취소', style: 'cancel' },
       { text: '삭제', style: 'destructive', onPress: () => void remove(assets, index) },
     ]);
+
+  const selectedItems = items.filter((item) => selected.includes(item.id));
+  const deletable = selectedItems.filter((item) => item.canDelete);
+  const saved = downloads.filter((job) => job.state === 'done').length;
+  const failures = downloads.filter((job) => job.state === 'failed');
+  const downloadDone = downloads.length > 0 && saved === downloads.length;
+  const downloadPercent = Math.round((saved / (downloads.length || 1)) * 100);
+
+  useEffect(() => {
+    if (!downloadDone) return;
+    const timer = setTimeout(() => {
+      setDownloads((current) => (current.every((job) => job.state === 'done') ? [] : current));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [downloadDone]);
+
+  async function download(pending: DownloadJob[], newBatch = false) {
+    if (downloadPending.current || deletePending.current || !pending.length) return;
+    downloadPending.current = true;
+    setSaving(true);
+    setMessage('');
+    try {
+      if (!(await requestDownloadPermission())) {
+        setMessage('사진과 영상을 저장하려면 설정에서 사진 보관함 저장을 허용해 주세요.');
+        return;
+      }
+      const ids = new Set(pending.map((job) => job.item.id));
+      setDownloads((current) =>
+        newBatch
+          ? pending
+          : current.map((job) => (ids.has(job.item.id) ? { ...job, state: 'queued' } : job)),
+      );
+      if (newBatch) setSelected([]);
+      for (const job of pending) {
+        let state: DownloadJob['state'] = 'done';
+        try {
+          const { url } = await api.downloadMedia(groupId, job.item.id);
+          await saveDownload(url, job.name);
+        } catch {
+          state = 'failed';
+        }
+        setDownloads((current) =>
+          current.map((entry) => (entry.item.id === job.item.id ? { ...entry, state } : entry)),
+        );
+      }
+    } catch {
+      setMessage('사진 보관함 저장 권한을 확인하지 못했습니다.');
+    } finally {
+      downloadPending.current = false;
+      setSaving(false);
+    }
+  }
 
   return (
     <View style={styles.stack}>
@@ -422,19 +485,75 @@ export function MediaPane({
           <EmptyState title="아직 올린 사진·영상이 없습니다" />
         )
       ) : null}
+      {downloads.length > 0 ? (
+        <View style={styles.uploadProgress}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel} accessibilityLiveRegion="polite">
+              {downloadDone ? '저장 완료' : saving ? '저장 중' : '저장 결과'} {saved}/
+              {downloads.length}
+              {downloads.every((job) => job.item.kind === 'PHOTO') ? '장' : '개'}
+              {failures.length ? ` · 실패 ${failures.length}` : ''}
+            </Text>
+            <Text style={styles.uploadLabel}>{downloadPercent}%</Text>
+          </View>
+          <ProgressBar percent={downloadPercent} />
+          {failures.map((job) => (
+            <View key={job.item.id} style={styles.failedJob}>
+              <Text numberOfLines={1} style={[styles.jobTitle, styles.failureText]}>
+                {job.name}
+              </Text>
+              <Button
+                label="다시 시도"
+                variant="text"
+                disabled={saving || deleting}
+                onPress={() => void download([job])}
+              />
+            </View>
+          ))}
+          {failures.length > 1 ? (
+            <Button
+              label="실패한 항목 모두 다시 시도"
+              variant="text"
+              disabled={saving || deleting}
+              onPress={() => void download(failures)}
+            />
+          ) : null}
+        </View>
+      ) : null}
       {selecting ? (
         <View style={styles.selectionBar}>
           <Body>{selected.length}개 선택 ·</Body>
           <Button
-            label="삭제"
+            label="다운로드"
             variant="text"
-            disabled={deleting}
+            disabled={saving || deleting || selectedItems.length === 0}
             onPress={() =>
-              confirmRemove(items.filter((item) => item.canDelete && selected.includes(item.id)))
+              void download(
+                selectedItems.map((item) => ({
+                  item,
+                  name: downloadFileName(
+                    item.originalName ?? `JCI-${item.id}`,
+                    item.mimeType,
+                    item.kind,
+                  ),
+                  state: 'queued',
+                })),
+                true,
+              )
             }
           />
-          <Body>·</Body>
-          <Button label="취소" variant="text" disabled={deleting} onPress={() => setSelected([])} />
+          <Button
+            label="삭제"
+            variant="text"
+            disabled={saving || deleting || deletable.length === 0}
+            onPress={() => confirmRemove(deletable)}
+          />
+          <Button
+            label="취소"
+            variant="text"
+            disabled={saving || deleting}
+            onPress={() => setSelected([])}
+          />
         </View>
       ) : null}
       <View
@@ -455,18 +574,20 @@ export function MediaPane({
             selected={selected.includes(item.id)}
             disabled={
               deleting ||
-              (selecting &&
-                (!item.canDelete || (!selected.includes(item.id) && selected.length >= 100)))
+              saving ||
+              (selecting && !selected.includes(item.id) && selected.length >= 100)
             }
             onLongPress={() => {
-              if (!selecting && item.canDelete && !deleting) setSelected([item.id]);
+              if (!selecting && !deleting && !saving) setSelected([item.id]);
             }}
             onOpen={() =>
               selecting
                 ? setSelected((current) =>
                     current.includes(item.id)
                       ? current.filter((id) => id !== item.id)
-                      : [...current, item.id],
+                      : current.length < 100
+                        ? [...current, item.id]
+                        : current,
                   )
                 : void open(item)
             }
@@ -633,7 +754,6 @@ function MediaThumb({
       accessibilityState={{ disabled, selected }}
       style={[
         styles.cell,
-        selecting && !item.canDelete && { opacity: 0.35 },
         cellSize !== undefined && { width: cellSize, height: cellSize },
         item.kind === 'VIDEO' && styles.videoCell,
       ]}
@@ -648,9 +768,7 @@ function MediaThumb({
           <Text style={styles.playLabel}>▶</Text>
         </View>
       ) : null}
-      {selecting && item.canDelete ? (
-        <SelectCheckbox selected={Boolean(selected)} size={20} />
-      ) : null}
+      {selecting ? <SelectCheckbox selected={Boolean(selected)} size={20} /> : null}
     </Pressable>
   );
 }
@@ -667,7 +785,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary.soft,
   },
   uploadLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.primary.default },
-  selectionBar: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  selectionBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 },
   stack: { gap: theme.space[12] },
   uploadProgress: { gap: 8 },
   progressHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },

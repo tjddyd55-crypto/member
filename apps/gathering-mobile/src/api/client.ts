@@ -4,6 +4,7 @@ import { SharedRefreshGate } from '@member/gathering-domain';
 import type {
   GatheringAlbumEvent,
   GatheringAlbumFolder,
+  GatheringAlbumItem,
   GatheringAlbumYear,
   GatheringEventView,
   GatheringFinanceSummary,
@@ -342,7 +343,8 @@ export const api = {
     return request<{
       years: GatheringAlbumYear[];
       events: GatheringAlbumEvent[];
-      folders?: GatheringAlbumFolder[];
+      folders: GatheringAlbumFolder[];
+      items: GatheringAlbumItem[];
     }>(`/api/gathering/groups/${groupId}/albums${query}`);
   },
   createFolder(groupId: string, title: string) {

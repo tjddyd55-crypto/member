@@ -15,7 +15,8 @@ describe('행사 삭제·수정 UI', () => {
   });
   it('권한·선택·뷰어 인덱스와 거래 잠금 안내를 유지한다', () => {
     const media = source('media/MediaPane.tsx');
-    expect(media).toContain('!item.canDelete');
+    expect(media).toContain('selectedItems.filter((item) => item.canDelete)');
+    expect(media).toContain('deletable.length === 0');
     expect(media).toContain('remaining.length - 1');
     expect(media).toContain('삭제되었습니다.');
     expect(media).toContain('api.deleteEventMedia');

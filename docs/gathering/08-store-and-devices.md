@@ -32,13 +32,13 @@ npx eas-cli submit -p ios --profile production --latest
 
 ## 권한과 공식 로고
 
-사진 권한 문구는 `행사 사진과 영상을 올리기 위해 사진 보관함에 접근합니다.`이다. iOS의 사진 접근 요청은 유지하며 카메라, 마이크, 사진 보관함 추가 권한을 선언하지 않는다.
+iOS 사진 접근 문구는 `행사 사진과 영상을 올리기 위해 사진 보관함에 접근합니다.`이다. 앨범에서 선택한 파일을 다운로드할 때는 `선택한 사진과 영상을 사진 보관함에 저장합니다.` 문구로 추가 전용 저장 권한을 요청한다.
 
-Android 사진·영상·영수증 선택은 `launchImageLibraryAsync`의 시스템 Photo Picker를 사용한다(이전 Android는 Play services 백포트). 미디어/저장소 권한 없이 선택한 URI의 임시 접근 권한을 사용한다. 앱에는 MediaLibrary나 보관함 저장·전체 미디어 검색 기능이 없으며 `prepare.ts`는 선택 URI를 앱 캐시에 복사해 처리·업로드한다. 따라서 Android 12 이하도 READ_EXTERNAL_STORAGE가 필요 없다. Android에서는 공통 `canOpenMediaPicker`가 `requestMediaLibraryPermissionsAsync` 호출을 건너뛰어 권한 거부로 선택기가 막히지 않게 한다. iOS/웹의 기존 권한 확인은 유지한다.
+Android 사진·영상·영수증 업로드는 `launchImageLibraryAsync`의 시스템 Photo Picker를 사용한다(이전 Android는 Play services 백포트). Android에서는 공통 `canOpenMediaPicker`가 `requestMediaLibraryPermissionsAsync` 호출을 건너뛴다. 앱은 선택 URI의 임시 접근 권한으로 파일을 캐시에 복사해 업로드한다. iOS/웹의 기존 업로드 권한 확인은 유지한다.
 
-명시적으로 요청하는 Android 권한은 POST_NOTIFICATIONS다. READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED, READ_MEDIA_AUDIO, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, RECORD_AUDIO, CAMERA, SYSTEM_ALERT_WINDOW는 모두 blockedPermissions로 제거한다. 실제 네이티브 빌드에는 네트워크·알림 등 라이브러리 권한이 추가될 수 있다. `npx expo config --type introspect`의 androidManifest에서 `tools:node="remove"` 항목은 부여되는 권한이 아닌 병합 제거 지시문이다. Play 제출용 AAB의 최종 Manifest도 확인한다. 이번 introspect 검증에서 제거 지시문을 제외한 병합 Manifest 권한은 `android.permission.INTERNET`, `android.permission.VIBRATE`, `android.permission.POST_NOTIFICATIONS`이며, 위 차단 권한은 모두 `tools:node="remove"`로 확인했다.
+앨범 다운로드는 `expo-media-library`의 저장 권한을 확인하고 사진과 영상을 기기 보관함에 추가한다. Android Manifest에는 READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE가 포함된다. 저장은 추가 전용으로 요청하며 시스템이 요구하는 Android 버전에서 저장소 권한을 표시한다. READ_MEDIA_AUDIO, RECORD_AUDIO, CAMERA, SYSTEM_ALERT_WINDOW는 계속 `blockedPermissions`로 제거한다. POST_NOTIFICATIONS 선언도 유지한다. `npx expo config --type introspect`와 Play 제출용 AAB의 최종 Manifest에서 권한을 확인한다. `tools:node="remove"` 항목은 병합 제거 지시문이다.
 
-Android 12 이하 및 13+에서 미디어 권한을 부여하지 않은 상태로 사진·영상과 영수증 선택, 취소, 업로드를 실기기에서 확인한다.
+Android 12 이하 및 13+ 실기기에서 권한 없이 사진·영상과 영수증을 선택해 업로드할 수 있는지 확인하고, 앨범 다운로드에서 저장 권한 허용과 거부를 각각 확인한다. `expo-media-library`가 추가되었으므로 새 네이티브 빌드가 필요하다.
 
 iOS 비면제 암호화 사용 여부는 false, supportsTablet은 false다. expo-splash-screen 패키지가 설치되어 있지 않아 top-level splash를 사용한다.
 

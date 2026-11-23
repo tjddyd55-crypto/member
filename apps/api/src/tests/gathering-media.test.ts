@@ -119,6 +119,65 @@ async function createEvent(token: string, groupId: string, startsAt: string) {
 }
 
 describe('행사 사진·영상', () => {
+  it('mixes album cards by KST day and creation time and includes folder-only years', async () => {
+    const owner = await register('앨범정렬');
+    const token = owner.tokens.accessToken;
+    const group = await createGroup(token, '앨범정렬모임');
+    const december = await createEvent(token, group.id, '2026-12-10T09:00:00.000Z');
+    const november = await createEvent(token, group.id, '2026-11-17T10:00:00.000Z');
+    await prisma.gatheringEvent.update({
+      where: { id: december.id },
+      data: { title: '송년의밤', createdAt: new Date('2026-10-01T00:00:00.000Z') },
+    });
+    await prisma.gatheringEvent.update({
+      where: { id: november.id },
+      data: { title: '이사회', createdAt: new Date('2026-11-01T00:00:00.000Z') },
+    });
+    const createFolder = (title: string, createdAt: string) =>
+      prisma.gatheringMediaFolder.create({
+        data: {
+          groupId: group.id,
+          createdByUserId: owner.user.id,
+          title,
+          createdAt: new Date(createdAt),
+        },
+      });
+    const folder = await createFolder('11월 폴더', '2026-11-16T15:30:00.000Z');
+    const oldFolder = await createFolder('2025 폴더', '2024-12-31T15:30:00.000Z');
+
+    const get = async (query = '') => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/gathering/groups/${group.id}/albums${query}`,
+        headers: auth(token),
+      });
+      expect(res.statusCode).toBe(200);
+      return res.json();
+    };
+    const expected = [
+      expect.objectContaining({ type: 'event', eventId: december.id }),
+      expect.objectContaining({ type: 'folder', folderId: folder.id }),
+      expect.objectContaining({
+        type: 'event',
+        eventId: november.id,
+        createdAt: '2026-11-01T00:00:00.000Z',
+      }),
+    ];
+    const oldCard = expect.objectContaining({ type: 'folder', folderId: oldFolder.id });
+    const all = await get();
+    expect(all.items).toEqual([...expected, oldCard]);
+    expect(all.years).toEqual([
+      { year: 2026, photoCount: 0, videoCount: 0 },
+      { year: 2025, photoCount: 0, videoCount: 0 },
+    ]);
+    const currentYear = await get('?year=2026');
+    expect(currentYear.items).toEqual(expected);
+    expect(currentYear.folders).toEqual([expect.objectContaining({ folderId: folder.id })]);
+    const folderOnly = await get('?year=2025');
+    expect(folderOnly.items).toEqual([oldCard]);
+    expect(folderOnly.events).toEqual([]);
+  });
+
   it('영상 포스터는 활성 업로더·관리자만 올리며 목록과 다운로드에 노출한다', async () => {
     const owner = await register('포스터회장');
     const uploader = await register('포스터업로더');
@@ -321,7 +380,7 @@ describe('행사 사진·영상', () => {
             n + row.photoCount + row.videoCount,
           0,
         ),
-      ).toBe(photos + videos);
+      ).toBe(2 * (photos + videos));
     };
     await check(1, 1);
     expect(

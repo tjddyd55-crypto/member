@@ -26,6 +26,14 @@ const config: ExpoConfig = {
         cameraPermission: false,
       },
     ],
+    [
+      'expo-media-library',
+      {
+        photosPermission: '행사 사진과 영상을 올리기 위해 사진 보관함에 접근합니다.',
+        savePhotosPermission: '선택한 사진과 영상을 사진 보관함에 저장합니다.',
+        granularPermissions: ['photo', 'video'],
+      },
+    ],
   ],
   experiments: {
     typedRoutes: false,
@@ -48,12 +56,7 @@ const config: ExpoConfig = {
   android: {
     permissions: ['android.permission.POST_NOTIFICATIONS'],
     blockedPermissions: [
-      'android.permission.READ_MEDIA_IMAGES',
-      'android.permission.READ_MEDIA_VIDEO',
-      'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
       'android.permission.READ_MEDIA_AUDIO',
-      'android.permission.READ_EXTERNAL_STORAGE',
-      'android.permission.WRITE_EXTERNAL_STORAGE',
       'android.permission.RECORD_AUDIO',
       'android.permission.CAMERA',
       'android.permission.SYSTEM_ALERT_WINDOW',

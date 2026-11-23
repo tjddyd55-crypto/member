@@ -7,6 +7,7 @@ export function presentMedia(asset: GatheringMediaAsset, viewerId: string): Gath
     hasPoster: asset.posterStorageKey !== null,
     kind: asset.kind,
     mimeType: asset.mimeType,
+    originalName: asset.originalName,
     sizeBytes: Number(asset.sizeBytes),
     width: asset.width,
     height: asset.height,

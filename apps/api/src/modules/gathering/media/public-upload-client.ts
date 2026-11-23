@@ -10,6 +10,11 @@ const newest = new Map();
 const cells = new Map();
 const signed = new Map();
 let jobs = [];
+const selection = new Set();
+let selectingMedia = false;
+let downloadActive = false;
+let downloads = [];
+let clearDownloads;
 let nextCursor = null;
 let galleryReady = false;
 let loading = false;
@@ -59,6 +64,11 @@ function renderGrid() {
     const cell = cells.get(entry) || createCell(entry);
     const label = entry.kind === 'VIDEO' ? '영상 ' : '사진 ';
     cell.setAttribute('aria-label', label + (index + 1));
+    if (!entry.file) {
+      cell.disabled = selectingMedia && !selection.has(entry.id) && selection.size >= 100;
+      if (selectingMedia) cell.setAttribute('aria-pressed', String(selection.has(entry.id)));
+      else cell.removeAttribute('aria-pressed');
+    }
     if (grid.children[index] !== cell) grid.insertBefore(cell, grid.children[index] || null);
   }
   grid.hidden = entries.length === 0;
@@ -66,6 +76,13 @@ function renderGrid() {
   byId('gallery-status').hidden = [
     'loading', 'empty', 'gallery-error', 'gallery-retry',
   ].every((id) => byId(id).hidden);
+  byId('download-actions').hidden = items.size + newest.size === 0;
+  byId('select-media').textContent = selectingMedia ? '취소' : '선택';
+  byId('select-media').disabled = downloadActive;
+  byId('selected-count').hidden = !selectingMedia;
+  byId('selected-count').textContent = selection.size + '개 선택';
+  byId('download-media').hidden = !selectingMedia;
+  byId('download-media').disabled = downloadActive || selection.size === 0;
   measureGrid();
   if (viewedId) updateViewerControls();
 }
@@ -156,7 +173,15 @@ function createCell(entry) {
   badge.setAttribute('aria-hidden', 'true');
   button.append(badge);
   if (entry.file) button.disabled = true;
-  else button.onclick = () => openViewer(entry.id, button);
+  else button.onclick = () => {
+    if (!selectingMedia) {
+      openViewer(entry.id, button);
+      return;
+    }
+    if (selection.has(entry.id)) selection.delete(entry.id);
+    else if (selection.size < 100) selection.add(entry.id);
+    renderGrid();
+  };
   cells.set(entry, button);
   thumbnailEntries.set(button, entry);
   if (thumbnailObserver) thumbnailObserver.observe(button);
@@ -257,6 +282,103 @@ function labelButton(label, handler) {
   button.onclick = handler;
   return button;
 }
+
+function downloadName(item, mimeType) {
+  const extension = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+    'video/mp4': 'mp4', 'video/quicktime': 'mov',
+  }[mimeType] || (item.kind === 'VIDEO' ? 'mp4' : 'jpg');
+  return 'JCI-' + item.id + '.' + extension;
+}
+
+function renderDownloads() {
+  const panel = byId('download-progress');
+  panel.hidden = downloads.length === 0;
+  if (panel.hidden) return;
+  const saved = downloads.filter((job) => job.state === 'done').length;
+  const failures = downloads.filter((job) => job.state === 'failed');
+  const allDone = saved === downloads.length;
+  const percent = Math.round(100 * saved / downloads.length);
+  const unit = downloads.every((job) => job.item.kind === 'PHOTO') ? '장' : '개';
+  panel.toggleAttribute('data-done', allDone);
+  byId('download-label').textContent = (allDone ? '저장 완료 ' : downloadActive ? '저장 중 ' : '저장 결과 ') +
+    saved + '/' + downloads.length + unit + (failures.length ? ' · 실패 ' + failures.length : '');
+  byId('download-percent').textContent = percent + '%';
+  byId('download-track').setAttribute('aria-valuenow', String(percent));
+  byId('download-fill').style.width = percent + '%';
+  const list = byId('download-failures');
+  list.replaceChildren();
+  for (const job of failures) {
+    const row = document.createElement('div');
+    row.className = 'failed';
+    const name = document.createElement('p');
+    name.className = 'filename';
+    name.textContent = job.name;
+    const retry = labelButton('다시 시도', () => download([job]));
+    retry.disabled = downloadActive;
+    row.append(name, retry);
+    list.append(row);
+  }
+  if (failures.length > 1) {
+    const retry = labelButton('실패한 항목 모두 다시 시도', () => download(failures));
+    retry.disabled = downloadActive;
+    list.append(retry);
+  }
+}
+
+async function download(pending) {
+  if (downloadActive || pending.length === 0) return;
+  clearTimeout(clearDownloads);
+  downloadActive = true;
+  for (const job of pending) job.state = 'queued';
+  renderGrid();
+  renderDownloads();
+  for (const job of pending) {
+    try {
+      const target = await mediaTarget(job.item.id);
+      job.name = downloadName(job.item, target.mimeType);
+      const response = await fetch(target.url, { credentials: 'omit', cache: 'no-store' });
+      if (!response.ok) throw new Error('파일을 받지 못했습니다.');
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = job.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      job.state = 'done';
+    } catch {
+      signed.delete(job.item.id);
+      job.state = 'failed';
+    }
+    renderDownloads();
+  }
+  downloadActive = false;
+  renderGrid();
+  renderDownloads();
+  if (downloads.every((job) => job.state === 'done')) {
+    clearDownloads = setTimeout(() => {
+      downloads = [];
+      renderDownloads();
+    }, 3000);
+  }
+}
+
+byId('select-media').onclick = () => {
+  selectingMedia = !selectingMedia;
+  selection.clear();
+  renderGrid();
+};
+byId('download-media').onclick = () => {
+  if (downloadActive || selection.size === 0) return;
+  downloads = readyItems().filter((item) => selection.has(item.id)).map((item) => ({
+    item, name: downloadName(item),
+  }));
+  selection.clear();
+  selectingMedia = false;
+  void download(downloads);
+};
 
 function renderProgress(updateFailures) {
   const progress = byId('progress');

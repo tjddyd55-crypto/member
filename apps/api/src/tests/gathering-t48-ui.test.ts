@@ -104,7 +104,7 @@ describe('t48 화면 구조', () => {
     expect(media).toContain("['사진 올리기', '영상 올리기', '업로드 링크']");
     expect(media).toContain('style={styles.uploadRow}');
     expect(media).toContain('onLongPress={onLongPress}');
-    expect(media).toContain('!selecting && item.canDelete && !deleting');
+    expect(media).toContain('!selecting && !deleting && !saving');
     expect(media).toContain('setSelected([item.id])');
     expect(media).toContain('const selecting = selected.length > 0');
     expect(media).toContain('current.filter((id) => id !== item.id)');

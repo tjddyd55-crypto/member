@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import type {
-  GatheringAlbumEvent,
+  GatheringAlbumItem,
   GatheringAlbumYear,
   GatheringAlbumFolder,
 } from '@member/contracts';
@@ -19,8 +19,7 @@ type Folder = GatheringAlbumFolder;
 
 export function AlbumsPane({ groupId }: { groupId: string }) {
   const [years, setYears] = useState<GatheringAlbumYear[]>([]);
-  const [events, setEvents] = useState<GatheringAlbumEvent[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
+  const [items, setItems] = useState<GatheringAlbumItem[]>([]);
   const { alert, dialog } = useAppAlert();
   const toast = useToast();
   const [renaming, setRenaming] = useState<Folder | null>(null);
@@ -40,8 +39,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
     try {
       const result = await api.albums(groupId, year ?? undefined);
       setYears(result.years);
-      setEvents(result.events);
-      setFolders(result.folders ?? []);
+      setItems(result.items);
       setStatus('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '앨범을 불러오지 못했습니다.');
@@ -78,10 +76,32 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
         </View>
         <Button label="폴더 만들기" variant="secondary" onPress={() => void createFolder()} />
       </View>
-      {folders.map((folder) => {
+      {items.map((item) => {
+        if (item.type === 'event') {
+          const event = item;
+          return (
+            <Pressable
+              key={`event:${event.eventId}`}
+              accessibilityRole="button"
+              onPress={() => router.push(`/(app)/groups/${groupId}/albums/event/${event.eventId}`)}
+              style={styles.card}
+            >
+              <View style={styles.heading}>
+                <Text style={[styles.badge, styles.eventBadge]}>행사</Text>
+                <Text numberOfLines={1} style={[styles.title, { flexShrink: 1 }]}>
+                  {event.title}
+                </Text>
+              </View>
+              <Body>
+                {albumCardDate(event.startsAt)} · 사진 {event.photoCount} · 영상 {event.videoCount}
+              </Body>
+            </Pressable>
+          );
+        }
+        const folder = item;
         return (
           <Pressable
-            key={folder.folderId}
+            key={`folder:${folder.folderId}`}
             accessibilityRole="button"
             onPress={() => router.push(`/(app)/groups/${groupId}/folders/${folder.folderId}`)}
             style={styles.card}
@@ -136,7 +156,7 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           </Pressable>
         );
       })}
-      {status === 'ready' && events.length === 0 && folders.length === 0 ? (
+      {status === 'ready' && items.length === 0 ? (
         <EmptyState title="앨범이 비어 있습니다" />
       ) : null}
       {renaming ? (
@@ -171,26 +191,6 @@ export function AlbumsPane({ groupId }: { groupId: string }) {
           </Screen>
         </Modal>
       ) : null}
-      {events.map((event) => {
-        return (
-          <Pressable
-            key={event.eventId}
-            accessibilityRole="button"
-            onPress={() => router.push(`/(app)/groups/${groupId}/albums/event/${event.eventId}`)}
-            style={styles.card}
-          >
-            <View style={styles.heading}>
-              <Text style={[styles.badge, styles.eventBadge]}>행사</Text>
-              <Text numberOfLines={1} style={[styles.title, { flexShrink: 1 }]}>
-                {event.title}
-              </Text>
-            </View>
-            <Body>
-              {albumCardDate(event.startsAt)} · 사진 {event.photoCount} · 영상 {event.videoCount}
-            </Body>
-          </Pressable>
-        );
-      })}
     </View>
   );
 

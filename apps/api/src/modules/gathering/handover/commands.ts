@@ -42,15 +42,19 @@ export async function readHandover(userId: string, groupId: string) {
 export async function nominateHandover(
   actorId: string,
   groupId: string,
-  input: { toUserId: string; idempotencyKey: string },
+  input: { toUserId?: string; membershipId?: string; idempotencyKey: string },
 ) {
   const access = await requireGroupMember(actorId, groupId);
   assertPermission(access, 'HANDOVER');
-  if (input.toUserId === actorId) throw new AppError(409, 'SUCCESSOR_INVALID', '본인을 차기 회장으로 지명할 수 없습니다.');
-  const target = await prisma.gatheringMembership.findUnique({
-    where: { groupId_userId: { groupId, userId: input.toUserId } },
-  });
-  if (!target || target.status !== 'ACTIVE') {
+  const target = (input.toUserId || input.membershipId) ? await prisma.gatheringMembership.findFirst({
+    where: { groupId, userId: input.toUserId, id: input.membershipId },
+  }) : null;
+  if (!target?.userId) {
+    throw new AppError(409, 'MANUAL_MEMBER_CANNOT_BE_PRESIDENT', '앱에 가입한 회원만 차기 회장으로 지명할 수 있습니다.');
+  }
+  const toUserId = target.userId;
+  if (toUserId === actorId) throw new AppError(409, 'SUCCESSOR_INVALID', '본인을 차기 회장으로 지명할 수 없습니다.');
+  if (target.status !== 'ACTIVE') {
     throw new AppError(404, 'MEMBER_NOT_FOUND', '활동 중인 회원을 찾을 수 없습니다.');
   }
   try {
@@ -70,7 +74,7 @@ export async function nominateHandover(
           groupId,
           financeYearId: year.id,
           fromUserId: actorId,
-          toUserId: input.toUserId,
+          toUserId,
           status: 'NOMINATED',
           idempotencyKey: input.idempotencyKey,
         },

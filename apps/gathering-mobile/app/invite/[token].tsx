@@ -15,6 +15,7 @@ export default function InviteScreen() {
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [matchedManualMember, setMatchedManualMember] = useState(false);
   const [joining, setJoining] = useState(false);
 
   useEffect(() => {
@@ -56,6 +57,10 @@ export default function InviteScreen() {
     try {
       const result = await api.acceptInvite(token);
       await forgetPendingInvite('accepted');
+      if (result.matchedManualMember) {
+        setMatchedManualMember(true);
+        return;
+      }
       if (result.status === 'PENDING') {
         router.replace('/(app)/groups');
         return;
@@ -82,7 +87,10 @@ export default function InviteScreen() {
       {status === 'error' ? (
         <ErrorState message={message} onRetry={() => router.replace(`/invite/${token}`)} />
       ) : null}
-      {status === 'ready' ? (
+      {matchedManualMember ? (
+        <Notice>같은 휴대폰 번호의 기존 회원 기록이 있습니다. 협의회장 또는 총무가 앱 계정 연결을 확인할 때까지 승인 대기 상태입니다.</Notice>
+      ) : null}
+      {status === 'ready' && !matchedManualMember ? (
         <>
           <Body>{groupName ?? ''}에 참여합니다.</Body>
           <Notice>{DIRECTORY_CONSENT}</Notice>

@@ -39,24 +39,33 @@ export function toFinanceYearView(
 
 export function toMemberView(member: {
   id: string;
-  userId: string;
+  userId: string | null;
+  manualDisplayName: string | null;
+  manualLocalJcName: string | null;
+  manualPhone: string | null;
   status: string;
   user: {
     phone: string | null;
     status?: string;
     gatheringProfile: { displayName: string } | null;
     gatheringAffiliations: Array<{ localJcName: string }>;
-  };
+  } | null;
   roles: Array<{ id: string; role: GatheringRole; title: string | null }>;
 }): GatheringMemberView {
   return {
     membershipId: member.id,
     userId: member.userId,
+    isAppRegistered: member.userId !== null,
     displayName:
-      member.user.gatheringProfile?.displayName ??
-      (member.user.status === 'DELETED' ? '탈퇴한 회원' : '이름 없음'),
-    localJcName: member.user.gatheringAffiliations[0]?.localJcName ?? '',
-    phone: member.user.phone,
+      member.userId === null
+        ? (member.manualDisplayName ?? '이름 없음')
+        : (member.user?.gatheringProfile?.displayName ??
+          (member.user?.status === 'DELETED' ? '탈퇴한 회원' : '이름 없음')),
+    localJcName:
+      member.userId === null
+        ? (member.manualLocalJcName ?? '')
+        : (member.user?.gatheringAffiliations[0]?.localJcName ?? ''),
+    phone: member.userId === null ? member.manualPhone : (member.user?.phone ?? null),
     status: member.status,
     roles: member.roles.map((role) => ({ id: role.id, role: role.role, title: role.title })),
   };

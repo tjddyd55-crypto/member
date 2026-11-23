@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import type { GatheringPermission, GatheringRole } from '@member/gathering-domain';
 import { isGatheringRole, permissionsForRoles } from '@member/gathering-domain';
 import { AppError } from '../../lib/errors.js';
@@ -16,8 +17,9 @@ export async function requireGroupMember(
   userId: string,
   groupId: string,
   mode: 'read' | 'write' = 'write',
+  db: Pick<Prisma.TransactionClient, 'gatheringMembership'> = prisma,
 ): Promise<GroupAccess> {
-  const membership = await prisma.gatheringMembership.findUnique({
+  const membership = await db.gatheringMembership.findUnique({
     where: { groupId_userId: { groupId, userId } },
     include: { roles: { where: { revokedAt: null } } },
   });

@@ -41,12 +41,14 @@ export async function notifyGatheringEvent(event: GatheringEvent, kind: NoticeKi
     where: {
       groupId: event.groupId,
       status: 'ACTIVE',
-      ...(kind === 'EVENT_REMINDER' ? {} : { userId: { not: actorUserId } }),
+      userId: { not: null },
+      ...(kind === 'EVENT_REMINDER' || !actorUserId ? {} : { NOT: { userId: actorUserId } }),
     },
     select: { userId: true },
   });
   const version = noticeVersion(event, kind);
   for (const member of members) {
+    if (!member.userId) continue;
     await notifyMember(event, group?.name ?? '모임', kind, member.userId, version);
   }
   return members.length;

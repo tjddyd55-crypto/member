@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { gatheringManualMemberCreateSchema, gatheringManualMemberUpdateSchema, gatheringManualMemberLinkSchema } from '@member/contracts';
 import { z } from 'zod';
 import { ADMIN_CAPABILITIES, ADMIN_ROLES } from '@member/gathering-domain';
 import { env } from '../../../config/env.js';
@@ -10,6 +11,7 @@ import {
   linkDeposit,
   listGroupDeposits,
   listScopedMembers,
+  manageAdminManualMember,
   readBankSetting,
   recordDeposit,
   replaceAdminScopes,
@@ -195,6 +197,36 @@ export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
       allowMismatch: z.boolean().optional(),
     }).parse(request.body);
     return linkDeposit(session.adminId, params.depositId, body);
+  });
+
+  const manual = '/api/gathering-admin/groups/:groupId/manual-members';
+  const manualGroup = z.object({ groupId: z.string().min(1) });
+  const manualMember = manualGroup.extend({ membershipId: z.string().min(1) });
+  app.post(manual, async (request) => {
+    const session = await mutate(request);
+    const { groupId } = manualGroup.parse(request.params);
+    return manageAdminManualMember(session.adminId, groupId, {
+      action: 'CREATE', input: gatheringManualMemberCreateSchema.parse(request.body),
+    });
+  });
+  app.patch(`${manual}/:membershipId`, async (request) => {
+    const session = await mutate(request);
+    const { groupId, membershipId } = manualMember.parse(request.params);
+    return manageAdminManualMember(session.adminId, groupId, {
+      action: 'UPDATE', membershipId, input: gatheringManualMemberUpdateSchema.parse(request.body),
+    });
+  });
+  app.delete(`${manual}/:membershipId`, async (request) => {
+    const session = await mutate(request);
+    const { groupId, membershipId } = manualMember.parse(request.params);
+    return manageAdminManualMember(session.adminId, groupId, { action: 'DELETE', membershipId });
+  });
+  app.post(`${manual}/:membershipId/link`, async (request) => {
+    const session = await mutate(request);
+    const { groupId, membershipId } = manualMember.parse(request.params);
+    return manageAdminManualMember(session.adminId, groupId, {
+      action: 'LINK', membershipId, ...gatheringManualMemberLinkSchema.parse(request.body),
+    });
   });
 
   app.post('/api/gathering-admin/groups/:groupId/members/:membershipId/restriction', async (request) => {

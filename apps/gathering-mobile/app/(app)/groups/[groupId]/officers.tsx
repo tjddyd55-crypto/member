@@ -75,7 +75,7 @@ export default function OfficersScreen() {
   }, [load]);
 
   const assign = async (member: GatheringMemberView, role: AssignableRole) => {
-    await api.assignOfficer(groupId, { userId: member.userId, role: role.role, title: role.title });
+    await api.assignOfficer(groupId, { membershipId: member.membershipId, role: role.role, title: role.title });
     setTarget(null);
     await load();
     toast('저장되었습니다');
@@ -116,7 +116,7 @@ export default function OfficersScreen() {
                         style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}
                       >
                         <Text style={{ color: theme.colors.text.primary }}>
-                          {officer.displayName}
+                          {officer.displayName}{officer.isAppRegistered ? '' : ' · 앱 미가입'}
                         </Text>
                         {canAssign && officer.role !== 'PRESIDENT' ? (
                           <Button

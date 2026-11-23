@@ -9,6 +9,8 @@ import {
 import type { Prisma } from '@prisma/client';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
+import { candidateFor, manualLinkCandidates, memberSearch } from '../group-read.js';
+import { applyManualMemberChange, type ManualMemberChange } from '../manual-members.js';
 import { lockGroup } from '../locks.js';
 import { writeAdminAudit } from './audit.js';
 
@@ -71,26 +73,14 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
     where: {
       status: { in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
       ...(groupId ? { groupId } : ids ? { groupId: { in: ids } } : {}),
-      ...(query
-        ? {
-            OR: [
-              { user: { gatheringProfile: { displayName: { contains: query, mode: 'insensitive' } } } },
-              ...(phoneGroupIds == null || phoneGroupIds.length > 0
-                ? [{
-                    user: { phone: { contains: query } },
-                    ...(phoneGroupIds ? { groupId: { in: phoneGroupIds } } : {}),
-                  }]
-                : []),
-            ],
-          }
-        : {}),
+      ...(query ? memberSearch(query, phoneGroupIds) : {}),
     },
     include: {
       user: { include: { gatheringProfile: true, gatheringAffiliations: { where: { isCurrent: true }, take: 1 } } },
       group: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    take: groupId ? undefined : 100,
   });
   const shown = members.filter((row) => contactIds == null || contactIds.includes(row.group.id));
   for (const id of new Set(shown.map((row) => row.group.id))) {
@@ -104,17 +94,37 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
       reason: '회원 연락처 조회',
     });
   }
-  return members.map((row) => ({
-    membershipId: row.id,
-    status: row.status,
-    group: row.group,
-    user: {
-      id: row.user.id,
-      name: row.user.gatheringProfile?.displayName ?? null,
-      localJcName: row.user.gatheringAffiliations[0]?.localJcName ?? null,
-      phone: contactIds == null || contactIds.includes(row.group.id) ? row.user.phone : null,
-    },
-  }));
+  const candidates = await manualLinkCandidates(members);
+  return members.map((row) => {
+    const contactRead = contactIds == null || contactIds.includes(row.groupId);
+    const candidate = candidateFor(candidates, row);
+    return {
+      membershipId: row.id,
+      status: row.status,
+      group: row.group,
+      isAppRegistered: row.userId !== null,
+      linkCandidate: candidate ? { ...candidate, phone: contactRead ? candidate.phone : null } : null,
+      user: {
+        id: row.userId,
+        name:
+          row.userId === null
+            ? row.manualDisplayName
+            : (row.user?.gatheringProfile?.displayName ?? null),
+        localJcName:
+          row.userId === null
+            ? row.manualLocalJcName
+            : (row.user?.gatheringAffiliations[0]?.localJcName ?? null),
+        phone: contactRead ? (row.userId === null ? row.manualPhone : (row.user?.phone ?? null)) : null,
+      },
+    };
+  });
+}
+
+export async function manageAdminManualMember(adminId: string, groupId: string, change: ManualMemberChange) {
+  const account = await loadAccount(adminId);
+  assertCapability(account, 'MEMBER_WRITE', groupId);
+  const contactRead = adminAllows({ role: account.role, disabled: false, scopes: account.scopes, capability: 'CONTACT_READ', groupId });
+  return applyManualMemberChange({ adminId, contactRead }, groupId, change);
 }
 
 export async function setGroupSuspension(adminId: string, groupId: string, suspended: boolean, reason: string, idempotencyKey: string) {

@@ -4,7 +4,7 @@ import { assertPermission, requireGroupMember } from './access.js';
 import { blockedUserIds } from './moderation/blocks.js';
 import { toFinanceYearView, toGroupSummary, toMemberView } from './presenters/group.js';
 
-const memberInclude = {
+export const memberInclude = {
   user: {
     include: {
       gatheringProfile: true,
@@ -64,7 +64,7 @@ async function loadListContext(groupIds: string[]) {
     names: new Map(groups.map((group) => [group.id, group.name])),
     descriptions: new Map(groups.map((group) => [group.id, group.description])),
     presidents: new Map(
-      presidents.map((row) => [row.groupId, row.user.gatheringProfile?.displayName ?? null]),
+      presidents.map((row) => [row.groupId, row.user?.gatheringProfile?.displayName ?? null]),
     ),
     counts: new Map(counts.map((row) => [row.groupId, row._count._all])),
     years: firstOpenYear(years),
@@ -134,7 +134,7 @@ async function findPresident(groupId: string) {
       },
     },
   });
-  if (!assignment) return null;
+  if (!assignment?.userId || !assignment.user) return null;
   return {
     userId: assignment.userId,
     displayName: assignment.user.gatheringProfile?.displayName ?? '이름 없음',
@@ -158,17 +158,19 @@ export async function listGroupMembers(
     },
     include: memberInclude,
   });
+  const candidates = await manualLinkCandidates(members);
   const hidden = status === 'ACTIVE' ? await blockedUserIds(groupId, userId) : new Set<string>();
   return members
     .map((member) => {
       const view = toMemberView(member);
-      if (!hidden.has(member.userId)) return view;
+      if (status === 'PENDING') view.linkCandidate = candidateFor(candidates, member);
+      if (!member.userId || !hidden.has(member.userId)) return view;
       return { ...view, phone: null };
     })
     .sort((left, right) => left.displayName.localeCompare(right.displayName, 'ko'));
 }
 
-function memberSearch(query: string) {
+export function memberSearch(query: string, phoneGroupIds?: string[] | null) {
   return {
     OR: [
       {
@@ -188,7 +190,38 @@ function memberSearch(query: string) {
           },
         },
       },
-      { user: { phone: { contains: query } } },
+      { userId: null, manualDisplayName: { contains: query, mode: 'insensitive' as const } },
+      { userId: null, manualLocalJcName: { contains: query, mode: 'insensitive' as const } },
+      {
+        ...(phoneGroupIds ? { groupId: { in: phoneGroupIds } } : {}),
+        OR: [{ user: { phone: { contains: query } } }, { userId: null, manualPhone: { contains: query } }],
+      },
     ],
   };
+}
+
+type CandidateSource = { groupId: string; status: string; user: { phone: string | null } | null };
+
+export async function manualLinkCandidates(members: CandidateSource[]) {
+  const pending = members.flatMap((member) =>
+    member.status === 'PENDING' && member.user?.phone
+      ? [{ groupId: member.groupId, manualPhone: member.user.phone }]
+      : [],
+  );
+  if (!pending.length) return new Map<string, NonNullable<ReturnType<typeof toMemberView>['linkCandidate']>>();
+  const matches = await prisma.gatheringMembership.findMany({
+    where: { userId: null, status: 'ACTIVE', OR: pending },
+  });
+  return new Map(matches.map((row) => [JSON.stringify([row.groupId, row.manualPhone]), {
+    membershipId: row.id,
+    displayName: row.manualDisplayName ?? '이름 없음',
+    localJcName: row.manualLocalJcName ?? '',
+    phone: row.manualPhone,
+  }]));
+}
+
+export function candidateFor(candidates: Awaited<ReturnType<typeof manualLinkCandidates>>, member: CandidateSource) {
+  return member.status === 'PENDING' && member.user?.phone
+    ? candidates.get(JSON.stringify([member.groupId, member.user.phone])) ?? null
+    : null;
 }

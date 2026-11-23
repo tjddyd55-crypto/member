@@ -60,3 +60,12 @@ th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e4e8ee; vert
   main { min-width: 0; }
   table { display: block; overflow: auto; }
 }
+
+.manual-member-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8eef5;
+  color: #273c50;
+  font-size: 0.875em;
+}

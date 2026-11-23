@@ -100,6 +100,7 @@ export type {
   GatheringReceiptView,
   GatheringTransactionView,
   GatheringMemberView,
+  GatheringManualMemberInput,
   GatheringSessionResponse,
   GatheringStorageUsage,
 } from './gathering.js';
@@ -126,6 +127,9 @@ export {
   gatheringLoginSchema,
   gatheringLogoutSchema,
   gatheringMemberQuerySchema,
+  gatheringManualMemberCreateSchema,
+  gatheringManualMemberUpdateSchema,
+  gatheringManualMemberLinkSchema,
   gatheringMembershipDecisionSchema,
   gatheringPasswordSchema,
   gatheringProfileSchema,

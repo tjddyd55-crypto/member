@@ -71,7 +71,12 @@ export async function readAdminGroup(adminId: string, groupId: string) {
     targetId: groupId,
     groupId,
   });
-  return row;
+  return {
+    ...row,
+    canManageMembers: account.role === 'SUPER_ADMIN' || account.scopes.some(
+      (scope) => scope.capability === 'MEMBER_WRITE' && scope.groupId === groupId,
+    ),
+  };
 }
 
 export async function listAdminAudits(adminId: string) {
@@ -133,7 +138,7 @@ async function presentGroup(groupId: string, showContact: boolean) {
     name: group.name,
     createdAt: group.createdAt.toISOString(),
     creator: contact(group.createdBy, group.createdAt, showContact),
-    president: president ? contact(president.user, president.assignedAt, showContact) : null,
+    president: president?.user ? contact(president.user, president.assignedAt, showContact) : null,
     memberCount,
     suspended: group.suspendedAt != null,
     subscription: {

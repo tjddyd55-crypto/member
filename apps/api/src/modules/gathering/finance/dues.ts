@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { parseWon, parseWonAllowZero, dueStanding } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -10,6 +11,7 @@ import { lockGroupOpenYear, lockOpenYearById, lockOpenYearForInstant } from './y
 
 export type DueInput = {
   userId?: string;
+  membershipId?: string;
   displayName?: string;
   year: number;
   amountWon: number;
@@ -30,19 +32,20 @@ export async function upsertDue(actorId: string, groupId: string, input: DueInpu
   }
   const paidAt = parseOptionalDate(input.paidAt);
   const status = input.status ?? dueStanding(amount.value, paid.value);
-  const userId = await resolveDueMember(groupId, input);
-  const member = await prisma.gatheringMembership.findUnique({
-    where: { groupId_userId: { groupId, userId } },
-  });
-  if (!member || member.status !== 'ACTIVE') {
-    throw new AppError(404, 'MEMBER_NOT_FOUND', '활동 중인 회원을 찾을 수 없습니다.');
-  }
   const saved = await prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
     await assertGatheringWritable(tx, groupId);
+    const member = await resolveDueMember(tx, groupId, input);
+    const identity = {
+      groupId,
+      OR: [
+        { membershipId: member.id },
+        ...(member.userId ? [{ membershipId: null, userId: member.userId }] : []),
+      ],
+    };
     const existing = paidAt
       ? await tx.gatheringMemberDue.findFirst({
-          where: { groupId, userId, paidAt, financeYear: { year: input.year } },
+          where: { ...identity, paidAt, financeYear: { year: input.year } },
           select: { financeYearId: true },
         })
       : null;
@@ -57,24 +60,20 @@ export async function upsertDue(actorId: string, groupId: string, input: DueInpu
     if (year.year !== input.year) {
       throw new AppError(409, 'PAYMENT_YEAR_MISMATCH', '납부일은 그 회계연도에 속해야 합니다.');
     }
-    return tx.gatheringMemberDue.upsert({
-      where: { groupId_userId_financeYearId: { groupId, userId, financeYearId: year.id } },
-      create: {
-        groupId,
-        userId,
-        financeYearId: year.id,
-        amountWon: amount.value,
-        paidAmountWon: paid.value,
-        paidAt,
-        status,
-      },
-      update: {
-        amountWon: amount.value,
-        paidAmountWon: paid.value,
-        paidAt,
-        status,
-      },
+    const current = await tx.gatheringMemberDue.findFirst({
+      where: { ...identity, financeYearId: year.id },
     });
+    const data = {
+      userId: member.userId,
+      membershipId: member.id,
+      amountWon: amount.value,
+      paidAmountWon: paid.value,
+      paidAt,
+      status,
+    };
+    return current
+      ? tx.gatheringMemberDue.update({ where: { id: current.id }, data })
+      : tx.gatheringMemberDue.create({ data: { ...data, groupId, financeYearId: year.id } });
   });
   await writeGatheringAudit(prisma, {
     groupId,
@@ -86,20 +85,30 @@ export async function upsertDue(actorId: string, groupId: string, input: DueInpu
   return { id: saved.id, status: saved.status };
 }
 
-async function resolveDueMember(groupId: string, input: DueInput) {
-  if (input.userId) return input.userId;
+async function resolveDueMember(tx: Prisma.TransactionClient, groupId: string, input: DueInput) {
+  const where = { groupId, status: 'ACTIVE' as const };
+  if (input.membershipId || input.userId) {
+    const member = await tx.gatheringMembership.findFirst({
+      where: { ...where, id: input.membershipId, userId: input.userId },
+    });
+    if (!member) throw new AppError(404, 'MEMBER_NOT_FOUND', '활동 중인 회원을 찾을 수 없습니다.');
+    return member;
+  }
   const name = input.displayName?.trim();
   if (!name) throw new AppError(400, 'MEMBER_REQUIRED', '회원 이름을 입력하세요.');
-  const members = await prisma.gatheringMembership.findMany({
-    where: { groupId, status: 'ACTIVE', user: { gatheringProfile: { displayName: { contains: name } } } },
-    select: { userId: true },
+  const [match, second] = await tx.gatheringMembership.findMany({
+    where: {
+      ...where,
+      OR: [
+        { user: { gatheringProfile: { displayName: { contains: name } } } },
+        { userId: null, manualDisplayName: { contains: name } },
+      ],
+    },
+    take: 2,
   });
-  if (members.length === 0) throw new AppError(404, 'MEMBER_NOT_FOUND', '그 이름의 회원을 찾을 수 없습니다.');
-  const match = members[0];
-  if (!match || members.length > 1) {
-    throw new AppError(409, 'MEMBER_AMBIGUOUS', '같은 이름의 회원이 여러 명입니다. 더 정확히 입력하세요.');
-  }
-  return match.userId;
+  if (!match) throw new AppError(404, 'MEMBER_NOT_FOUND', '그 이름의 회원을 찾을 수 없습니다.');
+  if (second) throw new AppError(409, 'MEMBER_AMBIGUOUS', '같은 이름의 회원이 여러 명입니다. 더 정확히 입력하세요.');
+  return match;
 }
 
 function parseOptionalDate(value: string | null | undefined) {

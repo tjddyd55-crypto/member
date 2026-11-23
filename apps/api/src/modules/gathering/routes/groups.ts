@@ -5,6 +5,9 @@ import {
   gatheringGroupCreateSchema,
   gatheringInviteCreateSchema,
   gatheringMemberQuerySchema,
+  gatheringManualMemberCreateSchema,
+  gatheringManualMemberUpdateSchema,
+  gatheringManualMemberLinkSchema,
   gatheringMembershipDecisionSchema,
   gatheringRoleAssignSchema,
 } from '@member/contracts';
@@ -18,6 +21,7 @@ import {
   previewGatheringInvite,
   revokeGatheringInvite,
 } from '../invite-service.js';
+import { linkManualMember, manageManualMember } from '../manual-members.js';
 import { decideMembership } from '../membership-service.js';
 import { assignGatheringRole, revokeGatheringRole } from '../role-service.js';
 import { limitGatheringAuth, requireGatheringUserId } from '../http.js';
@@ -78,6 +82,29 @@ export const gatheringGroupRoutes: FastifyPluginAsync = async (app) => {
       );
     },
   );
+
+  const manual = '/api/gathering/groups/:groupId/manual-members';
+  app.post(manual, auth, async (request) => {
+    const { groupId } = groupParams.parse(request.params);
+    return manageManualMember(requireGatheringUserId(request), groupId, {
+      action: 'CREATE', input: gatheringManualMemberCreateSchema.parse(request.body),
+    });
+  });
+  app.patch(`${manual}/:membershipId`, auth, async (request) => {
+    const { groupId, membershipId } = memberParams.parse(request.params);
+    return manageManualMember(requireGatheringUserId(request), groupId, {
+      action: 'UPDATE', membershipId, input: gatheringManualMemberUpdateSchema.parse(request.body),
+    });
+  });
+  app.delete(`${manual}/:membershipId`, auth, async (request) => {
+    const { groupId, membershipId } = memberParams.parse(request.params);
+    return manageManualMember(requireGatheringUserId(request), groupId, { action: 'DELETE', membershipId });
+  });
+  app.post(`${manual}/:membershipId/link`, auth, async (request) => {
+    const { groupId, membershipId } = memberParams.parse(request.params);
+    const { targetMembershipId } = gatheringManualMemberLinkSchema.parse(request.body);
+    return linkManualMember(requireGatheringUserId(request), groupId, membershipId, targetMembershipId);
+  });
 
   app.post('/api/gathering/groups/:groupId/roles', auth, async (request) => {
     const params = groupParams.parse(request.params);

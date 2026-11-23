@@ -18,6 +18,7 @@ import type {
   GatheringMediaUploadItem,
   GatheringMediaView,
   GatheringMemberView,
+  GatheringManualMemberInput,
   GatheringOfficerTermView,
   GatheringOfficerView,
   GatheringSessionResponse,
@@ -301,9 +302,28 @@ export const api = {
       `/api/gathering/groups/${groupId}/officers`,
     );
   },
+  createManualMember(groupId: string, body: GatheringManualMemberInput) {
+    return request<{ member: GatheringMemberView }>(`/api/gathering/groups/${groupId}/manual-members`, {
+      method: 'POST', body: JSON.stringify(body),
+    });
+  },
+  updateManualMember(groupId: string, membershipId: string, body: GatheringManualMemberInput) {
+    return request<{ member: GatheringMemberView }>(`/api/gathering/groups/${groupId}/manual-members/${membershipId}`, {
+      method: 'PATCH', body: JSON.stringify(body),
+    });
+  },
+  deleteManualMember(groupId: string, membershipId: string) {
+    return request<{ ok: true }>(`/api/gathering/groups/${groupId}/manual-members/${membershipId}`, { method: 'DELETE' });
+  },
+  linkManualMember(groupId: string, membershipId: string, targetMembershipId: string) {
+    return request<{ ok: true; membershipId: string; userId: string }>(
+      `/api/gathering/groups/${groupId}/manual-members/${membershipId}/link`,
+      { method: 'POST', body: JSON.stringify({ targetMembershipId }) },
+    );
+  },
   assignOfficer(
     groupId: string,
-    body: { userId: string; role: 'SECRETARY' | 'TREASURER' | 'EXECUTIVE'; title?: string },
+    body: { userId?: string; membershipId?: string; role: 'SECRETARY' | 'TREASURER' | 'EXECUTIVE'; title?: string },
   ) {
     return request<{ assignmentId: string }>(`/api/gathering/groups/${groupId}/officers`, {
       method: 'POST',
@@ -674,7 +694,7 @@ export const api = {
     });
   },
   acceptInvite(token: string) {
-    return request<{ groupId: string; status: string }>(
+    return request<{ groupId: string; status: string; matchedManualMember: boolean }>(
       `/api/gathering/invites/${encodeURIComponent(token)}/accept`,
       {
         method: 'POST',

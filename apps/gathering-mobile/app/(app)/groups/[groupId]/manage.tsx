@@ -4,7 +4,17 @@ import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { GatheringInviteView, GatheringMemberView } from '@member/contracts';
 import { api } from '../../../../src/api/client';
-import { Body, FormError, Button, ErrorState, LoadingState, Notice, Screen, Title } from '../../../../src/design/ui';
+import {
+  Body,
+  FormError,
+  Button,
+  ErrorState,
+  LoadingState,
+  Notice,
+  Screen,
+  Title,
+} from '../../../../src/design/ui';
+import { useAppAlert } from '../../../../src/design/dialog';
 import { theme } from '../../../../src/theme';
 
 function inviteState(invite: GatheringInviteView) {
@@ -14,6 +24,9 @@ function inviteState(invite: GatheringInviteView) {
 }
 
 export default function ManageScreen() {
+  const { alert, dialog } = useAppAlert();
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [memberError, setMemberError] = useState('');
   const params = useLocalSearchParams<{ groupId: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
   const [canInvite, setCanInvite] = useState(false);
@@ -88,33 +101,71 @@ export default function ManageScreen() {
     if (canInvite) setInvites((await api.invites(groupId)).items);
   };
 
+  async function resolveMember(action: () => Promise<unknown>) {
+    if (memberBusy) return;
+    setMemberBusy(true);
+    setMemberError('');
+    try {
+      await action();
+      await load();
+    } catch (caught) {
+      setMemberError(caught instanceof Error ? caught.message : '참여 요청을 처리하지 못했습니다.');
+    } finally {
+      setMemberBusy(false);
+    }
+  }
+
   return (
     <Screen>
       <Title>관리</Title>
-      <Button label="모임으로" variant="text" onPress={() => router.replace(`/(app)/groups/${groupId}`)} />
+      {dialog}
+      <Button
+        label="모임으로"
+        variant="text"
+        onPress={() => router.replace(`/(app)/groups/${groupId}`)}
+      />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' ? (
         <View style={{ gap: theme.space[16] }}>
-          <Button label="집행부" variant="secondary" onPress={() => router.push(`/(app)/groups/${groupId}/officers`)} />
+          <Button
+            label="집행부"
+            variant="secondary"
+            onPress={() => router.push(`/(app)/groups/${groupId}/officers`)}
+          />
           {canSettings ? (
             <Button
               label={approval ? '초대 승인 끄기' : '초대 승인 켜기'}
               variant="secondary"
               onPress={() =>
-                void api.updateGroup(groupId, { inviteRequiresApproval: !approval }).then(() => setApproval(!approval))
+                void api
+                  .updateGroup(groupId, { inviteRequiresApproval: !approval })
+                  .then(() => setApproval(!approval))
               }
             />
           ) : null}
           {canInvite ? (
             <>
-              <Button label={invites.length > 0 ? '초대 링크 다시 발급' : '초대 링크 만들기'} onPress={() => void createInvite()} />
+              <Button
+                label={invites.length > 0 ? '초대 링크 다시 발급' : '초대 링크 만들기'}
+                onPress={() => void createInvite()}
+              />
               {link ? (
                 <View style={{ gap: theme.space[8] }}>
                   <Notice>이 주소는 지금만 전체 표시됩니다. 복사하거나 공유해 두세요.</Notice>
-                  <Text selectable style={{ color: theme.colors.text.primary }}>{link}</Text>
-                  <Button label={copied ? '복사했습니다' : '링크 복사'} variant="secondary" onPress={() => void copyLink()} />
-                  <Button label="공유 (카카오 등)" variant="secondary" onPress={() => void shareLink()} />
+                  <Text selectable style={{ color: theme.colors.text.primary }}>
+                    {link}
+                  </Text>
+                  <Button
+                    label={copied ? '복사했습니다' : '링크 복사'}
+                    variant="secondary"
+                    onPress={() => void copyLink()}
+                  />
+                  <Button
+                    label="공유 (카카오 등)"
+                    variant="secondary"
+                    onPress={() => void shareLink()}
+                  />
                 </View>
               ) : null}
               {error ? <FormError>{error}</FormError> : null}
@@ -123,7 +174,8 @@ export default function ManageScreen() {
               {invites.map((invite) => (
                 <View key={invite.id} style={{ gap: theme.space[8] }}>
                   <Text style={{ color: theme.colors.text.primary }}>
-                    {new Date(invite.expiresAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}까지 · {inviteState(invite)}
+                    {new Date(invite.expiresAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}
+                    까지 · {inviteState(invite)}
                   </Text>
                   {invite.revokedAt ? null : (
                     <Button
@@ -136,18 +188,65 @@ export default function ManageScreen() {
               ))}
             </>
           ) : null}
+          {memberError ? <FormError>{memberError}</FormError> : null}
           {canManage
             ? pending.map((member) => (
                 <View key={member.membershipId} style={{ gap: theme.space[8] }}>
-                  <Text style={{ color: theme.colors.text.primary }}>{member.displayName} 승인 대기</Text>
+                  <Text style={{ color: theme.colors.text.primary }}>
+                    {member.displayName} 승인 대기
+                  </Text>
+                  {member.linkCandidate ? (
+                    <>
+                      <Notice>
+                        같은 휴대폰 번호의 앱 미가입 회원: {member.linkCandidate.displayName} ·{' '}
+                        {member.linkCandidate.localJcName}
+                      </Notice>
+                      <Button
+                        label="기존 기록에 연결 승인"
+                        disabled={memberBusy}
+                        onPress={() => {
+                          const candidate = member.linkCandidate;
+                          if (!candidate) return;
+                          alert(
+                            '기존 기록에 연결 승인',
+                            `${candidate.displayName}님의 기록을 ${member.displayName}님의 앱 계정에 연결할까요?`,
+                            [
+                              { text: '취소', style: 'cancel' },
+                              {
+                                text: '연결 승인',
+                                onPress: () =>
+                                  void resolveMember(() =>
+                                    api.linkManualMember(
+                                      groupId,
+                                      candidate.membershipId,
+                                      member.membershipId,
+                                    ),
+                                  ),
+                              },
+                            ],
+                          );
+                        }}
+                      />
+                    </>
+                  ) : null}
                   <Button
-                    label="승인"
-                    onPress={() => void api.decideMember(groupId, member.membershipId, 'APPROVE').then(load)}
+                    label="새 회원으로 승인"
+                    disabled={memberBusy}
+                    onPress={() =>
+                      void resolveMember(() =>
+                        api.decideMember(groupId, member.membershipId, 'APPROVE'),
+                      )
+                    }
                   />
                   <Button
                     label="거절"
+                    disabled={memberBusy}
                     variant="secondary"
-                    onPress={() => void api.decideMember(groupId, member.membershipId, 'REJECT').then(load)}
+                    onPress={() =>
+                      void resolveMember(() =>
+                        api.decideMember(groupId, member.membershipId, 'REJECT'),
+                      )
+                    }
                   />
                 </View>
               ))

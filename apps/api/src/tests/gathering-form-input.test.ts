@@ -4,9 +4,10 @@ import {
   dateFromDateInput,
   dateInputValue,
   eventStartsAt,
-  focusedFieldScrollY,
   formatKoreanDate,
   keyboardAvoidingBehavior,
+  keyboardBottomPadding,
+  keyboardScrollDelta,
   paidAtFromCalendarDate,
   POSTCODE_PAGE,
   parsePostcodeMessage,
@@ -30,7 +31,24 @@ describe('모임 입력', () => {
     expect(parsePostcodeMessage(JSON.stringify({ roadAddress: '서울 중구 세종대로 110', jibunAddress: '지번' }))).toBe(
       '서울 중구 세종대로 110',
     );
+    expect(parsePostcodeMessage(JSON.stringify({
+      zonecode: '04986',
+      roadAddress: '서울 광진구 천호대로114길 15',
+      jibunAddress: '지번',
+    }))).toBe('(04986) 서울 광진구 천호대로114길 15');
+    expect(parsePostcodeMessage(JSON.stringify({
+      zonecode: ' 04986 ',
+      roadAddress: ' ',
+      jibunAddress: ' 지번 ',
+    }))).toBe('(04986) 지번');
+    expect(parsePostcodeMessage('{"zonecode":"04986"}')).toBeNull();
+    expect(parsePostcodeMessage('not JSON')).toBeNull();
     expect(parsePostcodeMessage('{}')).toBeNull();
+    expect(POSTCODE_PAGE).toContain('https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js');
+    expect(POSTCODE_PAGE).not.toContain('t1.daumcdn.net');
+    expect(POSTCODE_PAGE).toContain('banner: false');
+    expect(POSTCODE_PAGE).toContain('useBannerLink: false');
+    expect(POSTCODE_PAGE).toContain("zonecode: data.zonecode || ''");
     expect(POSTCODE_PAGE).toContain('ReactNativeWebView.postMessage');
     expect(POSTCODE_PAGE).toContain("window.parent.postMessage(raw, '*')");
     expect(composeAddress('서울 중구 세종대로 110', '101호')).toBe('서울 중구 세종대로 110 101호');
@@ -40,8 +58,13 @@ describe('모임 입력', () => {
   it('키보드가 열려도 포커스된 칸으로 스크롤할 위치를 남긴다', () => {
     expect(keyboardAvoidingBehavior('ios')).toBe('padding');
     expect(keyboardAvoidingBehavior('android')).toBeUndefined();
-    expect(focusedFieldScrollY(80)).toBe(56);
-    expect(focusedFieldScrollY(10)).toBe(0);
+    expect(keyboardBottomPadding(0)).toBe(120);
+    expect(keyboardBottomPadding(50)).toBe(120);
+    expect(keyboardBottomPadding(300)).toBe(348);
+    expect(keyboardScrollDelta(650, 800, 500)).toBe(174);
+    expect(keyboardScrollDelta(480, 490, 500)).toBe(14);
+    expect(keyboardScrollDelta(450, 800, 500)).toBe(0);
+    expect(keyboardScrollDelta(790, 800)).toBe(14);
   });
 
   it('업로드 링크 상태는 만료와 중지와 폐기를 한글로 구분한다', () => {

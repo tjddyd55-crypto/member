@@ -1,10 +1,11 @@
-import { createElement, useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { createElement, useCallback, useEffect, useRef, useState } from 'react';
+import { Linking, Modal, Platform, Pressable, StyleSheet, Text, type TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { WebView } from 'react-native-webview';
 import { theme } from '../theme';
 import {
+  POSTCODE_BASE_URL,
   POSTCODE_PAGE,
   composeAddress,
   dateFromDateInput,
@@ -91,6 +92,22 @@ export function AddressField({
   const [detail, setDetail] = useState('');
   const [open, setOpen] = useState(false);
   const composed = composeAddress(road, detail);
+  const detailRef = useRef<TextInput>(null);
+  const pendingFocus = useRef(false);
+
+  const focusDetail = useCallback(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    detailRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (open || !pendingFocus.current || Platform.OS === 'ios') return;
+    // Android has no Modal onDismiss callback, so wait for its slide transition.
+    const timer = setTimeout(focusDetail, Platform.OS === 'android' ? 350 : 50);
+    return () => clearTimeout(timer);
+  }, [open, focusDetail]);
+
 
   useEffect(() => {
     if (value !== composed) {
@@ -105,38 +122,70 @@ export function AddressField({
     onChange(composeAddress(nextRoad, nextDetail));
   };
 
+  const selectAddress = (address: string) => {
+    apply(address, detail);
+    pendingFocus.current = true;
+    setOpen(false);
+  };
+
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={styles.input}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => {
+          pendingFocus.current = false;
+          setOpen(true);
+        }}
+        style={styles.input}
+      >
         <Text style={styles.value}>{road.trim() ? road : '주소 검색'}</Text>
       </Pressable>
       <TextField
+        ref={detailRef}
         label="상세 주소 (선택)"
         value={detail}
         onChangeText={(next) => apply(road, next)}
         placeholder="동, 호수"
       />
-      <Modal animationType="slide" visible={open} onRequestClose={() => setOpen(false)}>
+      <Modal
+        animationType="slide"
+        visible={open}
+        onDismiss={focusDetail}
+        onRequestClose={() => setOpen(false)}
+      >
         <SafeAreaView style={styles.modal}>
           <Button label="닫기" variant="text" onPress={() => setOpen(false)} />
           {Platform.OS === 'web' ? (
-            <WebPostcode
-              onSelect={(roadAddress) => {
-                apply(roadAddress, detail);
-                setOpen(false);
-              }}
-            />
+            <WebPostcode onSelect={selectAddress} />
           ) : (
             <WebView
-              source={{ html: POSTCODE_PAGE }}
-              onMessage={(event) => {
-                const roadAddress = parsePostcodeMessage(event.nativeEvent.data);
-                if (!roadAddress) return;
-                apply(roadAddress, detail);
-                setOpen(false);
-              }}
+              source={{ html: POSTCODE_PAGE, baseUrl: POSTCODE_BASE_URL }}
+              javaScriptEnabled
+              domStorageEnabled
               originWhitelist={['*']}
+              setSupportMultipleWindows={false}
+              onShouldStartLoadWithRequest={({ url, isTopFrame, navigationType }) => {
+                if (url === 'about:blank') return true;
+                try {
+                  const { origin, protocol } = new URL(url);
+                  if (origin === POSTCODE_BASE_URL || origin === 'https://t1.kakaocdn.net') return true;
+                  if (
+                    (isTopFrame || navigationType === 'click') &&
+                    (protocol === 'http:' || protocol === 'https:')
+                  ) {
+                    void Linking.openURL(url).catch(() => undefined);
+                  }
+                } catch {
+                  return false;
+                }
+                return false;
+              }}
+              onMessage={(event) => {
+                const address = parsePostcodeMessage(event.nativeEvent.data);
+                if (address) selectAddress(address);
+              }}
             />
           )}
         </SafeAreaView>
@@ -145,21 +194,73 @@ export function AddressField({
   );
 }
 
+type PostcodeConstructor = new (options: {
+  oncomplete: (data: { zonecode: string; roadAddress: string; jibunAddress: string }) => void;
+  banner: boolean;
+  useBannerLink: boolean;
+  width: string;
+  height: string;
+}) => { embed: (container: HTMLDivElement) => void };
+
 function WebPostcode({ onSelect }: { onSelect: (road: string) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const onSelectRef = useRef(onSelect);
+
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      const raw = typeof event.data === 'string' ? event.data : '';
-      const roadAddress = parsePostcodeMessage(raw);
-      if (!roadAddress) return;
-      onSelect(roadAddress);
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
+    onSelectRef.current = onSelect;
   }, [onSelect]);
-  return createElement('iframe', {
-    title: '주소 검색',
-    srcDoc: POSTCODE_PAGE,
-    style: { border: '0', width: '100%', height: '100%', flex: 1 },
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const browser = window as Window & {
+      kakao?: { Postcode?: PostcodeConstructor };
+      daum?: { Postcode?: PostcodeConstructor };
+    };
+    const getPostcode = () => browser.kakao?.Postcode ?? browser.daum?.Postcode;
+    let active = true;
+    const embed = () => {
+      const Postcode = getPostcode();
+      if (!active || containerRef.current !== container || !Postcode) return;
+
+      new Postcode({
+        oncomplete: ({ zonecode, roadAddress, jibunAddress }) => {
+          if (!active || containerRef.current !== container) return;
+          const address = parsePostcodeMessage(JSON.stringify({ zonecode, roadAddress, jibunAddress }));
+          if (address) onSelectRef.current(address);
+        },
+        banner: false,
+        useBannerLink: false,
+        width: '100%',
+        height: '100%',
+      }).embed(container);
+    };
+
+    let script: HTMLScriptElement | undefined;
+    if (getPostcode()) {
+      embed();
+    } else {
+      script = document.createElement('script');
+      script.src = 'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+      script.async = true;
+      script.addEventListener('load', embed);
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      active = false;
+      script?.removeEventListener('load', embed);
+      script?.remove();
+      container.replaceChildren();
+    };
+  }, []);
+
+  return createElement('div', {
+    role: 'region',
+    'aria-label': '주소 검색',
+    ref: containerRef,
+    style: { width: '100%', height: '100%', flex: 1, minHeight: 0 },
   });
 }
 

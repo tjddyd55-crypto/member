@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,20 +10,67 @@ import {
   Text,
   TextInput,
   View,
+  type KeyboardMetrics,
   type TextInputProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DISCLAIMER } from '../copy';
-import { focusedFieldScrollY, keyboardAvoidingBehavior } from '../features/forms/values';
+import {
+  keyboardAvoidingBehavior,
+  keyboardBottomPadding,
+  keyboardScrollDelta,
+} from '../features/forms/values';
 import { useUnderAppChrome } from '../features/group/AppChrome';
 import { theme } from '../theme';
 
-type FormScroll = {
-  contentRef: React.RefObject<View | null>;
-  scrollTo: (y: number) => void;
-};
+type FormScroll = (input: TextInput | null) => void;
 
 const FormScrollContext = createContext<FormScroll | null>(null);
+
+function useKeyboardFrame() {
+  const [frame, setFrame] = useState<KeyboardMetrics | undefined>(() => Keyboard.metrics?.());
+  useEffect(() => {
+    const show = (event: { endCoordinates: KeyboardMetrics }) => setFrame(event.endCoordinates);
+    const hide = () => setFrame(undefined);
+    const subscriptions = [
+      Keyboard.addListener('keyboardWillShow', show),
+      Keyboard.addListener('keyboardDidShow', show),
+      Keyboard.addListener('keyboardWillHide', hide),
+      Keyboard.addListener('keyboardDidHide', hide),
+    ];
+    return () => subscriptions.forEach((subscription) => subscription.remove());
+  }, []);
+  return frame;
+}
+
+export function KeyboardSheet({ children }: { children: React.ReactNode }) {
+  const keyboard = useKeyboardFrame();
+  const containerRef = useRef<View>(null);
+  const [overlap, setOverlap] = useState(0);
+  const updateOverlap = useCallback(() => {
+    if (!keyboard) {
+      setOverlap(0);
+      return;
+    }
+    containerRef.current?.measureInWindow((_x, y, _width, height) => {
+      const obscuredHeight = Math.max(0, y + height - keyboard.screenY);
+      setOverlap(Math.min(keyboard.height, obscuredHeight));
+    });
+  }, [keyboard]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(updateOverlap);
+    return () => cancelAnimationFrame(frame);
+  }, [updateOverlap]);
+
+  return (
+    <View ref={containerRef} collapsable={false} onLayout={updateOverlap} style={styles.sheetBackdrop}>
+      <View style={[styles.sheetContent, { marginBottom: keyboard ? overlap : 0 }]}>
+        {children}
+      </View>
+    </View>
+  );
+}
 
 export function Screen({
   children,
@@ -42,15 +90,56 @@ export function Screen({
   const underChrome = useUnderAppChrome();
   const scrollRef = useRef<ScrollView>(null);
   const contentRef = useRef<View>(null);
+  const viewportRef = useRef<View>(null);
+  const focusedInput = useRef<TextInput>(null);
+  const scrollOffset = useRef(0);
+  const keyboard = useKeyboardFrame();
+
+  const revealFocusedInput = useCallback(() => {
+    const input = focusedInput.current;
+    const viewport = viewportRef.current;
+    if (!input?.isFocused() || !viewport) return;
+    viewport.measureInWindow((_x, viewportY, _width, viewportHeight) => {
+      if (!viewportHeight || !input.isFocused()) return;
+      const viewportBottom = viewportY + viewportHeight;
+      const scrollToReveal = (fieldBottom: number) => {
+        if (focusedInput.current !== input || !input.isFocused()) return;
+        const delta = keyboardScrollDelta(fieldBottom, viewportBottom, keyboard?.screenY);
+        if (delta > 0) {
+          scrollRef.current?.scrollTo({ y: scrollOffset.current + delta, animated: true });
+        }
+      };
+
+      input.measureInWindow((_fieldX, fieldY, _fieldWidth, fieldHeight) => {
+        if (fieldHeight > 0 && Number.isFinite(fieldY)) {
+          scrollToReveal(fieldY + fieldHeight);
+        } else if (contentRef.current) {
+          input.measureLayout(
+            contentRef.current,
+            (_left, top, _inputWidth, height) =>
+              scrollToReveal(viewportY + top + height - scrollOffset.current),
+            () => undefined,
+          );
+        }
+      });
+    });
+  }, [keyboard]);
+
   useEffect(() => {
     if (scrollKey !== undefined) scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [scrollKey]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(revealFocusedInput);
+    return () => cancelAnimationFrame(frame);
+  }, [revealFocusedInput]);
+
   const formScroll = useMemo<FormScroll>(
-    () => ({
-      contentRef,
-      scrollTo: (y) => scrollRef.current?.scrollTo({ y, animated: true }),
-    }),
-    [],
+    () => (input) => {
+      focusedInput.current = input;
+      revealFocusedInput();
+    },
+    [revealFocusedInput],
   );
   return (
     <SafeAreaView
@@ -63,16 +152,31 @@ export function Screen({
         {header ? <View style={styles.header}>{header}</View> : null}
         <FormScrollContext.Provider value={formScroll}>
           {scroll ? (
-            <ScrollView
-              ref={scrollRef}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-              contentContainerStyle={styles.flexGrow}
+            <View
+              ref={viewportRef}
+              collapsable={false}
+              style={styles.flex}
+              onLayout={revealFocusedInput}
             >
-              <View ref={contentRef} collapsable={false} style={styles.content}>
-                {children}
-              </View>
-            </ScrollView>
+              <ScrollView
+                ref={scrollRef}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                scrollEventThrottle={16}
+                onScroll={(event) => {
+                  scrollOffset.current = event.nativeEvent.contentOffset.y;
+                }}
+                onContentSizeChange={revealFocusedInput}
+                contentContainerStyle={[
+                  styles.flexGrow,
+                  { paddingBottom: keyboardBottomPadding(keyboard?.height ?? 0) },
+                ]}
+              >
+                <View ref={contentRef} collapsable={false} style={styles.content}>
+                  {children}
+                </View>
+              </ScrollView>
+            </View>
           ) : (
             <View style={[styles.content, styles.flex, { paddingBottom: theme.space[16] }]}>
               {children}
@@ -151,26 +255,27 @@ export function TextField({
   label,
   error,
   onFocus,
+  ref,
   ...props
-}: TextInputProps & { label: string; error?: string }) {
+}: TextInputProps & { label: string; error?: string; ref?: React.Ref<TextInput> }) {
   const formScroll = useContext(FormScrollContext);
-  const fieldRef = useRef<View>(null);
+  const inputRef = useRef<TextInput>(null);
+  const attachInput = useCallback((input: TextInput | null) => {
+    inputRef.current = input;
+    if (typeof ref === 'function') return ref(input);
+    if (ref) ref.current = input;
+  }, [ref]);
+
   return (
-    <View ref={fieldRef} style={styles.field}>
+    <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        ref={attachInput}
         placeholderTextColor={theme.colors.text.disabled}
         style={[styles.input, error ? styles.inputError : null]}
         onFocus={(event) => {
           onFocus?.(event);
-          const field = fieldRef.current;
-          const content = formScroll?.contentRef.current;
-          if (!field || !content || !formScroll) return;
-          field.measureLayout(
-            content,
-            (_x, y) => formScroll.scrollTo(focusedFieldScrollY(y)),
-            () => undefined,
-          );
+          formScroll?.(inputRef.current);
         }}
         {...props}
       />
@@ -220,11 +325,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg.default },
   flex: { flex: 1 },
   flexGrow: { flexGrow: 1 },
+  sheetBackdrop: { flex: 1, backgroundColor: '#0006' },
+  sheetContent: { flex: 1, justifyContent: 'flex-end' },
   header: { paddingHorizontal: theme.layout.horizontalGutter, paddingTop: 8, gap: 8 },
   content: {
     padding: theme.layout.horizontalGutter,
     gap: theme.space[16],
-    paddingBottom: 120,
   },
   title: { ...theme.typography.display, color: theme.colors.text.primary },
   section: { ...theme.typography.sectionTitle, color: theme.colors.text.primary },

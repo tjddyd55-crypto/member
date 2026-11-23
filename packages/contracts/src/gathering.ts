@@ -376,6 +376,7 @@ export type GatheringInvitePreview = {
 };
 
 export type GatheringMediaView = {
+  originalName?: string | null;
   hasPoster: boolean;
   id: string;
   kind: 'PHOTO' | 'VIDEO';
@@ -402,6 +403,7 @@ export type GatheringAlbumEvent = {
   eventId: string;
   title: string;
   startsAt: string;
+  createdAt: string;
   year: number;
   photoCount: number;
   videoCount: number;
@@ -415,6 +417,10 @@ export type GatheringAlbumFolder = {
   videoCount: number;
   canManage: boolean;
 };
+
+export type GatheringAlbumItem =
+  | ({ type: 'event' } & GatheringAlbumEvent)
+  | ({ type: 'folder' } & GatheringAlbumFolder);
 
 export type GatheringAlbumYear = {
   year: number;

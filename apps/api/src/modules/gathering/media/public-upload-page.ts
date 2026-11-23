@@ -53,12 +53,12 @@ button:disabled { opacity: .55; cursor: default; }
 .chip, #more { background: var(--soft); border-radius: var(--radius); font-weight: 600; }
 .chip { flex: 1; min-width: 0; }
 .chip span, #percent { font-size: 13px; font-weight: 600; }
-#progress, #grid, #gallery-status, #more, .notice { margin-top: 12px; }
+#progress, #download-progress, #download-actions, #grid, #gallery-status, #more, .notice { margin-top: 12px; }
 .progress-header, .failed { display: flex; align-items: center; gap: 8px; }
 .progress-header { justify-content: space-between; font-size: 14px; line-height: 20px; }
-#progress[data-done] .progress-header { color: var(--success); }
+#progress[data-done] .progress-header, #download-progress[data-done] .progress-header { color: var(--success); }
 .track { margin-top: 8px; height: 6px; border-radius: var(--radius); background: var(--subtle); overflow: hidden; }
-#fill { display: block; height: 100%; width: 0; background: var(--primary); }
+#fill, #download-fill { display: block; height: 100%; width: 0; background: var(--primary); }
 .failed { margin-top: 8px; justify-content: space-between; }
 .failure-text { min-width: 0; }
 .filename { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -80,6 +80,13 @@ button:disabled { opacity: .55; cursor: default; }
   font-size: 14px;
 }
 .cell::before { content: ""; display: block; padding-top: 100%; }
+#download-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cell[aria-pressed]::after {
+  content: ""; position: absolute; z-index: 1; top: 6px; right: 6px;
+  width: 20px; height: 20px; border-radius: 4px; background: white;
+  color: var(--primary); box-shadow: 0 1px 4px #0006; line-height: 20px;
+}
+.cell[aria-pressed="true"]::after { content: "✓"; }
 .cell:disabled { opacity: .7; }
 .cell.video { background: var(--primary); color: var(--bg); }
 .cell img, .cell canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -188,6 +195,16 @@ ${header(title)}
   <p id="gallery-error" role="alert" hidden></p>
   <button id="gallery-retry" type="button" hidden>다시 시도</button>
 </div>
+<div id="download-actions" hidden>
+  <button class="chip" id="select-media" type="button">선택</button>
+  <span id="selected-count" role="status" hidden></span>
+  <button id="download-media" type="button" hidden>다운로드</button>
+</div>
+<section id="download-progress" aria-label="저장 진행 상황" hidden>
+  <div class="progress-header"><span id="download-label" role="status"></span><span id="download-percent"></span></div>
+  <div id="download-track" class="track" role="progressbar" aria-label="저장 진행률" aria-valuemin="0" aria-valuemax="100"><span id="download-fill"></span></div>
+  <div id="download-failures"></div>
+</section>
 <div id="grid" aria-label="갤러리" hidden></div>
 <button id="more" type="button" hidden>이전 사진 더 보기</button>
 <p class="notice">${escapeHtml(info.notice)}</p>

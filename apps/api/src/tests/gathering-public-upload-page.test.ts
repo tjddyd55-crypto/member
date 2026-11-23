@@ -175,6 +175,8 @@ describe('공개 업로드 갤러리', () => {
     expect(valid.statusCode).toBe(200);
     expect(valid.body).toContain('<h1>11월 이사회</h1>');
     expect(valid.body).toContain('viewport-fit=cover');
+    expect(valid.body).toContain('다운로드');
+    expect(valid.body).toContain('저장 중');
 
     findLink.mockResolvedValueOnce({ ...link, revokedAt: new Date() }).mockResolvedValue(null);
     const revoked = await app.inject(prefix + '/revoked');

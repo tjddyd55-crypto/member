@@ -43,10 +43,19 @@ describe('사진 메뉴 폴더 관리', () => {
     expect(albums).not.toContain('Alert.prompt');
     expect(albums).toContain('deleteFolder(groupId, folder.folderId)');
     const events = albums.slice(
-      albums.indexOf('{events.map('),
-      albums.indexOf('async function renameFolder'),
+      albums.indexOf("if (item.type === 'event')"),
+      albums.indexOf('const folder = item;'),
     );
+    expect(events).toContain('styles.eventBadge');
     expect(events).not.toContain('canManage');
+    expect(events).not.toContain('⋯');
+    const folders = albums.slice(
+      albums.indexOf('const folder = item;'),
+      albums.indexOf('{status ==='),
+    );
+    expect(folders).toContain('styles.folderBadge');
+    expect(folders).toContain('⋯');
+    expect(folders).toContain('confirmDeleteFolder(folder)');
     expect(events).not.toContain('confirmDeleteFolder');
   });
 });

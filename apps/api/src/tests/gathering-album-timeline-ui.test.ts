@@ -12,23 +12,21 @@ describe('앨범·선택·연속 일정 UI', () => {
     const albums = source('src/features/media/AlbumsPane.tsx');
     expect(albums).toContain('styles.eventBadge]}>행사');
     expect(albums).toContain('styles.folderBadge]}>폴더');
-    expect(albums).not.toContain('formatAlbumDate(event.startsAt)');
-    expect(albums.match(/style=\{styles.card\}/g)).toHaveLength(2);
-    expect(albums.match(/style=\{styles.heading\}/g)).toHaveLength(2);
+    expect(albums).toContain('{items.map((item) => {');
     expect(albums).toContain('{albumCardDate(folder.createdAt)} · 사진 {folder.photoCount}');
     expect(albums).toContain('{folder.videoCount}');
-    expect(albums).toContain('사진 {event.photoCount} · 영상 {event.videoCount}');
-    expect(albums).toContain('theme.colors.primary.soft');
-    expect(albums).toContain('theme.colors.bg.default');
+    expect(albums).toContain('{albumCardDate(event.startsAt)} · 사진 {event.photoCount}');
+    expect(albums).toContain('{event.videoCount}');
     const events = albums.slice(
-      albums.indexOf('{events.map('),
-      albums.indexOf('async function renameFolder'),
+      albums.indexOf("if (item.type === 'event')"),
+      albums.indexOf('const folder = item;'),
     );
+    expect(events).toContain('styles.eventBadge');
     expect(events).not.toContain('⋯');
     expect(events).not.toContain('confirmDeleteFolder');
     expect(albums).toContain('folder.canManage ?');
   });
-  it('공용 흰색 사각 체크박스와 권한 없는 타일의 비활성 상태를 사용한다', () => {
+  it('모든 미디어 타일을 다운로드 대상으로 선택하고 삭제 권한을 따로 적용한다', () => {
     const checkbox = source('src/design/SelectCheckbox.tsx');
     for (const pattern of [
       'width: 24',
@@ -47,8 +45,13 @@ describe('앨범·선택·연속 일정 UI', () => {
       expect(checkbox).toContain(pattern);
     const media = source('src/features/media/MediaPane.tsx');
     expect(media).toContain('<SelectCheckbox selected={Boolean(selected)} size={20} />');
-    expect(media).toContain('selecting && item.canDelete ?');
-    expect(media).toContain('selecting && !item.canDelete && { opacity: 0.35 }');
+    expect(media).toMatch(/\{selecting \?\s*(?:\(\s*)?<SelectCheckbox/);
+    expect(media).toContain('if (!selecting && !deleting && !saving) setSelected([item.id])');
+    expect(media).not.toContain('selecting && !item.canDelete');
+    expect(media).toContain('label="다운로드"');
+    expect(media).toContain('selectedItems.filter((item) => item.canDelete)');
+    expect(media).toContain('deletable.length === 0');
+    expect(media).toContain('confirmRemove(deletable)');
     expect(media).not.toContain("selected ? '✓' : '○'");
     expect(media).toContain(
       'else for (const asset of assets) await api.deleteMedia(groupId, asset.id)',

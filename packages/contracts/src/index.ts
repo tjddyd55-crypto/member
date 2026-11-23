@@ -93,6 +93,7 @@ export type {
   GatheringInviteView,
   GatheringAlbumEvent,
   GatheringAlbumFolder,
+  GatheringAlbumItem,
   GatheringAlbumYear,
   GatheringMediaUploadItem,
   GatheringMediaView,

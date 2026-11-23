@@ -1,5 +1,6 @@
 import {
   calendarYearKst,
+  kstDateKey,
   MEDIA_PAGE_LIMIT,
   SIGNED_URL_TTL_SECONDS,
 } from '@member/gathering-domain';
@@ -162,28 +163,22 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
   });
   const events = await prisma.gatheringEvent.findMany({
     where: { groupId, deletedAt: null },
-    select: { id: true, title: true, startsAt: true },
+    select: { id: true, title: true, startsAt: true, createdAt: true },
   });
-  const byEvent = new Map(events.map((event) => [event.id, event]));
-  const cards = counts.flatMap((row) => {
-    if (!row.eventId) return [];
-    const event = byEvent.get(row.eventId);
-    if (!event) return [];
-    return [{ event, kind: row.kind, count: row._count._all }];
-  });
-  const eventList = eventCards(cards);
-  for (const event of events) {
-    if (eventList.some((card) => card.eventId === event.id)) continue;
-    eventList.push({
+  const countByEventAndKind = new Map(
+    counts.map((row) => [`${row.eventId}:${row.kind}`, row._count._all]),
+  );
+  const eventList = events
+    .map((event) => ({
       eventId: event.id,
       title: event.title,
       startsAt: event.startsAt.toISOString(),
+      createdAt: event.createdAt.toISOString(),
       year: calendarYearKst(event.startsAt),
-      photoCount: 0,
-      videoCount: 0,
-    });
-  }
-  eventList.sort((left, right) => right.startsAt.localeCompare(left.startsAt));
+      photoCount: countByEventAndKind.get(`${event.id}:PHOTO`) ?? 0,
+      videoCount: countByEventAndKind.get(`${event.id}:VIDEO`) ?? 0,
+    }))
+    .sort((left, right) => right.startsAt.localeCompare(left.startsAt));
   const folders = await prisma.gatheringMediaFolder.findMany({
     where: { groupId, deletedAt: null },
     orderBy: { createdAt: 'desc' },
@@ -198,21 +193,56 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
     },
     _count: { _all: true },
   });
-  return {
-    years: yearTotals(cards),
-    events: eventList.filter((card) => (year == null ? true : card.year === year)),
-    folders: folders.map((folder) => ({
-      folderId: folder.id,
-      createdAt: folder.createdAt.toISOString(),
-      canManage: canManageFolders(access),
-      title: folder.title,
-      photoCount: folderCounts
-        .filter((row) => row.folderId === folder.id && row.kind === 'PHOTO')
-        .reduce((sum, row) => sum + row._count._all, 0),
-      videoCount: folderCounts
-        .filter((row) => row.folderId === folder.id && row.kind === 'VIDEO')
-        .reduce((sum, row) => sum + row._count._all, 0),
+  const countByFolderAndKind = new Map(
+    folderCounts.map((row) => [`${row.folderId}:${row.kind}`, row._count._all]),
+  );
+  const canManage = canManageFolders(access);
+  const folderList = folders.map((folder) => ({
+    folderId: folder.id,
+    createdAt: folder.createdAt.toISOString(),
+    canManage,
+    title: folder.title,
+    photoCount: countByFolderAndKind.get(`${folder.id}:PHOTO`) ?? 0,
+    videoCount: countByFolderAndKind.get(`${folder.id}:VIDEO`) ?? 0,
+  }));
+  const entries = [
+    ...eventList.map((event) => ({
+      item: { type: 'event' as const, ...event },
+      date: new Date(event.startsAt),
+      id: event.eventId,
     })),
+    ...folderList.map((folder) => ({
+      item: { type: 'folder' as const, ...folder },
+      date: new Date(folder.createdAt),
+      id: folder.folderId,
+    })),
+  ].map((entry) => ({
+    ...entry,
+    year: calendarYearKst(entry.date),
+    day: kstDateKey(entry.date),
+  }));
+  const totals = new Map<number, { year: number; photoCount: number; videoCount: number }>();
+  for (const entry of entries) {
+    const total = totals.get(entry.year) ?? { year: entry.year, photoCount: 0, videoCount: 0 };
+    total.photoCount += entry.item.photoCount;
+    total.videoCount += entry.item.videoCount;
+    totals.set(entry.year, total);
+  }
+  return {
+    years: [...totals.values()].sort((left, right) => right.year - left.year),
+    events: eventList.filter((event) => year == null || event.year === year),
+    folders: folderList.filter(
+      (folder) => year == null || calendarYearKst(new Date(folder.createdAt)) === year,
+    ),
+    items: entries
+      .filter((entry) => year == null || entry.year === year)
+      .sort(
+        (left, right) =>
+          right.day.localeCompare(left.day) ||
+          right.item.createdAt.localeCompare(left.item.createdAt) ||
+          right.id.localeCompare(left.id),
+      )
+      .map((entry) => entry.item),
   };
 }
 
@@ -222,52 +252,4 @@ async function requireListedEvent(groupId: string, eventId: string) {
     select: { id: true },
   });
   if (!event) throw new AppError(404, 'EVENT_NOT_FOUND', '행사를 찾을 수 없습니다.');
-}
-
-function yearTotals(
-  cards: Array<{ event: { startsAt: Date }; kind: 'PHOTO' | 'VIDEO'; count: number }>,
-) {
-  const totals = new Map<number, { year: number; photoCount: number; videoCount: number }>();
-  for (const card of cards) {
-    const year = calendarYearKst(card.event.startsAt);
-    const current = totals.get(year) ?? { year, photoCount: 0, videoCount: 0 };
-    if (card.kind === 'PHOTO') current.photoCount += card.count;
-    else current.videoCount += card.count;
-    totals.set(year, current);
-  }
-  return [...totals.values()].sort((left, right) => right.year - left.year);
-}
-
-function eventCards(
-  cards: Array<{
-    event: { id: string; title: string; startsAt: Date };
-    kind: 'PHOTO' | 'VIDEO';
-    count: number;
-  }>,
-) {
-  const grouped = new Map<
-    string,
-    {
-      eventId: string;
-      title: string;
-      startsAt: string;
-      year: number;
-      photoCount: number;
-      videoCount: number;
-    }
-  >();
-  for (const card of cards) {
-    const current = grouped.get(card.event.id) ?? {
-      eventId: card.event.id,
-      title: card.event.title,
-      startsAt: card.event.startsAt.toISOString(),
-      year: calendarYearKst(card.event.startsAt),
-      photoCount: 0,
-      videoCount: 0,
-    };
-    if (card.kind === 'PHOTO') current.photoCount += card.count;
-    else current.videoCount += card.count;
-    grouped.set(card.event.id, current);
-  }
-  return [...grouped.values()].sort((left, right) => right.startsAt.localeCompare(left.startsAt));
 }

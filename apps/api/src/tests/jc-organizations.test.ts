@@ -488,6 +488,29 @@ describe('JC organization master data', () => {
       payload: { scopeDistrictId: null },
     });
     expect(update.json()).toMatchObject({ scopeDistrictId: null, scopeLocalId: org.id });
+    const paired = await group(signup.headers, { scopeDistrictId: first.id, scopeLocalId: org.id });
+    const move = await app.inject({
+      method: 'POST',
+      url: `${adminBase}/locals/${org.id}/parent`,
+      headers: adminHeaders,
+      payload: { districtId: second.id, note: '범위 동기화' },
+    });
+    expect(move.statusCode, move.body).toBe(200);
+    expect(await prisma.gatheringGroup.findUnique({ where: { id: paired.id } })).toMatchObject({
+      scopeDistrictId: second.id,
+      scopeLocalId: org.id,
+    });
+    expect(await prisma.gatheringGroup.findUnique({ where: { id: scoped.id } })).toMatchObject({
+      scopeDistrictId: null,
+      scopeLocalId: org.id,
+    });
+    const retained = await app.inject({
+      method: 'PATCH',
+      url: `/api/gathering/groups/${paired.id}`,
+      headers: signup.headers,
+      payload: { scopeLocalId: org.id },
+    });
+    expect(retained.statusCode, retained.body).toBe(200);
     const payload = { name: '앱 미가입', phone: phone(), localId: org.id, ...identity };
     const manual = await app.inject({
       method: 'POST',
@@ -500,7 +523,7 @@ describe('JC organization master data', () => {
     expect(manual.json().member).toMatchObject({
       localId: org.id,
       localJcName: org.displayName,
-      district: { id: first.id },
+      district: { id: second.id },
     });
     expect(
       await prisma.gatheringMembership.findUnique({ where: { id: membershipId } }),

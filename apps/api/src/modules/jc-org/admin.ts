@@ -225,6 +225,13 @@ export function saveAdminOrg(
               },
             });
 
+    if (moved) {
+      // Keep group scopes consistent: a group scoped to this local follows it to the new district.
+      await tx.gatheringGroup.updateMany({
+        where: { scopeLocalId: saved.id, scopeDistrictId: { not: null } },
+        data: { scopeDistrictId: districtId },
+      });
+    }
     if (renamed) await addAliases(tx, type, saved.id, nameAliases);
     const after = await readOrg(tx, type, saved.id);
     await recordOrgChange(tx, {

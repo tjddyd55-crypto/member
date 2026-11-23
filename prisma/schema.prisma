@@ -125,6 +125,8 @@ model User {
   gatheringProfile               GatheringProfile?
   gatheringAffiliations          GatheringLocalAffiliation[]
   gatheringMemberships           GatheringMembership[]           @relation("GatheringMemberUser")
+  gatheringManualAdds            GatheringMembership[]           @relation("GatheringManualAdder")
+  gatheringManualLinks           GatheringMembership[]           @relation("GatheringManualLinker")
   gatheringApprovedMemberships   GatheringMembership[]           @relation("GatheringMembershipApprover")
   gatheringSessions              GatheringSession[]
   gatheringRecoveryCodes         GatheringRecoveryCode[]
@@ -699,21 +701,31 @@ model GatheringGroup {
 }
 
 model GatheringMembership {
-  id                 String                     @id @default(cuid())
+  id                 String                    @id @default(cuid())
   groupId            String
-  userId             String
-  status             GatheringMembershipStatus  @default(PENDING)
+  userId             String?
+  manualDisplayName  String?
+  manualPhone        String?
+  manualLocalJcName  String?
+  addedByUserId      String?
+  linkedAt           DateTime?
+  linkedByUserId     String?
+  status             GatheringMembershipStatus @default(PENDING)
   directoryConsentAt DateTime?
   joinedAt           DateTime?
   approvedAt         DateTime?
   approvedByUserId   String?
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
 
-  group      GatheringGroup           @relation(fields: [groupId], references: [id])
-  user       User                     @relation("GatheringMemberUser", fields: [userId], references: [id])
-  approvedBy User?                    @relation("GatheringMembershipApprover", fields: [approvedByUserId], references: [id])
-  roles      GatheringRoleAssignment[]
+  group          GatheringGroup            @relation(fields: [groupId], references: [id])
+  user           User?                     @relation("GatheringMemberUser", fields: [userId], references: [id], onDelete: Restrict)
+  approvedBy     User?                     @relation("GatheringMembershipApprover", fields: [approvedByUserId], references: [id])
+  addedBy        User?                     @relation("GatheringManualAdder", fields: [addedByUserId], references: [id])
+  linkedBy       User?                     @relation("GatheringManualLinker", fields: [linkedByUserId], references: [id])
+  executiveTerms GatheringExecutiveTerm[]
+  dues           GatheringMemberDue[]
+  roles          GatheringRoleAssignment[]
 
   @@unique([groupId, userId])
   @@index([userId, status])
@@ -741,21 +753,21 @@ model GatheringInvite {
 }
 
 model GatheringRoleAssignment {
-  id               String         @id @default(cuid())
+  id               String        @id @default(cuid())
   groupId          String
   membershipId     String
-  userId           String
+  userId           String?
   role             GatheringRole
   title            String?
-  assignedByUserId String
-  assignedAt       DateTime       @default(now())
+  assignedByUserId String?
+  assignedAt       DateTime      @default(now())
   revokedAt        DateTime?
   revokedByUserId  String?
 
   group      GatheringGroup      @relation(fields: [groupId], references: [id])
   membership GatheringMembership @relation(fields: [membershipId], references: [id])
-  user       User                @relation("GatheringRoleSubject", fields: [userId], references: [id])
-  assignedBy User                @relation("GatheringRoleAssigner", fields: [assignedByUserId], references: [id])
+  user       User?               @relation("GatheringRoleSubject", fields: [userId], references: [id], onDelete: Restrict)
+  assignedBy User?               @relation("GatheringRoleAssigner", fields: [assignedByUserId], references: [id], onDelete: Restrict)
   revokedBy  User?               @relation("GatheringRoleRevoker", fields: [revokedByUserId], references: [id])
 
   @@index([groupId, userId, revokedAt])
@@ -764,17 +776,19 @@ model GatheringRoleAssignment {
 }
 
 model GatheringExecutiveTerm {
-  id        String         @id @default(cuid())
-  groupId   String
-  userId    String
-  role      GatheringRole
-  title     String?
-  fiscalYear Int
-  startedAt DateTime
-  endedAt   DateTime?
+  id           String        @id @default(cuid())
+  membershipId String?
+  groupId      String
+  userId       String?
+  role         GatheringRole
+  title        String?
+  fiscalYear   Int
+  startedAt    DateTime
+  endedAt      DateTime?
 
-  group GatheringGroup @relation(fields: [groupId], references: [id])
-  user  User           @relation(fields: [userId], references: [id])
+  membership GatheringMembership? @relation(fields: [membershipId], references: [id])
+  group      GatheringGroup       @relation(fields: [groupId], references: [id])
+  user       User?                @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([groupId, fiscalYear])
   @@index([userId])
@@ -999,8 +1013,9 @@ model GatheringFinanceTransaction {
 
 model GatheringMemberDue {
   id            String             @id @default(cuid())
+  membershipId  String?
   groupId       String
-  userId        String
+  userId        String?
   financeYearId String
   amountWon     Int
   paidAmountWon Int                @default(0)
@@ -1009,8 +1024,9 @@ model GatheringMemberDue {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
+  membership  GatheringMembership? @relation(fields: [membershipId], references: [id])
   group       GatheringGroup       @relation(fields: [groupId], references: [id])
-  user        User                 @relation(fields: [userId], references: [id])
+  user        User?                @relation(fields: [userId], references: [id], onDelete: Restrict)
   financeYear GatheringFinanceYear @relation(fields: [financeYearId], references: [id])
 
   @@unique([groupId, userId, financeYearId])

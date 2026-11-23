@@ -121,11 +121,11 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
       .catch((cause) => setError(cause instanceof Error ? cause.message : '모임을 불러오지 못했습니다.'));
   }
   useEffect(reload, [groupId]);
-  async function run(path: string, body: unknown) {
+  async function run(path: string, body: unknown, method = 'POST') {
     setError('');
     setNotice('');
     try {
-      await api(path, { method: 'POST', body: JSON.stringify(body) });
+      await api(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
       setNotice('서버가 반영했습니다.');
       setMemberRefresh((value) => value + 1);
       reload();
@@ -156,7 +156,7 @@ export function GroupPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
       {tab === '이용권' ? <SubscriptionForm groupId={groupId} subscriptionId={group.subscription.id} onSubmit={run} /> : null}
       {tab === '입금' ? <DepositForm groupId={groupId} subscriptionId={group.subscription.id} role={role} onSubmit={run} /> : null}
       {tab === '용량' ? <QuotaForm groupId={groupId} onSubmit={run} /> : null}
-      {tab === '회원' ? <GroupMembers groupId={groupId} refresh={memberRefresh} onSubmit={run} /> : null}
+      {tab === '회원' ? <GroupMembers key={groupId} groupId={groupId} canManage={group.canManageMembers === true} refresh={memberRefresh} onSubmit={run} /> : null}
       {tab === '감사' ? <AuditsPage /> : null}
     </section>
   );
@@ -313,28 +313,157 @@ function QuotaForm({ groupId, onSubmit }: { groupId: string; onSubmit: (path: st
   );
 }
 
-function GroupMembers({ groupId, refresh, onSubmit }: { groupId: string; refresh: number; onSubmit: (path: string, body: unknown) => Promise<boolean> }) {
-  const [items, setItems] = useState<MemberItem[]>([]);
-  useEffect(() => {
-    api<{ items: MemberItem[] }>(`/api/gathering-admin/members?groupId=${encodeURIComponent(groupId)}`)
-      .then((row) => setItems(row.items))
-      .catch(() => setItems([]));
-  }, [groupId, refresh]);
+function MemberName({ item }: { item: MemberItem }) {
+  return <>{item.user.name ?? '이름 없음'} {!item.isAppRegistered ? <span className="manual-member-badge">앱 미가입</span> : null}</>;
+}
+
+function ManualMemberForm({ member, onSave, onCancel }: {
+  member: MemberItem | null;
+  onSave: (data: Record<string, string>) => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const [role, setRole] = useState('MEMBER');
+  const [busy, setBusy] = useState(false);
   return (
-    <table>
-      <tbody>
-        {items.map((item) => (
-          <tr key={item.membershipId}>
-            <td>{item.user.name}<br />{phoneLinks(item.user.phone)}<br />{item.status}</td>
-            <td>
-              <button type="button" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/members/${item.membershipId}/restriction`, { suspended: item.status !== 'SUSPENDED', reason: '운영 제한', idempotencyKey: `mem-${item.membershipId}-${Date.now()}` })}>
-                {item.status === 'SUSPENDED' ? '제한 해제' : '제한'}
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <form className="panel" onSubmit={async (event) => {
+      event.preventDefault();
+      if (busy) return;
+      const data = Object.fromEntries(new FormData(event.currentTarget)) as Record<string, string>;
+      setBusy(true);
+      try {
+        await onSave(data);
+      } finally {
+        setBusy(false);
+      }
+    }}>
+      <h2>{member ? '정보 수정' : '앱 미가입 회원 추가'}</h2>
+      <label>이름<input name="name" required maxLength={40} defaultValue={member?.user.name ?? ''} /></label>
+      <label>휴대폰 번호<input name="phone" type="tel" required minLength={8} maxLength={20} placeholder="010-1234-5678" defaultValue={member?.user.phone ?? ''} /></label>
+      <label>소속 로컬<input name="localJcName" required maxLength={60} placeholder="예: 서울 ○○" defaultValue={member?.user.localJcName ?? ''} /></label>
+      {!member ? (
+        <label>직책<select name="role" value={role} onChange={(event) => setRole(event.target.value)}>
+          <option value="MEMBER">일반 회원</option>
+          <option value="SECRETARY">총무</option>
+          <option value="TREASURER">재무</option>
+          <option value="EXECUTIVE">집행부</option>
+        </select></label>
+      ) : null}
+      {role === 'EXECUTIVE' ? <label>직함<input name="title" required maxLength={40} /></label> : null}
+      <button type="submit" disabled={busy}>저장</button>
+      <button type="button" disabled={busy} className="ghost" onClick={onCancel}>취소</button>
+    </form>
+  );
+}
+
+function GroupMembers({ groupId, canManage, refresh, onSubmit }: {
+  groupId: string;
+  canManage: boolean;
+  refresh: number;
+  onSubmit: (path: string, body: unknown, method?: string) => Promise<boolean>;
+}) {
+  const [items, setItems] = useState<MemberItem[]>([]);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState<{ member: MemberItem | null } | null>(null);
+  const [linking, setLinking] = useState<MemberItem | null>(null);
+  const [linkTarget, setLinkTarget] = useState('');
+  const [busy, setBusy] = useState(false);
+  const base = `/api/gathering-admin/groups/${groupId}/manual-members`;
+  useEffect(() => {
+    let current = true;
+    api<{ items: MemberItem[] }>(`/api/gathering-admin/members?groupId=${encodeURIComponent(groupId)}`)
+      .then((row) => {
+        if (current) {
+          setError('');
+          setItems(row.items);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (current) setError(cause instanceof Error ? cause.message : '회원을 불러오지 못했습니다.');
+      });
+    return () => { current = false; };
+  }, [groupId, refresh]);
+
+  const targets = items.filter((item) => item.isAppRegistered && ['ACTIVE', 'PENDING'].includes(item.status));
+
+  async function link(manualId: string, target: MemberItem, manualName: string) {
+    if (busy || !window.confirm(`${manualName}님의 회원 기록을 ${target.user.name ?? '선택한 회원'}님의 앱 계정에 연결할까요?`)) return;
+    setBusy(true);
+    try {
+      if (await onSubmit(`${base}/${manualId}/link`, { targetMembershipId: target.membershipId })) {
+        setLinking(null);
+        setLinkTarget('');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <ErrorText error={error} />
+      {canManage ? <button type="button" onClick={() => setForm({ member: null })}>앱 미가입 회원 추가</button> : null}
+      {canManage && form ? (
+        <ManualMemberForm key={form.member?.membershipId ?? 'new'} member={form.member} onCancel={() => setForm(null)}
+          onSave={async (body) => {
+            const saved = await onSubmit(form.member ? `${base}/${form.member.membershipId}` : base, body, form.member ? 'PATCH' : 'POST');
+            if (saved) setForm(null);
+            return saved;
+          }}
+        />
+      ) : null}
+      {linking ? (
+        <form className="panel" onSubmit={(event) => {
+          event.preventDefault();
+          const target = targets.find((item) => item.membershipId === linkTarget);
+          if (target) void link(linking.membershipId, target, linking.user.name ?? '앱 미가입 회원');
+        }}>
+          <label>{linking.user.name}님의 연결 대상<select required value={linkTarget} onChange={(event) => setLinkTarget(event.target.value)}>
+            <option value="">앱 가입 회원 선택</option>
+            {targets.map((item) => <option key={item.membershipId} value={item.membershipId}>
+              {item.user.name} · {item.user.localJcName}{item.user.phone ? ` · ${item.user.phone}` : ''}{item.status === 'PENDING' ? ' · 승인 대기' : ''}
+            </option>)}
+          </select></label>
+          <button type="submit" disabled={busy || !linkTarget}>계정 연결</button>
+          <button type="button" className="ghost" disabled={busy} onClick={() => setLinking(null)}>취소</button>
+        </form>
+      ) : null}
+      <table>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.membershipId}>
+              <td><MemberName item={item} /><br />{item.user.localJcName}<br />{phoneLinks(item.user.phone)}<br />{item.status}</td>
+              <td>
+                {canManage && !item.isAppRegistered ? (
+                  <>
+                    <button type="button" onClick={() => setForm({ member: item })}>정보 수정</button>
+                    {item.status === 'ACTIVE' && targets.length ? <button type="button" onClick={() => {
+                      setLinking(item);
+                      setLinkTarget('');
+                    }}>계정 연결</button> : null}
+                    <button type="button" disabled={busy} onClick={() => {
+                      if (!window.confirm(`${item.user.name}님을 회원 명부에서 삭제할까요?`)) return;
+                      setBusy(true);
+                      void onSubmit(`${base}/${item.membershipId}`, undefined, 'DELETE').finally(() => setBusy(false));
+                    }}>회원 삭제</button>
+                  </>
+                ) : null}
+                {canManage && item.linkCandidate ? (
+                  <button type="button" disabled={busy} onClick={() => {
+                    const candidate = item.linkCandidate;
+                    if (candidate) void link(candidate.membershipId, item, candidate.displayName);
+                  }}>연결 승인 · {item.linkCandidate.displayName}</button>
+                ) : null}
+                {item.status !== 'PENDING' ? (
+                  <button type="button" onClick={() => void onSubmit(`/api/gathering-admin/groups/${groupId}/members/${item.membershipId}/restriction`, { suspended: item.status !== 'SUSPENDED', reason: '운영 제한', idempotencyKey: `mem-${item.membershipId}-${Date.now()}` })}>
+                    {item.status === 'SUSPENDED' ? '제한 해제' : '제한'}
+                  </button>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
 
@@ -355,7 +484,7 @@ export function MembersPage() {
       <table>
         <tbody>
           {items.map((item) => (
-            <tr key={item.membershipId}><td>{item.user.name}</td><td>{item.group.name}</td><td>{item.status}</td><td>{phoneLinks(item.user.phone)}</td></tr>
+            <tr key={item.membershipId}><td><MemberName item={item} /></td><td>{item.group.name}</td><td>{item.status}</td><td>{phoneLinks(item.user.phone)}</td></tr>
           ))}
         </tbody>
       </table>
@@ -431,6 +560,7 @@ export function SettingsPage({ role }: { role: 'SUPER_ADMIN' | 'ADMIN' }) {
 const ADMIN_CAPABILITY_OPTIONS = [
   ['GROUP_READ', '모임 조회'],
   ['MEMBER_READ', '회원 조회'],
+  ['MEMBER_WRITE', '회원 관리'],
   ['CONTACT_READ', '연락처'],
   ['AUDIT_READ', '운영이력'],
   ['SUBSCRIPTION_WRITE', '이용권'],

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { lockGroup } from './locks.js';
 import { AppError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { writeGatheringAudit } from './audit.js';
@@ -17,9 +18,14 @@ export async function acceptGatheringInvite(userId: string, token: string) {
 async function acceptInside(tx: Prisma.TransactionClient, userId: string, token: string) {
   const invite = await tx.gatheringInvite.findUnique({ where: { tokenHash: sha256(token) } });
   assertInviteUsable(invite);
+  await lockGroup(tx, invite.groupId);
   await rejectDuplicateJoin(tx, invite.groupId, userId);
   await consumeInvite(tx, invite);
-  const status = invite.requiresApproval ? 'PENDING' : 'ACTIVE';
+  const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { phone: true } });
+  const matched = user.phone && await tx.gatheringMembership.findFirst({
+    where: { groupId: invite.groupId, userId: null, status: 'ACTIVE', manualPhone: user.phone },
+  });
+  const status = invite.requiresApproval || matched ? 'PENDING' : 'ACTIVE';
   const membership = await upsertMembership(tx, invite.groupId, userId, status);
   if (status === 'ACTIVE') {
     await ensureMemberRole(tx, invite.groupId, membership.id, userId);
@@ -32,7 +38,7 @@ async function acceptInside(tx: Prisma.TransactionClient, userId: string, token:
     targetId: membership.id,
     meta: { status },
   });
-  return { groupId: invite.groupId, status };
+  return { groupId: invite.groupId, status, matchedManualMember: Boolean(matched) };
 }
 
 async function rejectDuplicateJoin(tx: Prisma.TransactionClient, groupId: string, userId: string) {

@@ -52,7 +52,8 @@ function financeFingerprint(input: {
   }>;
   dues: Array<{
     id: string;
-    userId: string;
+    userId: string | null;
+    membershipId: string | null;
     amountWon: number;
     paidAmountWon: number;
     paidAt: Date | null;
@@ -80,6 +81,7 @@ function financeFingerprint(input: {
     dues: input.dues.map((row) => ({
       id: row.id,
       userId: row.userId,
+      ...(row.userId === null ? { membershipId: row.membershipId } : {}),
       amountWon: row.amountWon,
       paidAmountWon: row.paidAmountWon,
       paidAt: row.paidAt?.toISOString() ?? null,

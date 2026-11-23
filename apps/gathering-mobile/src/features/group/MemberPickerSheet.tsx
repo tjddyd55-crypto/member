@@ -94,7 +94,7 @@ export function MemberPickerSheet({
                   )
                   .map((item) => (
                     <Pressable
-                      key={item.userId}
+                      key={item.membershipId}
                       accessibilityRole="button"
                       onPress={() => {
                         Keyboard.dismiss();

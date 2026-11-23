@@ -161,6 +161,7 @@ async function notifyPresidents(groupId: string, expiresAt: Date, window: 'DAYS_
   });
   let created = 0;
   for (const president of presidents) {
+    if (!president.userId) continue;
     const dedupeKey = subscriptionNoticeDedupeKey({ groupId, userId: president.userId, expiresAt, window });
     try {
       await prisma.gatheringNotification.create({

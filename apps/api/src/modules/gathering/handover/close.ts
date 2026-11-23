@@ -208,6 +208,7 @@ function snapshotPayload(
     dues: facts.dues.map((row) => ({
       id: row.id,
       userId: row.userId,
+      ...(row.userId === null ? { membershipId: row.membershipId } : {}),
       amountWon: row.amountWon,
       paidAmountWon: row.paidAmountWon,
       paidAt: row.paidAt?.toISOString() ?? null,
@@ -225,6 +226,7 @@ function snapshotPayload(
     officers: facts.officers.map((row) => ({
       id: row.id,
       userId: row.userId,
+      ...(row.userId === null ? { membershipId: row.membershipId } : {}),
       role: row.role,
       title: row.title,
       startedAt: row.startedAt.toISOString(),

@@ -177,13 +177,13 @@ export function GroupFinancePane({
                   <Button label="이름으로 찾기" variant="secondary" onPress={() => void search()} />
                   {matches.map((member) => (
                     <Button
-                      key={member.userId}
+                      key={member.membershipId}
                       label={
-                        picked?.userId === member.userId
+                        picked?.membershipId === member.membershipId
                           ? `${member.displayName} 선택됨`
                           : member.displayName
                       }
-                      variant={picked?.userId === member.userId ? 'primary' : 'secondary'}
+                      variant={picked?.membershipId === member.membershipId ? 'primary' : 'secondary'}
                       onPress={() => {
                         setPicked(member);
                         setPaidOn(null);
@@ -232,7 +232,8 @@ export function GroupFinancePane({
                       }
                       void api
                         .saveDue(groupId, {
-                          userId: picked.userId,
+                          membershipId: picked.membershipId,
+                          userId: picked.userId ?? undefined,
                           year: summary.year,
                           amountWon: Number(amount),
                           paidAmountWon: Number(paid),

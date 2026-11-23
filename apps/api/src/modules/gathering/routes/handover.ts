@@ -13,7 +13,8 @@ import { requireGatheringUserId } from '../http.js';
 const groupParams = z.object({ groupId: z.string().min(1) });
 const handoverParams = z.object({ groupId: z.string().min(1), handoverId: z.string().min(1) });
 const nominateSchema = z.object({
-  toUserId: z.string().min(1),
+  toUserId: z.string().min(1).optional(),
+  membershipId: z.string().min(1).optional(),
   idempotencyKey: z.string().trim().min(8).max(80),
 });
 const confirmSchema = z.object({

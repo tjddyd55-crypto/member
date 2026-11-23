@@ -15,6 +15,7 @@ export type GroupItem = {
   creator: Person;
   president: Person | null;
   memberCount: number;
+  canManageMembers?: boolean;
   suspended: boolean;
   subscription: { id: string | null; status: string; source: string | null; startsAt: string | null; expiresAt: string | null };
   usedBytes: number;
@@ -26,7 +27,9 @@ export type MemberItem = {
   membershipId: string;
   status: string;
   group: { id: string; name: string };
-  user: { id: string; name: string | null; localJcName: string | null; phone: string | null };
+  isAppRegistered: boolean;
+  linkCandidate: { membershipId: string; displayName: string; localJcName: string; phone: string | null } | null;
+  user: { id: string | null; name: string | null; localJcName: string | null; phone: string | null };
 };
 
 export type AuditItem = {

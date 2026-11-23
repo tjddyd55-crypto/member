@@ -15,7 +15,7 @@ export async function financeSummary(userId: string, groupId: string, year?: num
     }),
     prisma.gatheringMemberDue.findMany({
       where: { financeYearId: financeYear.id },
-      include: { user: { select: { gatheringProfile: { select: { displayName: true } } } } },
+      include: { user: { select: { gatheringProfile: { select: { displayName: true } } } }, membership: { select: { manualDisplayName: true } } },
       orderBy: { userId: 'asc' },
     }),
   ]);
@@ -49,7 +49,8 @@ export async function financeSummary(userId: string, groupId: string, year?: num
     dues: dues.map((row) => ({
       id: row.id,
       userId: row.userId,
-      displayName: row.user.gatheringProfile?.displayName ?? '회원',
+      membershipId: row.membershipId,
+      displayName: row.user?.gatheringProfile?.displayName ?? row.membership?.manualDisplayName ?? '회원',
       amountWon: row.amountWon,
       paidAmountWon: row.paidAmountWon,
       paidAt: row.paidAt?.toISOString() ?? null,

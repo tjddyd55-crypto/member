@@ -34,6 +34,9 @@ import {
 import { roleLabel } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
 import { formatEventDateTime } from '../../../../src/features/schedule/range';
+import { ManualMemberSheet } from '../../../../src/features/group/ManualMemberSheet';
+import { LinkMemberSheet } from '../../../../src/features/group/LinkMemberSheet';
+import { useAppAlert } from '../../../../src/design/dialog';
 import { CompactMemberRow } from '../../../../src/features/group/CompactMemberRow';
 import {
   MemberPickerSheet,
@@ -119,7 +122,13 @@ export default function GroupDetailScreen() {
       {status === 'ready' && group ? (
         <>
           {tab === 'home' ? <HomePane group={group} /> : null}
-          {tab === 'members' ? <MembersPane groupId={group.id} /> : null}
+          {tab === 'members' ? (
+            <MembersPane
+              groupId={group.id}
+              canManage={group.permissions.includes('MEMBER_MANAGE')}
+              onGroupChange={setGroup}
+            />
+          ) : null}
           {tab === 'schedule' ? (
             <EventsPane groupId={group.id} canManage={group.permissions.includes('EVENT_MANAGE')} />
           ) : null}
@@ -194,7 +203,18 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
   );
 }
 
-function MembersPane({ groupId }: { groupId: string }) {
+function MembersPane({
+  groupId,
+  canManage,
+  onGroupChange,
+}: {
+  groupId: string;
+  canManage: boolean;
+  onGroupChange: (group: GatheringGroupDetail) => void;
+}) {
+  const { alert, dialog } = useAppAlert();
+  const [manualForm, setManualForm] = useState<{ member: GatheringMemberView | null } | null>(null);
+  const [linkMember, setLinkMember] = useState<GatheringMemberView | null>(null);
   const [canAssign, setCanAssign] = useState(false);
   const [titles, setTitles] = useState<string[]>([]);
   const [roleMember, setRoleMember] = useState<GatheringMemberView | null>(null);
@@ -219,6 +239,7 @@ function MembersPane({ groupId }: { groupId: string }) {
         const group = await api.group(groupId);
         if (version !== requestVersion.current) return;
         setItems(result.items);
+        onGroupChange(group);
         setCanAssign(group.permissions.includes('ROLE_ASSIGN'));
         if (group.permissions.includes('ROLE_ASSIGN')) {
           const officers = await api.officers(groupId);
@@ -238,7 +259,7 @@ function MembersPane({ groupId }: { groupId: string }) {
         setStatus('error');
       }
     },
-    [groupId],
+    [groupId, onGroupChange],
   );
 
   useEffect(() => {
@@ -266,8 +287,35 @@ function MembersPane({ groupId }: { groupId: string }) {
     }
   };
 
+  const confirmDelete = (member: GatheringMemberView) => {
+    setMemberMenu(null);
+    alert('회원 삭제', `${member.displayName}님을 회원 명부에서 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          setBlockError(null);
+          void api
+            .deleteManualMember(groupId, member.membershipId)
+            .then(() => load(query))
+            .catch((error: unknown) =>
+              setBlockError(error instanceof Error ? error.message : '회원을 삭제하지 못했습니다.'),
+            );
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={styles.stack}>
+      {canManage ? (
+        <Button
+          label="+ 앱 미가입 회원 추가"
+          variant="secondary"
+          onPress={() => setManualForm({ member: null })}
+        />
+      ) : null}
       <TextField
         label="회원 검색"
         value={query}
@@ -284,33 +332,37 @@ function MembersPane({ groupId }: { groupId: string }) {
       {blockError ? <FormError>{blockError}</FormError> : null}
       {items.map((member) => (
         <CompactMemberRow key={member.membershipId} member={member}>
-          {member.phone
-            ? (['전화', '문자'] as const).map((label) => (
-                <Pressable
-                  key={label}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${member.displayName} ${label}`}
-                  style={styles.contactButton}
-                  onPress={() =>
-                    void Linking.openURL(
-                      `${label === '전화' ? 'tel' : 'sms'}:${phoneDigits(member.phone ?? '')}`,
-                    )
-                  }
-                >
-                  <Text style={styles.contactLabel}>{label}</Text>
-                </Pressable>
-              ))
-            : null}
-          {member.userId === selfId && !canAssign ? null : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${member.displayName} 메뉴`}
-              style={styles.memberMenu}
-              onPress={() => setMemberMenu(member)}
-            >
-              <Text style={styles.memberName}>⋯</Text>
-            </Pressable>
-          )}
+          <View style={styles.contactActions}>
+            {member.phone
+              ? (['전화', '문자'] as const).map((label) => (
+                  <Pressable
+                    key={label}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${member.displayName} ${label}`}
+                    style={styles.contactButton}
+                    onPress={() =>
+                      void Linking.openURL(
+                        `${label === '전화' ? 'tel' : 'sms'}:${phoneDigits(member.phone ?? '')}`,
+                      )
+                    }
+                  >
+                    <Text style={styles.contactLabel}>{label}</Text>
+                  </Pressable>
+                ))
+              : null}
+            {canAssign ||
+            (!member.isAppRegistered && canManage) ||
+            (member.isAppRegistered && member.userId !== selfId) ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${member.displayName} 메뉴`}
+                style={styles.memberMenu}
+                onPress={() => setMemberMenu(member)}
+              >
+                <Text style={styles.memberName}>⋯</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </CompactMemberRow>
       ))}
       {roleMember && !target && canAssign ? (
@@ -331,7 +383,7 @@ function MembersPane({ groupId }: { groupId: string }) {
           }}
           onAssign={async (member, role) => {
             await api.assignOfficer(groupId, {
-              userId: member.userId,
+              membershipId: member.membershipId,
               role: role.role,
               title: role.title,
             });
@@ -339,6 +391,34 @@ function MembersPane({ groupId }: { groupId: string }) {
             setTarget(null);
             await load(query);
             toast('저장되었습니다');
+          }}
+        />
+      ) : null}
+      {dialog}
+      {manualForm ? (
+        <ManualMemberSheet
+          member={manualForm.member}
+          canAssign={canAssign}
+          onClose={() => setManualForm(null)}
+          onSave={async (input) => {
+            if (manualForm.member)
+              await api.updateManualMember(groupId, manualForm.member.membershipId, input);
+            else await api.createManualMember(groupId, input);
+            setManualForm(null);
+            await load(query);
+            toast('저장되었습니다');
+          }}
+        />
+      ) : null}
+      {linkMember ? (
+        <LinkMemberSheet
+          groupId={groupId}
+          member={linkMember}
+          onClose={() => setLinkMember(null)}
+          onLinked={async () => {
+            setLinkMember(null);
+            await load(query);
+            toast('앱 계정을 연결했습니다');
           }}
         />
       ) : null}
@@ -362,15 +442,42 @@ function MembersPane({ groupId }: { groupId: string }) {
                   }}
                 />
               ) : null}
-              <Button
-                label="차단"
-                variant="text"
-                onPress={() => {
-                  const userId = memberMenu.userId;
-                  setMemberMenu(null);
-                  void block(userId);
-                }}
-              />
+              {!memberMenu.isAppRegistered && canManage ? (
+                <>
+                  <Button
+                    label="정보 수정"
+                    variant="text"
+                    onPress={() => {
+                      setManualForm({ member: memberMenu });
+                      setMemberMenu(null);
+                    }}
+                  />
+                  <Button
+                    label="앱 계정 연결"
+                    variant="text"
+                    onPress={() => {
+                      setLinkMember(memberMenu);
+                      setMemberMenu(null);
+                    }}
+                  />
+                  <Button
+                    label="회원 삭제"
+                    variant="text"
+                    onPress={() => confirmDelete(memberMenu)}
+                  />
+                </>
+              ) : null}
+              {memberMenu.isAppRegistered && memberMenu.userId && memberMenu.userId !== selfId ? (
+                <Button
+                  label="차단"
+                  variant="text"
+                  onPress={() => {
+                    const userId = memberMenu.userId;
+                    setMemberMenu(null);
+                    if (userId) void block(userId);
+                  }}
+                />
+              ) : null}
               <Button label="취소" variant="text" onPress={() => setMemberMenu(null)} />
             </View>
           </Pressable>
@@ -382,15 +489,22 @@ function MembersPane({ groupId }: { groupId: string }) {
 
 const styles = StyleSheet.create({
   memberName: { fontSize: 14, fontWeight: '600', color: theme.colors.text.primary },
+  contactActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.space[4],
+    maxWidth: '100%',
+  },
   contactButton: {
-    minHeight: 36,
-    paddingHorizontal: 7,
+    minHeight: 44,
+    paddingHorizontal: theme.space[8],
     justifyContent: 'center',
     borderRadius: 6,
     backgroundColor: theme.colors.primary.soft,
   },
-  contactLabel: { fontSize: 12, color: theme.colors.primary.default },
-  memberMenu: { width: 32, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  contactLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.primary.default },
+  memberMenu: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   menuBackdrop: {
     flex: 1,
     padding: theme.layout.horizontalGutter,

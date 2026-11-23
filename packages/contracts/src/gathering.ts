@@ -23,11 +23,27 @@ export const gatheringLocalJcSchema = z
   .min(1, '소속 로컬을 입력하세요.')
   .max(60, '소속 로컬은 60자 이하여야 합니다.');
 
-export const gatheringRegisterSchema = z.object({
+const gatheringMemberIdentitySchema = z.object({
   name: gatheringDisplayNameSchema,
   phone: gatheringPhoneSchema,
-  password: gatheringPasswordSchema,
   localJcName: gatheringLocalJcSchema,
+});
+
+export const gatheringManualMemberUpdateSchema = gatheringMemberIdentitySchema;
+
+export const gatheringManualMemberCreateSchema = gatheringMemberIdentitySchema.extend({
+  role: z.enum(['MEMBER', 'SECRETARY', 'TREASURER', 'EXECUTIVE']).optional(),
+  title: z.string().trim().min(1).max(40).optional(),
+});
+
+export const gatheringManualMemberLinkSchema = z.object({
+  targetMembershipId: z.string().min(1),
+});
+
+export type GatheringManualMemberInput = z.infer<typeof gatheringManualMemberCreateSchema>;
+
+export const gatheringRegisterSchema = gatheringMemberIdentitySchema.extend({
+  password: gatheringPasswordSchema,
   directoryConsent: z.literal(true, {
     errorMap: () => ({ message: '모임 안 연락처 공개에 동의해야 합니다.' }),
   }),
@@ -103,12 +119,20 @@ export const gatheringAcceptInviteSchema = z.object({
 
 export const gatheringRoleAssignSchema = z
   .object({
-    userId: z.string().min(1),
+    userId: z.string().min(1).optional(),
+    membershipId: z.string().min(1).optional(),
     role: z.enum(['SECRETARY', 'TREASURER', 'EXECUTIVE']),
     title: z.string().trim().min(1).max(40).optional(),
     groupId: z.string().optional(),
   })
   .superRefine((value, ctx) => {
+    if (!value.userId && !value.membershipId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['membershipId'],
+        message: '회원을 선택하세요.',
+      });
+    }
     if (value.role === 'EXECUTIVE' && !value.title) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -198,6 +222,7 @@ export const gatheringTransactionSchema = z.object({
 });
 
 export const gatheringDueSchema = z.object({
+  membershipId: z.string().min(1).optional(),
   userId: z.string().min(1).optional(),
   displayName: z.string().trim().min(1).max(40).optional(),
   year: z.number().int().min(2000).max(2100),
@@ -312,7 +337,12 @@ export type GatheringGroupDetail = {
 
 export type GatheringMemberView = {
   membershipId: string;
-  userId: string;
+  userId: string | null;
+  isAppRegistered: boolean;
+  linkCandidate?: Pick<
+    GatheringMemberView,
+    'membershipId' | 'displayName' | 'localJcName' | 'phone'
+  > | null;
   displayName: string;
   localJcName: string;
   phone: string | null;
@@ -351,7 +381,9 @@ export type GatheringEventView = {
 
 export type GatheringOfficerView = {
   assignmentId: string;
-  userId: string;
+  userId: string | null;
+  membershipId: string;
+  isAppRegistered: boolean;
   displayName: string;
   role: string;
   title: string | null;
@@ -360,7 +392,9 @@ export type GatheringOfficerView = {
 
 export type GatheringOfficerTermView = {
   id: string;
-  userId: string;
+  userId: string | null;
+  membershipId: string | null;
+  isAppRegistered: boolean;
   displayName: string;
   role: string;
   title: string | null;
@@ -452,7 +486,8 @@ export type GatheringReceiptView = {
 
 export type GatheringDueView = {
   id: string;
-  userId: string;
+  userId: string | null;
+  membershipId: string | null;
   displayName: string;
   amountWon: number;
   paidAmountWon: number;

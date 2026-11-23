@@ -16,24 +16,57 @@ export function CompactMemberRow({
     <View
       style={{
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'center',
         gap: 4,
-        paddingVertical: 6,
-        paddingHorizontal: 8,
+        paddingVertical: 12,
+        paddingHorizontal: theme.space[8],
         borderBottomWidth: 0.5,
         borderBottomColor: theme.colors.border.default,
         minWidth: 0,
       }}
     >
-      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.text.primary }}>
-          {member.displayName}{' '}
-          <Text style={{ fontSize: 12, fontWeight: '400', color: theme.colors.text.secondary }}>
-            {[member.localJcName, visibleRoleLabels(member.roles)].filter(Boolean).join(' ')}
+      <View style={{ flexGrow: 1, flexBasis: 120, minWidth: 0, gap: 2 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: theme.space[4],
+          }}
+        >
+          <Text
+            style={{
+              flexShrink: 1,
+              fontSize: 19,
+              lineHeight: 26,
+              fontWeight: '600',
+              color: theme.colors.text.primary,
+            }}
+          >
+            {member.displayName}
           </Text>
+          {!member.isAppRegistered ? (
+            <Text
+              style={{
+                flexShrink: 1,
+                fontSize: 14,
+                lineHeight: 20,
+                borderRadius: theme.radius[12],
+                paddingHorizontal: theme.space[8],
+                backgroundColor: theme.colors.primary.soft,
+                color: theme.colors.text.primary,
+              }}
+            >
+              앱 미가입
+            </Text>
+          ) : null}
+        </View>
+        <Text style={{ fontSize: 15, lineHeight: 22, color: theme.colors.text.secondary }}>
+          {[member.localJcName, visibleRoleLabels(member.roles)].filter(Boolean).join(' · ')}
         </Text>
         {member.phone ? (
-          <Text style={{ fontSize: 12, color: theme.colors.text.secondary }}>
+          <Text style={{ fontSize: 15, lineHeight: 22, color: theme.colors.text.secondary }}>
             {formatPhone(member.phone)}
           </Text>
         ) : null}

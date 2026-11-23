@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { AppError } from '../../../lib/errors.js';
 import {
   gatheringAlbumQuerySchema,
   gatheringMediaCompleteSchema,
@@ -25,6 +26,8 @@ import {
   createMediaFolder,
   createUploadLink,
   listUploadLinks,
+  listPublicMedia,
+  downloadPublicMedia,
   publicComplete,
   publicReserve,
   publicUploadInfo,
@@ -35,6 +38,10 @@ import {
 import { downloadMedia, listAlbums, listFolderMedia, listEventMedia } from '../media/queries.js';
 import { listMediaReports, reportMedia, resolveMediaReport } from '../media/reports.js';
 import { requireGatheringUserId } from '../http.js';
+import { uploadPage, uploadErrorPage } from '../media/public-upload-page.js';
+
+const publicUploads = '/api/gathering/public/uploads';
+const tokenParams = z.object({ token: z.string().min(1) });
 
 const eventParams = z.object({ groupId: z.string().min(1), eventId: z.string().min(1) });
 const assetParams = z.object({ groupId: z.string().min(1), assetId: z.string().min(1) });
@@ -306,11 +313,38 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     );
   });
 
-  app.get('/api/gathering/public/uploads/:token', async (request, reply) => {
-    const params = z.object({ token: z.string().min(1) }).parse(request.params);
-    const info = await publicUploadInfo(params.token);
-    reply.type('text/html; charset=utf-8');
-    return uploadPage(info.title, info.notice, params.token);
+  app.get(`${publicUploads}/:token?`, async (request, reply) => {
+    reply.header('Cache-Control', 'no-store').header('Referrer-Policy', 'no-referrer');
+    const { token } = z.object({ token: z.string().default('') }).parse(request.params);
+    try {
+      const info = await publicUploadInfo(token);
+      return reply.type('text/html; charset=utf-8').send(uploadPage(info, token));
+    } catch (error) {
+      if (
+        !(error instanceof AppError) ||
+        !['LINK_NOT_FOUND', 'LINK_PAUSED', 'LINK_EXPIRED'].includes(error.code)
+      )
+        throw error;
+      return reply
+        .code(error.statusCode)
+        .type('text/html; charset=utf-8')
+        .send(uploadErrorPage(error.message));
+    }
+  });
+
+  app.get(`${publicUploads}/:token/media`, async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const { token } = tokenParams.parse(request.params);
+    const { cursor } = gatheringMediaListQuerySchema.pick({ cursor: true }).parse(request.query);
+    return listPublicMedia(token, cursor);
+  });
+
+  app.get(`${publicUploads}/:token/media/:assetId`, async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const { token, assetId } = tokenParams
+      .extend({ assetId: z.string().min(1) })
+      .parse(request.params);
+    return downloadPublicMedia(token, assetId);
   });
 
   app.post('/api/gathering/public/uploads/:token/reserve', async (request) => {
@@ -327,58 +361,3 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     return publicComplete(params.token, body.assetId, body.sizeBytes);
   });
 };
-
-function uploadPage(title: string, notice: string, token: string) {
-  const safeTitle = title.replace(
-    /[&<>]/g,
-    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[char] ?? char,
-  );
-  return `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><body style="font-family:sans-serif;padding:24px"><h1>${safeTitle}</h1><p>${notice}</p><input id="files" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple><button id="go">올리기</button><pre id="log"></pre><script>
-const token=${JSON.stringify(token)};
-const log=document.getElementById('log');
-document.getElementById('go').onclick=async()=>{
-  try{
-  const files=[...document.getElementById('files').files];
-  const items=[];
-  for(const file of files){
-    const item={kind:file.type.startsWith('video/')?'VIDEO':'PHOTO',mimeType:file.type||'application/octet-stream',sizeBytes:file.size,originalName:file.name};
-    if(item.kind==='VIDEO'){
-      try{ item.durationMs=await videoDurationMs(file); }
-      catch{ log.textContent='영상 길이를 읽지 못했습니다.'; return; }
-    }
-    items.push(item);
-  }
-  const reserved=await fetch('/api/gathering/public/uploads/'+token+'/reserve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items})});
-  const body=await reserved.json();
-  if(!reserved.ok){log.textContent=body.error?.message||'실패';return;}
-  for(let i=0;i<files.length;i++){
-    const item=body.items[i];
-    const headers={};
-    for(const [name,value] of Object.entries(item.headers||{})){
-      if(name.toLowerCase()!=='content-length') headers[name]=value;
-    }
-    const put=await fetch(item.uploadUrl,{method:'PUT',headers,body:files[i]});
-    if(!put.ok){log.textContent='전송 실패';return;}
-    const done=await fetch('/api/gathering/public/uploads/'+token+'/complete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({assetId:item.id,sizeBytes:files[i].size})});
-    if(!done.ok){log.textContent='확인 실패';return;}
-  }
-  log.textContent='올렸습니다. 모임 앨범에 바로 보입니다.';
-  }catch(error){ log.textContent='전송하지 못했습니다.'; }
-};
-function videoDurationMs(file){
-  return new Promise((resolve,reject)=>{
-    const url=URL.createObjectURL(file);
-    const video=document.createElement('video');
-    video.preload='metadata';
-    video.onloadedmetadata=()=>{
-      URL.revokeObjectURL(url);
-      const durationMs=Math.round(video.duration*1000);
-      if(!Number.isFinite(durationMs)||durationMs<=0) reject(new Error('duration'));
-      else resolve(durationMs);
-    };
-    video.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('duration')); };
-    video.src=url;
-  });
-}
-</script></body></html>`;
-}

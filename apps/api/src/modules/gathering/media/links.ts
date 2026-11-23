@@ -1,9 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
+import { MEDIA_PAGE_LIMIT } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { lockGroup } from '../locks.js';
+import { gatheringPublicGalleryLimiter } from '../rate-limit.js';
+import { cursorFilter, decodeMediaCursor, encodeMediaCursor } from './present.js';
+import { signMediaDownload } from './queries.js';
 import { canManageFolders } from './folder-access.js';
 import { requireGroupMember } from '../access.js';
 import {
@@ -13,6 +18,8 @@ import {
   createFolderMediaUploads,
   createMediaUploads,
 } from './commands.js';
+
+const linkNotFound = () => new AppError(404, 'LINK_NOT_FOUND', '업로드 링크를 찾을 수 없습니다.');
 
 const LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -190,11 +197,11 @@ export async function deleteMediaFolder(userId: string, groupId: string, folderI
 }
 
 async function loadUsableLink(token: string) {
+  if (!token) throw linkNotFound();
   const link = await prisma.gatheringUploadLink.findUnique({
     where: { tokenHash: hashToken(token) },
   });
-  if (!link || link.revokedAt)
-    throw new AppError(404, 'LINK_NOT_FOUND', '업로드 링크를 찾을 수 없습니다.');
+  if (!link || link.revokedAt) throw linkNotFound();
   if (link.pausedAt) throw new AppError(409, 'LINK_PAUSED', '업로드 링크가 잠시 멈춰 있습니다.');
   if (link.expiresAt.getTime() <= Date.now())
     throw new AppError(410, 'LINK_EXPIRED', '업로드 링크가 만료되었습니다.');
@@ -214,9 +221,59 @@ export async function publicUploadInfo(token: string) {
       });
   return {
     title: target?.title ?? '사진 업로드',
+    kind: link.eventId ? ('event' as const) : ('folder' as const),
     expiresAt: link.expiresAt.toISOString(),
-    notice: '이 링크는 사진과 영상만 올립니다. 회원 명부, 재무, 이미 올린 파일은 볼 수 없습니다.',
+    notice: `이 링크는 사진과 영상을 올리고 이 ${link.eventId ? '일정' : '폴더'}의 사진을 볼 수 있습니다. 회원 명부와 재무는 볼 수 없습니다.`,
   };
+}
+
+async function publicGalleryScope(token: string): Promise<Prisma.GatheringMediaAssetWhereInput> {
+  const link = await loadUsableLink(token);
+  if (!link.eventId === !link.folderId) throw linkNotFound();
+  gatheringPublicGalleryLimiter.assert(link.id);
+  const parent = { groupId: link.groupId, deletedAt: null };
+  return {
+    ...parent,
+    status: 'READY',
+    eventId: link.eventId,
+    folderId: link.folderId,
+    ...(link.eventId ? { event: parent } : { folder: parent }),
+  };
+}
+
+export async function listPublicMedia(token: string, cursor?: string) {
+  const scope = await publicGalleryScope(token);
+  const decoded = cursor ? decodeMediaCursor(cursor) : null;
+  if (cursor && !decoded)
+    throw new AppError(400, 'INVALID_CURSOR', '목록 위치가 올바르지 않습니다.');
+  const rows = await prisma.gatheringMediaAsset.findMany({
+    where: { ...scope, ...cursorFilter(decoded) },
+    select: { id: true, kind: true, createdAt: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: MEDIA_PAGE_LIMIT + 1,
+  });
+  const page = rows.slice(0, MEDIA_PAGE_LIMIT);
+  const last = page[page.length - 1];
+  return {
+    items: page.map(({ id, kind, createdAt }) => ({
+      id,
+      kind,
+      createdAt: createdAt.toISOString(),
+      canDelete: false as const,
+    })),
+    nextCursor:
+      rows.length > MEDIA_PAGE_LIMIT && last ? encodeMediaCursor(last.createdAt, last.id) : null,
+  };
+}
+
+export async function downloadPublicMedia(token: string, assetId: string) {
+  const scope = await publicGalleryScope(token);
+  const asset = await prisma.gatheringMediaAsset.findFirst({
+    where: { ...scope, id: assetId },
+    select: { storageKey: true, posterStorageKey: true, mimeType: true, kind: true },
+  });
+  if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
+  return signMediaDownload(asset);
 }
 
 export async function publicReserve(token: string, items: UploadItem[]) {
@@ -247,20 +304,33 @@ export async function publicComplete(token: string, assetId: string, sizeBytes: 
   if (link.folderId && asset.folderId !== link.folderId) {
     throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
   }
-  if (link.eventId) {
-    return completeMediaUpload(
-      link.createdByUserId,
-      link.groupId,
-      link.eventId,
-      assetId,
-      sizeBytes,
-    );
-  }
-  return completeFolderMediaUpload(
-    link.createdByUserId,
-    link.groupId,
-    link.folderId ?? '',
-    assetId,
-    sizeBytes,
-  );
+  const { media } = link.eventId
+    ? await completeMediaUpload(
+        link.createdByUserId,
+        link.groupId,
+        link.eventId,
+        assetId,
+        sizeBytes,
+      )
+    : await completeFolderMediaUpload(
+        link.createdByUserId,
+        link.groupId,
+        link.folderId ?? '',
+        assetId,
+        sizeBytes,
+      );
+  return {
+    media: {
+      id: media.id,
+      kind: media.kind,
+      hasPoster: media.hasPoster,
+      mimeType: media.mimeType,
+      sizeBytes: media.sizeBytes,
+      width: media.width,
+      height: media.height,
+      durationMs: media.durationMs,
+      createdAt: media.createdAt,
+      canDelete: false as const,
+    },
+  };
 }

@@ -9,7 +9,7 @@ import { requireGroupMember } from '../access.js';
 import { assertNotBlocked, blockedUserIds } from '../moderation/blocks.js';
 import { currentObjectStorage } from '../storage/r2.js';
 import { canManageFolders } from './folder-access.js';
-import { decodeMediaCursor, encodeMediaCursor, presentMedia } from './present.js';
+import { cursorFilter, decodeMediaCursor, encodeMediaCursor, presentMedia } from './present.js';
 
 export async function listEventMedia(
   userId: string,
@@ -116,14 +116,24 @@ export async function downloadMedia(userId: string, groupId: string, assetId: st
   });
   if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
   await assertNotBlocked(groupId, userId, asset.uploaderUserId);
-  const target = await currentObjectStorage().presignGet({
+  return signMediaDownload(asset);
+}
+
+export async function signMediaDownload(asset: {
+  storageKey: string;
+  posterStorageKey: string | null;
+  mimeType: string;
+  kind: 'PHOTO' | 'VIDEO';
+}) {
+  const storage = currentObjectStorage();
+  const target = await storage.presignGet({
     key: asset.storageKey,
     expiresInSeconds: SIGNED_URL_TTL_SECONDS,
   });
   return {
     posterUrl: asset.posterStorageKey
       ? (
-          await currentObjectStorage().presignGet({
+          await storage.presignGet({
             key: asset.posterStorageKey,
             expiresInSeconds: SIGNED_URL_TTL_SECONDS,
           })
@@ -203,16 +213,6 @@ export async function listAlbums(userId: string, groupId: string, year?: number)
         .filter((row) => row.folderId === folder.id && row.kind === 'VIDEO')
         .reduce((sum, row) => sum + row._count._all, 0),
     })),
-  };
-}
-
-function cursorFilter(decoded: { createdAt: Date; id: string } | null) {
-  if (!decoded) return {};
-  return {
-    OR: [
-      { createdAt: { lt: decoded.createdAt } },
-      { createdAt: decoded.createdAt, id: { lt: decoded.id } },
-    ],
   };
 }
 

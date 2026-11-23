@@ -27,3 +27,6 @@ export class SlidingWindowLimiter {
 
 export const gatheringAuthLimiter = new SlidingWindowLimiter(30, 10 * 60 * 1000);
 export const gatheringUploadLimiter = new SlidingWindowLimiter(30, 10 * 60 * 1000);
+
+// A page can resolve 30 thumbnails, with room for pagination and URL renewal.
+export const gatheringPublicGalleryLimiter = new SlidingWindowLimiter(180, 60 * 1000);

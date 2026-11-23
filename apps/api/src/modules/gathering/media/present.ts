@@ -30,3 +30,13 @@ export function decodeMediaCursor(cursor: string) {
   if (Number.isNaN(createdAt.getTime()) || !id) return null;
   return { createdAt, id };
 }
+
+export function cursorFilter(decoded: { createdAt: Date; id: string } | null) {
+  if (!decoded) return {};
+  return {
+    OR: [
+      { createdAt: { lt: decoded.createdAt } },
+      { createdAt: decoded.createdAt, id: { lt: decoded.id } },
+    ],
+  };
+}

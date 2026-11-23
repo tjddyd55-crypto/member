@@ -147,9 +147,8 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   jpeg[2] = 0xff;
   writeFileSync(photo, jpeg);
   await page.goto(`${API}/api/gathering/public/uploads/${link.token}`);
-  await page.locator('#files').setInputFiles(photo);
-  await page.locator('#go').click();
-  await expect(page.locator('#log')).toContainText('올렸습니다');
+  await page.locator('#photos').setInputFiles(photo);
+  await expect(page.locator('#progress-label')).toContainText('업로드 완료 1/1장');
   const uploaded = await prisma.gatheringMediaAsset.count({ where: { groupId: group.id, status: 'READY', deletedAt: null } });
   expect(uploaded).toBe(1);
 
@@ -193,9 +192,8 @@ test('관리 화면은 PC와 좁은 화면에서 같은 운영 흐름을 수행�
   });
   expect(download.status).toBe(200);
   await page.goto(`${API}/api/gathering/public/uploads/${link.token}`);
-  await page.locator('#files').setInputFiles(photo);
-  await page.locator('#go').click();
-  await expect(page.locator('#log')).toContainText('정지되어');
+  await page.locator('#photos').setInputFiles(photo);
+  await expect(page.locator('#failures')).toContainText('정지되어');
 
   await page.goto(`/groups/${group.id}`);
   await page.getByRole('button', { name: '이용권', exact: true }).click();

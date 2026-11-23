@@ -57,11 +57,15 @@ export function toMemberView(member: {
     userId: member.userId,
     isAppRegistered: member.userId !== null,
     displayName:
-      member.user?.gatheringProfile?.displayName ??
-      member.manualDisplayName ??
-      (member.user?.status === 'DELETED' ? '탈퇴한 회원' : '이름 없음'),
-    localJcName: member.user?.gatheringAffiliations[0]?.localJcName ?? member.manualLocalJcName ?? '',
-    phone: member.user ? member.user.phone : member.manualPhone,
+      member.userId === null
+        ? (member.manualDisplayName ?? '이름 없음')
+        : (member.user?.gatheringProfile?.displayName ??
+          (member.user?.status === 'DELETED' ? '탈퇴한 회원' : '이름 없음')),
+    localJcName:
+      member.userId === null
+        ? (member.manualLocalJcName ?? '')
+        : (member.user?.gatheringAffiliations[0]?.localJcName ?? ''),
+    phone: member.userId === null ? member.manualPhone : (member.user?.phone ?? null),
     status: member.status,
     roles: member.roles.map((role) => ({ id: role.id, role: role.role, title: role.title })),
   };

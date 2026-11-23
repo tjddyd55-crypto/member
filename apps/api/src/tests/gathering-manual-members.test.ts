@@ -262,6 +262,22 @@ describe('앱 미가입 회원', () => {
         targetMembershipId: localTarget.id,
       }),
     );
+    const officerManual = await createManual(id, owner.token, { ...input(), role: 'TREASURER' });
+    const secretaryMembership = await prisma.gatheringMembership.findUniqueOrThrow({
+      where: { groupId_userId: { groupId: id, userId: secretary.id } },
+    });
+    failure(
+      await call('POST', `${manualPath(id)}/${officerManual}/link`, secretary.token, {
+        targetMembershipId: secretaryMembership.id,
+      }),
+      403,
+      'FORBIDDEN',
+    );
+    ok(
+      await call('POST', `${manualPath(id)}/${officerManual}/link`, owner.token, {
+        targetMembershipId: secretaryMembership.id,
+      }),
+    );
   });
 
   it('supports manual officers, dues and push delivery without login, recovery or presidential nomination', async () => {
@@ -447,6 +463,24 @@ describe('앱 미가입 회원', () => {
       409,
       'ALREADY_LINKED',
     );
+    ok(await call('POST', '/api/gathering/auth/account/delete', user.token, { password, confirm: true }));
+    expect(
+      await prisma.gatheringMembership.findUnique({ where: { id: membershipId } }),
+    ).toMatchObject({ manualDisplayName: null, manualPhone: null, manualLocalJcName: null });
+    const summary = ok(await call('GET', `${groupPath(id)}/finance?year=${year}`, owner.token));
+    expect(summary.dues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ membershipId, userId: user.id, displayName: '회원' }),
+      ]),
+    );
+    expect(JSON.stringify(summary.dues)).not.toContain('수기 회원');
+    const officers = ok(await call('GET', `${groupPath(id)}/officers`, owner.token));
+    expect(officers.history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ membershipId, userId: user.id, displayName: '이름 없음' }),
+      ]),
+    );
+    expect(JSON.stringify(officers.history)).not.toContain('수기 회원');
   });
 
   it('merges active memberships and rolls back when the registered member has a legacy due for the same year', async () => {

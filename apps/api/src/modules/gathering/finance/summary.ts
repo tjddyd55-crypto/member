@@ -50,7 +50,10 @@ export async function financeSummary(userId: string, groupId: string, year?: num
       id: row.id,
       userId: row.userId,
       membershipId: row.membershipId,
-      displayName: row.user?.gatheringProfile?.displayName ?? row.membership?.manualDisplayName ?? '회원',
+      displayName:
+        row.userId === null
+          ? (row.membership?.manualDisplayName ?? '회원')
+          : (row.user?.gatheringProfile?.displayName ?? '회원'),
       amountWon: row.amountWon,
       paidAmountWon: row.paidAmountWon,
       paidAt: row.paidAt?.toISOString() ?? null,

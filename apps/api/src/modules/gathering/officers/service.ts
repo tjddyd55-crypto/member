@@ -21,7 +21,10 @@ export async function listGatheringOfficers(userId: string, groupId: string) {
     userId: row.userId,
     membershipId: row.membershipId,
     isAppRegistered: row.userId !== null,
-    displayName: row.user?.gatheringProfile?.displayName ?? row.membership?.manualDisplayName ?? '이름 없음',
+    displayName:
+      row.userId === null
+        ? (row.membership?.manualDisplayName ?? '이름 없음')
+        : (row.user?.gatheringProfile?.displayName ?? '이름 없음'),
     role: row.role,
     title: row.title,
     assignedAt: row.assignedAt.toISOString(),
@@ -31,7 +34,10 @@ export async function listGatheringOfficers(userId: string, groupId: string) {
     userId: row.userId,
     membershipId: row.membershipId,
     isAppRegistered: row.userId !== null,
-    displayName: row.user?.gatheringProfile?.displayName ?? row.membership?.manualDisplayName ?? '이름 없음',
+    displayName:
+      row.userId === null
+        ? (row.membership?.manualDisplayName ?? '이름 없음')
+        : (row.user?.gatheringProfile?.displayName ?? '이름 없음'),
     role: row.role,
     title: row.title,
     fiscalYear: row.fiscalYear,

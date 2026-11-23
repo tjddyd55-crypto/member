@@ -106,9 +106,15 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
       linkCandidate: candidate ? { ...candidate, phone: contactRead ? candidate.phone : null } : null,
       user: {
         id: row.userId,
-        name: row.user?.gatheringProfile?.displayName ?? row.manualDisplayName,
-        localJcName: row.user?.gatheringAffiliations[0]?.localJcName ?? row.manualLocalJcName,
-        phone: contactRead ? (row.user ? row.user.phone : row.manualPhone) : null,
+        name:
+          row.userId === null
+            ? row.manualDisplayName
+            : (row.user?.gatheringProfile?.displayName ?? null),
+        localJcName:
+          row.userId === null
+            ? row.manualLocalJcName
+            : (row.user?.gatheringAffiliations[0]?.localJcName ?? null),
+        phone: contactRead ? (row.userId === null ? row.manualPhone : (row.user?.phone ?? null)) : null,
       },
     };
   });

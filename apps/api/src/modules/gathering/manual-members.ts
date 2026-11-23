@@ -50,8 +50,8 @@ export async function applyManualMemberChange(
   if (actorId) await requireGroupMember(actorId, groupId);
   return prisma.$transaction(async (tx) => {
     await lockGroup(tx, groupId);
-    if (actorId) {
-      const access = await requireGroupMember(actorId, groupId, 'write', tx);
+    const access = actorId ? await requireGroupMember(actorId, groupId, 'write', tx) : null;
+    if (access) {
       assertPermission(access, 'MEMBER_MANAGE');
       if (change.action === 'CREATE' && change.input.role && change.input.role !== 'MEMBER') {
         assertPermission(access, 'ROLE_ASSIGN');
@@ -86,6 +86,12 @@ export async function applyManualMemberChange(
       if (change.action === 'LINK') {
         if (member.status !== 'ACTIVE')
           throw new AppError(404, 'MEMBER_NOT_FOUND', '활동 중인 회원을 찾을 수 없습니다.');
+        if (access) {
+          const officerRole = await tx.gatheringRoleAssignment.findFirst({
+            where: { membershipId: member.id, revokedAt: null, role: { not: 'MEMBER' } },
+          });
+          if (officerRole) assertPermission(access, 'ROLE_ASSIGN');
+        }
         const result = await linkInside(
           tx,
           groupId,
@@ -198,7 +204,13 @@ async function linkInside(
   if (!target?.userId)
     throw new AppError(404, 'MEMBER_NOT_FOUND', '연결할 앱 가입 회원을 찾을 수 없습니다.');
   const userId = target.userId;
-  const linkData = { linkedAt: now, linkedByUserId: actorId };
+  const linkData = {
+    linkedAt: now,
+    linkedByUserId: actorId,
+    manualDisplayName: null,
+    manualPhone: null,
+    manualLocalJcName: null,
+  };
   const targetRecords = { groupId, OR: [{ membershipId: targetId }, { userId }] };
   if (target.status === 'PENDING') {
     const [role, term, due] = await Promise.all([

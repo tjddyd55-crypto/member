@@ -1,6 +1,6 @@
 import type { GatheringLocalAffiliation, GatheringProfile, User } from '@prisma/client';
 import type { GatheringAuthProfile, GatheringAuthUser } from '@member/contracts';
-import { IDENTITY_LIMITATION_KO } from '@member/gathering-domain';
+import { formatBirthDate, IDENTITY_LIMITATION_KO } from '@member/gathering-domain';
 
 export type AccountRecord = User & {
   gatheringProfile: GatheringProfile | null;
@@ -22,6 +22,8 @@ export function toAuthProfile(user: AccountRecord): GatheringAuthProfile | null 
   return {
     displayName: user.gatheringProfile.displayName,
     localJcName: user.gatheringAffiliations[0]?.localJcName ?? '',
+    birthDate: user.gatheringProfile.birthDate ? formatBirthDate(user.gatheringProfile.birthDate) : null,
+    sex: user.gatheringProfile.sex,
     directoryConsentAt: user.gatheringProfile.directoryConsentAt.toISOString(),
   };
 }

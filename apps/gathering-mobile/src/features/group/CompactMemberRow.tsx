@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import type { GatheringMemberView } from '@member/contracts';
+import { formatMemberDemographics } from '@member/gathering-domain';
 import { visibleRoleLabels } from '../../copy';
 import { formatPhone } from '../../utils/phone';
 import { theme } from '../../theme';
@@ -12,6 +13,7 @@ export function CompactMemberRow({
   member: GatheringMemberView;
   children?: ReactNode;
 }) {
+  const demographics = formatMemberDemographics(member);
   return (
     <View
       style={{
@@ -65,6 +67,11 @@ export function CompactMemberRow({
         <Text style={{ fontSize: 15, lineHeight: 22, color: theme.colors.text.secondary }}>
           {[member.localJcName, visibleRoleLabels(member.roles)].filter(Boolean).join(' · ')}
         </Text>
+        {demographics ? (
+          <Text style={{ fontSize: 15, lineHeight: 22, color: theme.colors.text.secondary }}>
+            {demographics}
+          </Text>
+        ) : null}
         {member.phone ? (
           <Text style={{ fontSize: 15, lineHeight: 22, color: theme.colors.text.secondary }}>
             {formatPhone(member.phone)}

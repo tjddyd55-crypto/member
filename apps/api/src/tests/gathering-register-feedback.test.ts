@@ -23,6 +23,9 @@ describe('가입 오류 피드백', () => {
     ['password', 'abc1', '비밀번호는 8자 이상이어야 합니다.'],
     ['password', '12345678', '비밀번호에 영문을 포함하세요.'],
     ['directoryConsent', false, '모임 안 연락처 공개에 동의해야 합니다.'],
+    ['birthDate', '', '생년월일을 입력하세요.'],
+    ['birthDate', '2026-02-31', '생년월일을 정확히 입력하세요.'],
+    ['sex', '', '성별을 선택하세요.'],
   ])('%s 검증 실패는 한국어로 안내한다', (field, value, message) => {
     const result = gatheringRegisterSchema.safeParse({
       name: '홍길동',
@@ -30,6 +33,8 @@ describe('가입 오류 피드백', () => {
       phone: '01012345678',
       password: 'password1',
       directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE',
       [field]: value,
     });
     expect(result.success).toBe(false);

@@ -28,7 +28,7 @@ export function compactHeaderTitle(input: { groupName?: string | null; routeTitl
 
 export function routeHeaderTitle(pathname: string) {
   if (pathname.includes('/calendar')) return '전체 일정';
-  if (pathname.includes('/profile')) return '모임 프로필';
+  if (pathname.includes('/profile')) return '내 정보';
   if (pathname.includes('/account-delete')) return '계정 삭제';
   if (pathname.includes('/groups/create')) return '모임 만들기';
   if (/\/groups\/[^/]+/.test(pathname)) return '모임';

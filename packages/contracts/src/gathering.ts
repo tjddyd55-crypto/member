@@ -23,10 +23,66 @@ export const gatheringLocalJcSchema = z
   .min(1, '소속 로컬을 입력하세요.')
   .max(60, '소속 로컬은 60자 이하여야 합니다.');
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isIsoCalendarDate(value: string) {
+  const match = ISO_DATE.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function kstDateKey(instant = new Date()) {
+  const shifted = new Date(instant.getTime() + KST_OFFSET_MS);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    shifted.getUTCDate(),
+  ).padStart(2, '0')}`;
+}
+
+function dateParts(value: string) {
+  const match = ISO_DATE.exec(value);
+  return {
+    year: Number(match?.[1] ?? 0),
+    month: Number(match?.[2] ?? 0),
+    day: Number(match?.[3] ?? 0),
+  };
+}
+
+function koreanAge(birthDate: string, now = new Date()) {
+  const birth = dateParts(birthDate);
+  const today = dateParts(kstDateKey(now));
+  return today.year - birth.year - (today.month < birth.month || (today.month === birth.month && today.day < birth.day) ? 1 : 0);
+}
+
+export const gatheringSexSchema = z.enum(['MALE', 'FEMALE'], {
+  errorMap: () => ({ message: '성별을 선택하세요.' }),
+});
+
+export const gatheringBirthDateSchema = z
+  .string()
+  .trim()
+  .regex(ISO_DATE, '생년월일을 입력하세요.')
+  .superRefine((value, ctx) => {
+    if (!isIsoCalendarDate(value)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '생년월일을 정확히 입력하세요.' });
+      return;
+    }
+    const today = kstDateKey();
+    if (value > today || value < '1900-01-01' || koreanAge(value) > 120) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '생년월일을 다시 확인하세요.' });
+    }
+  });
+
 const gatheringMemberIdentitySchema = z.object({
   name: gatheringDisplayNameSchema,
   phone: gatheringPhoneSchema,
   localJcName: gatheringLocalJcSchema,
+  birthDate: gatheringBirthDateSchema,
+  sex: gatheringSexSchema,
 });
 
 export const gatheringManualMemberUpdateSchema = gatheringMemberIdentitySchema;
@@ -65,6 +121,8 @@ export const gatheringLogoutSchema = z.object({
 export const gatheringProfileSchema = z.object({
   name: gatheringDisplayNameSchema,
   localJcName: gatheringLocalJcSchema,
+  birthDate: gatheringBirthDateSchema,
+  sex: gatheringSexSchema,
   directoryConsent: z.literal(true, {
     errorMap: () => ({ message: '모임 안 연락처 공개에 동의해야 합니다.' }),
   }),
@@ -286,6 +344,8 @@ export type GatheringAuthUser = {
 export type GatheringAuthProfile = {
   displayName: string;
   localJcName: string;
+  birthDate: string | null;
+  sex: 'MALE' | 'FEMALE' | null;
   directoryConsentAt: string;
 };
 
@@ -346,6 +406,9 @@ export type GatheringMemberView = {
   displayName: string;
   localJcName: string;
   phone: string | null;
+  birthDate: string | null;
+  age: number | null;
+  sex: 'MALE' | 'FEMALE' | null;
   status: string;
   roles: Array<{ id: string; role: string; title: string | null }>;
 };

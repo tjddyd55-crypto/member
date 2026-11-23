@@ -5,7 +5,8 @@ import type {
   GatheringInviteView,
   GatheringMemberView,
 } from '@member/contracts';
-import type { GatheringInvite, GatheringRole } from '@prisma/client';
+import { formatBirthDate, koreanAge } from '@member/gathering-domain';
+import type { GatheringInvite, GatheringRole, GatheringSex } from '@prisma/client';
 
 export function toInviteView(invite: GatheringInvite): GatheringInviteView {
   return {
@@ -43,15 +44,24 @@ export function toMemberView(member: {
   manualDisplayName: string | null;
   manualLocalJcName: string | null;
   manualPhone: string | null;
+  manualBirthDate?: Date | null;
+  manualSex?: GatheringSex | null;
   status: string;
   user: {
     phone: string | null;
     status?: string;
-    gatheringProfile: { displayName: string } | null;
+    gatheringProfile: {
+      displayName: string;
+      birthDate?: Date | null;
+      sex?: GatheringSex | null;
+    } | null;
     gatheringAffiliations: Array<{ localJcName: string }>;
   } | null;
   roles: Array<{ id: string; role: GatheringRole; title: string | null }>;
 }): GatheringMemberView {
+  const birth = member.userId === null ? (member.manualBirthDate ?? null) : (member.user?.gatheringProfile?.birthDate ?? null);
+  const sex = member.userId === null ? (member.manualSex ?? null) : (member.user?.gatheringProfile?.sex ?? null);
+  const birthDate = birth ? formatBirthDate(birth) : null;
   return {
     membershipId: member.id,
     userId: member.userId,
@@ -66,9 +76,16 @@ export function toMemberView(member: {
         ? (member.manualLocalJcName ?? '')
         : (member.user?.gatheringAffiliations[0]?.localJcName ?? ''),
     phone: member.userId === null ? member.manualPhone : (member.user?.phone ?? null),
+    birthDate,
+    age: birthDate ? koreanAge(birthDate) : null,
+    sex,
     status: member.status,
     roles: member.roles.map((role) => ({ id: role.id, role: role.role, title: role.title })),
   };
+}
+
+export function hideMemberContacts(member: GatheringMemberView): GatheringMemberView {
+  return { ...member, phone: null, birthDate: null, age: null, sex: null };
 }
 
 export function toGroupSummary(input: {

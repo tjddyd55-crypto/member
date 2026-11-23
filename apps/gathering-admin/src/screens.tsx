@@ -12,6 +12,14 @@ function when(value: string | null) {
   return new Date(value).toLocaleString('ko-KR');
 }
 
+function memberDemographics(user: { birthDate: string | null; age: number | null; sex: 'MALE' | 'FEMALE' | null }) {
+  if (!user.birthDate && user.age == null && !user.sex) return null;
+  const date = user.birthDate ? user.birthDate.replaceAll('-', '.') : '-';
+  const age = user.age != null ? `만 ${user.age}세` : '-';
+  const sex = user.sex === 'MALE' ? '남' : user.sex === 'FEMALE' ? '여' : '-';
+  return `${date} · ${age} · ${sex}`;
+}
+
 function phoneLinks(phone: string | null) {
   if (!phone) return <span>연락처 권한 없음</span>;
   return (
@@ -340,6 +348,15 @@ function ManualMemberForm({ member, onSave, onCancel }: {
       <label>이름<input name="name" required maxLength={40} defaultValue={member?.user.name ?? ''} /></label>
       <label>휴대폰 번호<input name="phone" type="tel" required minLength={8} maxLength={20} placeholder="010-1234-5678" defaultValue={member?.user.phone ?? ''} /></label>
       <label>소속 로컬<input name="localJcName" required maxLength={60} placeholder="예: 서울 ○○" defaultValue={member?.user.localJcName ?? ''} /></label>
+      <label>생년월일<input name="birthDate" type="date" required defaultValue={member?.user.birthDate ?? ''} /></label>
+      <div className="field-group">
+        <span>성별</span>
+        <div className="sex-options">
+          <label><input type="radio" name="sex" value="MALE" required defaultChecked={member?.user.sex === 'MALE'} /> 남</label>
+          <label><input type="radio" name="sex" value="FEMALE" required defaultChecked={member?.user.sex === 'FEMALE'} /> 여</label>
+        </div>
+        <p className="hint">남/여만 저장합니다. 주민등록번호는 받지 않습니다.</p>
+      </div>
       {!member ? (
         <label>직책<select name="role" value={role} onChange={(event) => setRole(event.target.value)}>
           <option value="MEMBER">일반 회원</option>
@@ -431,7 +448,7 @@ function GroupMembers({ groupId, canManage, refresh, onSubmit }: {
         <tbody>
           {items.map((item) => (
             <tr key={item.membershipId}>
-              <td><MemberName item={item} /><br />{item.user.localJcName}<br />{phoneLinks(item.user.phone)}<br />{item.status}</td>
+              <td><MemberName item={item} /><br />{item.user.localJcName}<br />{memberDemographics(item.user)}<br />{phoneLinks(item.user.phone)}<br />{item.status}</td>
               <td>
                 {canManage && !item.isAppRegistered ? (
                   <>
@@ -484,7 +501,7 @@ export function MembersPage() {
       <table>
         <tbody>
           {items.map((item) => (
-            <tr key={item.membershipId}><td><MemberName item={item} /></td><td>{item.group.name}</td><td>{item.status}</td><td>{phoneLinks(item.user.phone)}</td></tr>
+            <tr key={item.membershipId}><td><MemberName item={item} /></td><td>{item.group.name}</td><td>{item.user.localJcName}</td><td>{memberDemographics(item.user)}</td><td>{item.status}</td><td>{phoneLinks(item.user.phone)}</td></tr>
           ))}
         </tbody>
       </table>

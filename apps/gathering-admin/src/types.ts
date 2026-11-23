@@ -29,7 +29,7 @@ export type MemberItem = {
   group: { id: string; name: string };
   isAppRegistered: boolean;
   linkCandidate: { membershipId: string; displayName: string; localJcName: string; phone: string | null } | null;
-  user: { id: string | null; name: string | null; localJcName: string | null; phone: string | null };
+  user: { id: string | null; name: string | null; localJcName: string | null; phone: string | null; birthDate: string | null; age: number | null; sex: 'MALE' | 'FEMALE' | null };
 };
 
 export type AuditItem = {

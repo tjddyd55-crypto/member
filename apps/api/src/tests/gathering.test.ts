@@ -48,6 +48,8 @@ async function register(name: string) {
       password: 'Passw0rd!',
       localJcName: '서울테스트로컬',
       directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE',
     },
   });
   expect(res.statusCode).toBe(200);
@@ -85,6 +87,8 @@ describe('모임 계정', () => {
         password: 'Passw0rd!',
         localJcName: '서울테스트로컬',
         directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE',
       },
     });
     expect(duplicate.statusCode).toBe(409);
@@ -203,7 +207,9 @@ describe('모임 계정', () => {
       method: 'POST',
       url: '/api/gathering/auth/profile',
       headers: authHeader(token),
-      payload: { name: '광진회원', localJcName: '서울광진', directoryConsent: true },
+      payload: { name: '광진회원', localJcName: '서울광진', directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE', },
     });
     expect(profile.statusCode).toBe(200);
     expect(profile.json().recoveryCodes).toHaveLength(5);

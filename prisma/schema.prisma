@@ -630,13 +630,20 @@ enum GatheringNotificationStatus {
 }
 
 /// 지시문 User 의 모임용 표시 이름. 회원수첩 이름은 MemberProfile 에 있다.
+enum GatheringSex {
+  MALE
+  FEMALE
+}
+
 model GatheringProfile {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
+  id                 String        @id @default(cuid())
+  userId             String        @unique
   displayName        String
+  birthDate          DateTime?     @db.Date
+  sex                GatheringSex?
   directoryConsentAt DateTime
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   user User @relation(fields: [userId], references: [id])
 
@@ -707,6 +714,8 @@ model GatheringMembership {
   manualDisplayName  String?
   manualPhone        String?
   manualLocalJcName  String?
+  manualBirthDate    DateTime?                 @db.Date
+  manualSex          GatheringSex?
   addedByUserId      String?
   linkedAt           DateTime?
   linkedByUserId     String?

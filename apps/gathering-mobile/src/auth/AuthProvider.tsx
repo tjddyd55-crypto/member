@@ -15,11 +15,15 @@ type AuthState = {
     phone: string;
     password: string;
     localJcName: string;
+    birthDate: string;
+    sex: 'MALE' | 'FEMALE';
     directoryConsent: true;
   }) => Promise<void>;
   completeProfile: (body: {
     name: string;
     localJcName: string;
+    birthDate: string;
+    sex: 'MALE' | 'FEMALE';
     directoryConsent: true;
   }) => Promise<void>;
   logout: () => Promise<void>;
@@ -91,6 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       phone: string;
       password: string;
       localJcName: string;
+      birthDate: string;
+      sex: 'MALE' | 'FEMALE';
       directoryConsent: true;
     }) => {
       await applySession(await api.register(body));
@@ -99,7 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const completeProfile = useCallback(
-    async (body: { name: string; localJcName: string; directoryConsent: true }) => {
+    async (body: { name: string; localJcName: string; birthDate: string; sex: 'MALE' | 'FEMALE'; directoryConsent: true }) => {
       const result = await api.completeProfile(body);
       if (result.recoveryCodes?.length) recoveryReveal.set(result.recoveryCodes);
       setUser(result.user);

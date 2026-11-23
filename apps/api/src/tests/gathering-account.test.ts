@@ -46,7 +46,9 @@ async function register(name: string) {
   const res = await app.inject({
     method: 'POST',
     url: '/api/gathering/auth/register',
-    payload: { name, phone, password: 'Passw0rd!', localJcName: '서울테스트', directoryConsent: true },
+    payload: { name, phone, password: 'Passw0rd!', localJcName: '서울테스트', directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE', },
   });
   expect(res.statusCode).toBe(200);
   userIds.push(res.json().user.id);
@@ -139,7 +141,9 @@ describe('계정 삭제와 콘텐츠 처리', () => {
       method: 'POST',
       url: '/api/gathering/auth/profile',
       headers: auth(member.tokens.accessToken),
-      payload: { name: '다시', localJcName: '서울테스트', directoryConsent: true },
+      payload: { name: '다시', localJcName: '서울테스트', directoryConsent: true,
+      birthDate: '1990-01-15',
+      sex: 'MALE', },
     });
     expect(recreated.statusCode).toBe(401);
   });

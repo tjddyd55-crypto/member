@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GatheringManualMemberInput, GatheringMemberView } from '@member/contracts';
+import { BirthDateField, SexField } from '../forms/demographics';
 import { Button, FormError, KeyboardSheet, TextField, Title } from '../../design/ui';
 import { theme } from '../../theme';
 
@@ -77,6 +78,8 @@ export function ManualMemberSheet({
   const [name, setName] = useState(member?.displayName ?? '');
   const [phone, setPhone] = useState(member?.phone ?? '');
   const [localJcName, setLocal] = useState(member?.localJcName ?? '');
+  const [birthDate, setBirthDate] = useState(member?.birthDate ?? '');
+  const [sex, setSex] = useState<'MALE' | 'FEMALE' | ''>(member?.sex ?? '');
   const [role, setRole] = useState<NonNullable<GatheringManualMemberInput['role']>>('MEMBER');
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
@@ -86,11 +89,18 @@ export function ManualMemberSheet({
     if (busy) return;
     setBusy(true);
     setError('');
+    if (!sex) {
+      setBusy(false);
+      setError('성별을 선택하세요.');
+      return;
+    }
     try {
       await onSave({
         name,
         phone,
         localJcName,
+        birthDate,
+        sex,
         role,
         title: role === 'EXECUTIVE' ? title : undefined,
       });
@@ -118,6 +128,8 @@ export function ManualMemberSheet({
         placeholder="010-1234-5678"
       />
       <TextField label="소속 로컬" value={localJcName} onChangeText={setLocal} maxLength={60} placeholder="예: 서울 ○○" />
+      <BirthDateField value={birthDate} onChange={setBirthDate} />
+      <SexField value={sex} onChange={setSex} />
       {!member && canAssign
         ? roles.map(([value, label]) => (
             <Button
@@ -138,6 +150,8 @@ export function ManualMemberSheet({
           !name.trim() ||
           !phone.trim() ||
           !localJcName.trim() ||
+          !birthDate ||
+          !sex ||
           (role === 'EXECUTIVE' && !title.trim())
         }
         onPress={() => void save()}

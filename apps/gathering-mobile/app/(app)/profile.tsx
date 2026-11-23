@@ -4,12 +4,15 @@ import { router } from 'expo-router';
 import { gatheringProfileSchema } from '@member/contracts';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { DIRECTORY_CONSENT } from '../../src/copy';
+import { BirthDateField, SexField } from '../../src/features/forms/demographics';
 import { Body, Button, FormError, Notice, Screen, TextField, Title } from '../../src/design/ui';
 
 export default function ProfileScreen() {
   const { profile, completeProfile } = useAuth();
   const [name, setName] = useState(profile?.displayName ?? '');
   const [localJcName, setLocalJcName] = useState(profile?.localJcName ?? '');
+  const [birthDate, setBirthDate] = useState(profile?.birthDate ?? '');
+  const [sex, setSex] = useState<'MALE' | 'FEMALE' | ''>(profile?.sex ?? '');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const showError = (message: string) => {
@@ -20,7 +23,13 @@ export default function ProfileScreen() {
   const onSubmit = async () => {
     Keyboard.dismiss();
     setError(null);
-    const parsed = gatheringProfileSchema.safeParse({ name, localJcName, directoryConsent: true });
+    const parsed = gatheringProfileSchema.safeParse({
+      name,
+      localJcName,
+      birthDate,
+      sex,
+      directoryConsent: true,
+    });
     if (!parsed.success) {
       showError(parsed.error.issues[0]?.message ?? '입력값을 확인하세요.');
       return;
@@ -44,27 +53,25 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <Title>모임 프로필</Title>
+      <Title>내 정보</Title>
       {profile ? (
         <Body>
           {profile.displayName} · {profile.localJcName}
         </Body>
       ) : (
-        <Body>모임에 보일 이름과 소속 로컬을 등록합니다.</Body>
+        <Body>모임에 보일 이름, 소속 로컬, 생년월일, 성별을 등록합니다.</Body>
       )}
       <Notice>{DIRECTORY_CONSENT}</Notice>
-      {profile ? null : (
-        <>
-          <TextField label="이름" value={name} onChangeText={setName} />
-          <TextField label="소속 로컬" value={localJcName} onChangeText={setLocalJcName} />
-          {error ? <FormError>{error}</FormError> : null}
-          <Button
-            label="저장하고 복구 코드 받기"
-            onPress={() => void onSubmit()}
-            loading={loading}
-          />
-        </>
-      )}
+      <TextField label="이름" value={name} onChangeText={setName} />
+      <TextField label="소속 로컬" value={localJcName} onChangeText={setLocalJcName} />
+      <BirthDateField value={birthDate} onChange={setBirthDate} />
+      <SexField value={sex} onChange={setSex} />
+      {error ? <FormError>{error}</FormError> : null}
+      <Button
+        label={profile ? '저장' : '저장하고 복구 코드 받기'}
+        onPress={() => void onSubmit()}
+        loading={loading}
+      />
       <Button
         label="개인정보 처리방침"
         variant="text"

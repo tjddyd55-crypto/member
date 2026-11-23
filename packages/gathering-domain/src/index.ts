@@ -81,3 +81,13 @@ export {
 } from './admin-access.js';
 export type { AdminCapability, AdminRole, AdminScope } from './admin-access.js';
 export type { SubscriptionNoticeWindow } from './subscription.js';
+export {
+  formatBirthDate,
+  formatMemberDemographics,
+  isAllowedBirthDate,
+  isIsoCalendarDate,
+  koreanAge,
+  parseBirthDate,
+  sexLabel,
+} from './demographics.js';
+export type { GatheringSex } from './demographics.js';

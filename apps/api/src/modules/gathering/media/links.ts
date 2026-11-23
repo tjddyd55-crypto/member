@@ -6,7 +6,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { writeGatheringAudit } from '../audit.js';
 import { GatheringAuditAction } from '../constants.js';
 import { lockGroup } from '../locks.js';
-import { gatheringPublicGalleryLimiter } from '../rate-limit.js';
+import { gatheringPublicGalleryLimiter, gatheringUploadLimiter } from '../rate-limit.js';
 import { cursorFilter, decodeMediaCursor, encodeMediaCursor } from './present.js';
 import { signMediaDownload } from './queries.js';
 import { canManageFolders } from './folder-access.js';
@@ -17,6 +17,8 @@ import {
   completeMediaUpload,
   createFolderMediaUploads,
   createMediaUploads,
+  resumeFolderMediaUpload,
+  resumeMediaUpload,
 } from './commands.js';
 
 const linkNotFound = () => new AppError(404, 'LINK_NOT_FOUND', '업로드 링크를 찾을 수 없습니다.');
@@ -290,20 +292,41 @@ export async function publicReserve(token: string, items: UploadItem[]) {
   });
 }
 
+async function assertPublicUploadTarget(
+  link: Awaited<ReturnType<typeof loadUsableLink>>,
+  assetId: string,
+) {
+  if (!link.eventId === !link.folderId) throw linkNotFound();
+  const asset = await prisma.gatheringMediaAsset.findFirst({
+    where: {
+      id: assetId,
+      groupId: link.groupId,
+      eventId: link.eventId,
+      folderId: link.folderId,
+      uploaderUserId: link.createdByUserId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!asset) throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
+}
+
+export async function publicResume(token: string, assetId: string) {
+  const link = await loadUsableLink(token);
+  gatheringUploadLimiter.assert(`public-upload-resume:${link.id}`);
+  await assertPublicUploadTarget(link, assetId);
+  const result = link.eventId
+    ? await resumeMediaUpload(link.createdByUserId, link.groupId, link.eventId, assetId)
+    : await resumeFolderMediaUpload(link.createdByUserId, link.groupId, link.folderId ?? '', assetId);
+  if (result.status === 'READY') {
+    return { status: result.status, media: presentPublicUpload(result.media) };
+  }
+  return result;
+}
+
 export async function publicComplete(token: string, assetId: string, sizeBytes: number) {
   const link = await loadUsableLink(token);
-  const asset = await prisma.gatheringMediaAsset.findFirst({
-    where: { id: assetId, groupId: link.groupId, deletedAt: null },
-  });
-  if (!asset || asset.uploaderUserId !== link.createdByUserId) {
-    throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
-  }
-  if (link.eventId && asset.eventId !== link.eventId) {
-    throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
-  }
-  if (link.folderId && asset.folderId !== link.folderId) {
-    throw new AppError(404, 'MEDIA_NOT_FOUND', '사진·영상을 찾을 수 없습니다.');
-  }
+  await assertPublicUploadTarget(link, assetId);
   const { media } = link.eventId
     ? await completeMediaUpload(
         link.createdByUserId,
@@ -319,18 +342,20 @@ export async function publicComplete(token: string, assetId: string, sizeBytes: 
         assetId,
         sizeBytes,
       );
+  return { media: presentPublicUpload(media) };
+}
+
+function presentPublicUpload(media: Awaited<ReturnType<typeof completeMediaUpload>>['media']) {
   return {
-    media: {
-      id: media.id,
-      kind: media.kind,
-      hasPoster: media.hasPoster,
-      mimeType: media.mimeType,
-      sizeBytes: media.sizeBytes,
-      width: media.width,
-      height: media.height,
-      durationMs: media.durationMs,
-      createdAt: media.createdAt,
-      canDelete: false as const,
-    },
+    id: media.id,
+    kind: media.kind,
+    hasPoster: media.hasPoster,
+    mimeType: media.mimeType,
+    sizeBytes: media.sizeBytes,
+    width: media.width,
+    height: media.height,
+    durationMs: media.durationMs,
+    createdAt: media.createdAt,
+    canDelete: false as const,
   };
 }

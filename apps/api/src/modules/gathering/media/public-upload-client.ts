@@ -320,8 +320,7 @@ async function reserveJobs(chunk) {
   const pending = [];
   const metadata = [];
   for (const job of chunk) {
-    if (job.reservation && (job.sent || Date.parse(job.reservation.expiresAt) > Date.now())) continue;
-    job.reservation = null;
+    if (job.reservation) continue;
     job.loaded = 0;
     try {
       const item = {
@@ -363,32 +362,67 @@ function putFile(job) {
   });
 }
 
+function isDiscardedUpload(error) {
+  return ['UPLOAD_EXPIRED', 'UPLOAD_FAILED'].includes(error.code);
+}
+
+async function resumeJob(job) {
+  let result;
+  try {
+    result = await request('/resume', { assetId: job.reservation.id });
+  } catch (error) {
+    if (!isDiscardedUpload(error)) throw error;
+  }
+  if (result?.status === 'READY') {
+    finishUpload(job, result.media);
+    return false;
+  }
+  job.reservation = result ?? null;
+  job.sent = false;
+  job.loaded = 0;
+  if (!job.reservation) await reserveJobs([job]);
+  return Boolean(job.reservation);
+}
+
+async function sendAndComplete(job) {
+  if (!job.sent) {
+    await putFile(job);
+    job.sent = true;
+    job.loaded = job.size;
+  }
+  const { media } = await request('/complete', {
+    assetId: job.reservation.id, sizeBytes: job.size,
+  });
+  return media;
+}
+
+function finishUpload(job, media) {
+  items.delete(media.id);
+  newest.set(media.id, media);
+  job.state = 'done';
+  job.loaded = job.size;
+  renderGrid();
+  URL.revokeObjectURL(job.preview);
+  job.preview = job.file = job.reservation = null;
+  renderProgress(true);
+}
+
 async function transfer(job) {
   try {
-    if (!job.sent) {
-      if (Date.parse(job.reservation.expiresAt) <= Date.now()) {
-        await reserveJobs([job]);
-        if (!job.reservation) return;
-      }
-      await putFile(job);
-      job.sent = true;
-      job.loaded = job.size;
+    if (!job.sent && Date.parse(job.reservation.expiresAt) <= Date.now()) {
+      if (!(await resumeJob(job))) return;
     }
-    const { media } = await request('/complete', {
-      assetId: job.reservation.id, sizeBytes: job.size,
-    });
-    items.delete(media.id);
-    newest.set(media.id, media);
-    job.state = 'done';
-    renderGrid();
-    URL.revokeObjectURL(job.preview);
-    job.preview = job.file = job.reservation = null;
-    renderProgress(true);
+    let media;
+    try {
+      media = await sendAndComplete(job);
+    } catch (error) {
+      if (!isDiscardedUpload(error)) throw error;
+      if (!(await resumeJob(job))) return;
+      media = await sendAndComplete(job);
+    }
+    finishUpload(job, media);
   } catch (error) {
-    if (['UPLOAD_EXPIRED', 'UPLOAD_FAILED'].includes(error.code)) {
-      job.reservation = null;
-      job.sent = false;
-    } else if (['OBJECT_MISSING', 'SIZE_MISMATCH', 'UNSUPPORTED_TYPE'].includes(error.code)) {
+    if (['OBJECT_MISSING', 'SIZE_MISMATCH', 'UNSUPPORTED_TYPE'].includes(error.code)) {
       job.sent = false;
     }
     if (!job.sent) job.loaded = 0;

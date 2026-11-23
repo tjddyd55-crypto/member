@@ -3,8 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
+import { publicUploadClient } from '../modules/gathering/media/public-upload-client.js';
 import { uploadPage } from '../modules/gathering/media/public-upload-page.js';
-import { gatheringPublicGalleryLimiter } from '../modules/gathering/rate-limit.js';
+import {
+  gatheringPublicGalleryLimiter,
+  gatheringUploadLimiter,
+} from '../modules/gathering/rate-limit.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
 
@@ -31,6 +35,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.restoreAllMocks();
   gatheringPublicGalleryLimiter.reset();
+  gatheringUploadLimiter.reset();
   useObjectStorage(new MemoryObjectStorage());
 });
 
@@ -50,6 +55,114 @@ describe('공개 업로드 갤러리', () => {
     expect(html).toContain('const token = "\\u003c/script>\\u003cscript>');
     const script = html.split('<script>')[1].split('</script>')[0];
     expect(() => new Script(script)).not.toThrow();
+  });
+
+  it.each([
+    { completeError: null, resume: 'PENDING', paths: ['/resume', '/complete'], puts: ['renewed'] },
+    {
+      completeError: 'UPLOAD_FAILED',
+      resume: 'PENDING',
+      paths: ['/complete', '/resume', '/complete'],
+      puts: ['renewed'],
+    },
+    {
+      completeError: 'UPLOAD_FAILED',
+      resume: 'READY',
+      paths: ['/complete', '/resume'],
+      puts: [],
+    },
+    {
+      completeError: 'UPLOAD_EXPIRED',
+      resume: 'UPLOAD_EXPIRED',
+      paths: ['/complete', '/resume', '/reserve', '/complete'],
+      puts: ['replacement'],
+    },
+  ])('recovers an upload with complete error $completeError and resume $resume', async ({
+    completeError,
+    resume,
+    paths,
+    puts,
+  }) => {
+    const expiresAt = new Date(Date.now() + 600_000).toISOString();
+    const media = { id: resume === 'UPLOAD_EXPIRED' ? 'replacement' : 'original', kind: 'PHOTO' };
+    const job = {
+      file: { name: 'photo.jpg', type: 'image/jpeg' },
+      kind: 'PHOTO',
+      size: 32,
+      preview: 'blob:photo',
+      state: 'failed',
+      loaded: 0,
+      sent: Boolean(completeError),
+      reservation: { id: 'original', uploadUrl: 'expired', expiresAt: new Date(0).toISOString() },
+    };
+    let firstComplete = true;
+    const requestUpload = vi.fn(async (path: string, payload: { assetId?: string }) => {
+      if (path === '/resume') {
+        expect(payload.assetId).toBe('original');
+        if (resume === 'READY') return { status: 'READY', media };
+        if (resume === 'UPLOAD_EXPIRED') throw Object.assign(new Error(), { code: resume });
+        return { status: 'PENDING', id: 'original', uploadUrl: 'renewed', expiresAt };
+      }
+      if (path === '/reserve') {
+        return { items: [{ id: 'replacement', uploadUrl: 'replacement', expiresAt }] };
+      }
+      expect(path).toBe('/complete');
+      if (firstComplete && completeError) {
+        firstComplete = false;
+        expect(payload.assetId).toBe('original');
+        throw Object.assign(new Error(), { code: completeError });
+      }
+      expect(payload.assetId).toBe(media.id);
+      return { media };
+    });
+    const putUpload = vi.fn(async (uploadJob: typeof job) => uploadJob.reservation.uploadUrl);
+    const refreshGrid = vi.fn();
+    const script = new Script(publicUploadClient + `
+      request = requestUpload;
+      putFile = putUpload;
+      renderGrid = refreshGrid;
+      renderProgress = () => {};
+      jobs = [job];
+      upload(jobs).then(() => readyItems());
+    `);
+    const gallery = await script.runInNewContext({
+      token: 'token',
+      job,
+      requestUpload,
+      putUpload,
+      refreshGrid,
+      document: { getElementById: () => ({}), addEventListener() {} },
+      window: { addEventListener() {} },
+      fetch: () => new Promise(() => {}),
+      clearTimeout() {},
+      setTimeout() {},
+      URL: { revokeObjectURL() {} },
+    });
+
+    expect(requestUpload.mock.calls.map(([path]) => path)).toEqual(paths);
+    expect(await Promise.all(putUpload.mock.results.map(({ value }) => value))).toEqual(puts);
+    expect(job.state).toBe('done');
+    expect(gallery).toEqual([media]);
+    expect(refreshGrid).toHaveBeenCalledTimes(2);
+  });
+
+  it('rate-limits upload resume requests per link', async () => {
+    const findLink = vi.spyOn(prisma.gatheringUploadLink, 'findUnique').mockResolvedValue(link);
+    const findAsset = vi.spyOn(prisma.gatheringMediaAsset, 'findFirst').mockResolvedValue(null);
+    const resume = () => app.inject({
+      method: 'POST',
+      url: `${prefix}/test-token/resume`,
+      payload: { assetId: 'other-asset' },
+    });
+    for (let i = 0; i < 30; i++) {
+      expect((await resume()).statusCode).toBe(404);
+    }
+    const limited = await resume();
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json().error.code).toBe('RATE_LIMITED');
+    expect(findAsset).toHaveBeenCalledTimes(30);
+    findLink.mockResolvedValue({ ...link, id: 'other-link' });
+    expect((await resume()).statusCode).toBe(404);
   });
 
   it('serves the page without a session and returns the same 404 for missing and revoked tokens', async () => {

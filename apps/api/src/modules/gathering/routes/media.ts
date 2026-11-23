@@ -30,6 +30,7 @@ import {
   downloadPublicMedia,
   publicComplete,
   publicReserve,
+  publicResume,
   publicUploadInfo,
   renameMediaFolder,
   deleteMediaFolder,
@@ -351,6 +352,13 @@ export const gatheringMediaRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ token: z.string().min(1) }).parse(request.params);
     const body = gatheringMediaUploadSchema.parse(request.body);
     return publicReserve(params.token, body.items);
+  });
+
+  app.post(`${publicUploads}/:token/resume`, async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const { token } = tokenParams.parse(request.params);
+    const { assetId } = z.object({ assetId: z.string().min(1) }).parse(request.body);
+    return publicResume(token, assetId);
   });
 
   app.post('/api/gathering/public/uploads/:token/complete', async (request) => {

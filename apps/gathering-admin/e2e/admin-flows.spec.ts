@@ -275,7 +275,7 @@ async function register(phone: string, name: string) {
   const response = await fetch(`${API}/api/gathering/auth/register`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name, phone, password: 'Passw0rd!', localJcName: '서울테스트', directoryConsent: true }),
+    body: JSON.stringify({ name, phone, password: 'Passw0rd!', localJcName: '서울테스트', birthDate: '1990-01-15', sex: 'MALE', directoryConsent: true }),
   });
   expect(response.status).toBe(200);
   const body = (await response.json()) as { tokens: { accessToken: string }; user: { id: string } };

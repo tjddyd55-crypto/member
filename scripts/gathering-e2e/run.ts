@@ -196,6 +196,8 @@ async function register(base: string, role: string) {
       phone,
       password: PASSWORD,
       localJcName: '검증로컬',
+      birthDate: '1990-01-15',
+      sex: 'MALE',
       directoryConsent: true,
     },
   });

@@ -41,7 +41,8 @@ describe('t51 화면 구조', () => {
     expect(source('app/(app)/groups/[groupId]/index.tsx')).toContain('padding: theme.space[12]');
     expect(media).toContain('{ width: cellSize, height: cellSize }');
     expect(media).toContain('onLongPress={onLongPress}');
-    expect(media).toContain('selecting && !item.canDelete && { opacity: 0.35 }');
+    expect(media).toContain('if (!selecting && !deleting && !saving) setSelected([item.id])');
+    expect(media).toContain('label="다운로드"');
     expect(media).toContain('size={20}');
     expect(source('src/features/media/AlbumGallery.tsx')).toContain('<MediaPane');
     expect(source('app/(app)/groups/[groupId]/events/[eventId].tsx')).toContain('<MediaPane');

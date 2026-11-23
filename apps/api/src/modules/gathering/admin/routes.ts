@@ -1,3 +1,4 @@
+import { registerJcOrgAdminRoutes } from '../../jc-org/admin-routes.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { gatheringManualMemberCreateSchema, gatheringManualMemberUpdateSchema, gatheringManualMemberLinkSchema } from '@member/contracts';
 import { z } from 'zod';
@@ -49,6 +50,7 @@ const createBody = z.object({
 const disableBody = z.object({ reason: z.string() });
 
 export const gatheringAdminRoutes: FastifyPluginAsync = async (app) => {
+  registerJcOrgAdminRoutes(app, readCookie);
   app.post('/api/gathering-admin/auth/login', async (request, reply) => {
     const body = loginBody.parse(request.body);
     const result = await loginAdmin({ ...body, userAgent: request.headers['user-agent'] });

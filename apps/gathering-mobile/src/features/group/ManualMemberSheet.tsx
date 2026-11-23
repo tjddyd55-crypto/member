@@ -3,7 +3,8 @@ import { Modal, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GatheringManualMemberInput, GatheringMemberView } from '@member/contracts';
 import { BirthDateField, SexField } from '../forms/demographics';
-import { Button, FormError, KeyboardSheet, TextField, Title } from '../../design/ui';
+import { JcOrgPicker, jcPickerValue } from '../forms/JcOrgPicker';
+import { Button, FormError, KeyboardSheet, Notice, TextField, Title } from '../../design/ui';
 import { theme } from '../../theme';
 
 export function MemberActionSheet({
@@ -77,7 +78,7 @@ export function ManualMemberSheet({
 }) {
   const [name, setName] = useState(member?.displayName ?? '');
   const [phone, setPhone] = useState(member?.phone ?? '');
-  const [localJcName, setLocal] = useState(member?.localJcName ?? '');
+  const [affiliation, setAffiliation] = useState(() => jcPickerValue(member));
   const [birthDate, setBirthDate] = useState(member?.birthDate ?? '');
   const [sex, setSex] = useState<'MALE' | 'FEMALE' | ''>(member?.sex ?? '');
   const [role, setRole] = useState<NonNullable<GatheringManualMemberInput['role']>>('MEMBER');
@@ -98,7 +99,7 @@ export function ManualMemberSheet({
       await onSave({
         name,
         phone,
-        localJcName,
+        localId: affiliation.local?.id,
         birthDate,
         sex,
         role,
@@ -127,7 +128,8 @@ export function ManualMemberSheet({
         maxLength={20}
         placeholder="010-1234-5678"
       />
-      <TextField label="소속 로컬" value={localJcName} onChangeText={setLocal} maxLength={60} placeholder="예: 서울 ○○" />
+      {member?.affiliationNeedsReselect ? <Notice>기존 소속 “{member.localJcName}”의 지구와 로컬을 다시 선택해 주세요.</Notice> : null}
+      <JcOrgPicker value={affiliation} onChange={setAffiliation} />
       <BirthDateField value={birthDate} onChange={setBirthDate} />
       <SexField value={sex} onChange={setSex} />
       {!member && canAssign
@@ -149,7 +151,7 @@ export function ManualMemberSheet({
         disabled={
           !name.trim() ||
           !phone.trim() ||
-          !localJcName.trim() ||
+          !affiliation.local ||
           !birthDate ||
           !sex ||
           (role === 'EXECUTIVE' && !title.trim())

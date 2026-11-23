@@ -77,20 +77,35 @@ export const gatheringBirthDateSchema = z
     }
   });
 
+const gatheringLocalIdSchema = z.string().cuid('소속 로컬JC를 선택해 주세요.');
+const gatheringAffiliationFields = {
+  localId: gatheringLocalIdSchema.optional(),
+  localJcName: gatheringLocalJcSchema.optional(),
+};
+
+function hasAffiliation(value: { localId?: string; localJcName?: string }) {
+  return Boolean(value.localId || value.localJcName);
+}
+
+const affiliationRequired = {
+  path: ['localId'],
+  message: '소속 로컬JC를 선택해 주세요.',
+};
+
 const gatheringMemberIdentitySchema = z.object({
   name: gatheringDisplayNameSchema,
   phone: gatheringPhoneSchema,
-  localJcName: gatheringLocalJcSchema,
+  ...gatheringAffiliationFields,
   birthDate: gatheringBirthDateSchema,
   sex: gatheringSexSchema,
 });
 
-export const gatheringManualMemberUpdateSchema = gatheringMemberIdentitySchema;
+export const gatheringManualMemberUpdateSchema = gatheringMemberIdentitySchema.refine(hasAffiliation, affiliationRequired);
 
 export const gatheringManualMemberCreateSchema = gatheringMemberIdentitySchema.extend({
   role: z.enum(['MEMBER', 'SECRETARY', 'TREASURER', 'EXECUTIVE']).optional(),
   title: z.string().trim().min(1).max(40).optional(),
-});
+}).refine(hasAffiliation, affiliationRequired);
 
 export const gatheringManualMemberLinkSchema = z.object({
   targetMembershipId: z.string().min(1),
@@ -103,7 +118,7 @@ export const gatheringRegisterSchema = gatheringMemberIdentitySchema.extend({
   directoryConsent: z.literal(true, {
     errorMap: () => ({ message: '모임 안 연락처 공개에 동의해야 합니다.' }),
   }),
-});
+}).refine(hasAffiliation, affiliationRequired);
 
 export const gatheringLoginSchema = z.object({
   phone: gatheringPhoneSchema,
@@ -120,13 +135,13 @@ export const gatheringLogoutSchema = z.object({
 
 export const gatheringProfileSchema = z.object({
   name: gatheringDisplayNameSchema,
-  localJcName: gatheringLocalJcSchema,
+  ...gatheringAffiliationFields,
   birthDate: gatheringBirthDateSchema,
   sex: gatheringSexSchema,
   directoryConsent: z.literal(true, {
     errorMap: () => ({ message: '모임 안 연락처 공개에 동의해야 합니다.' }),
   }),
-});
+}).refine(hasAffiliation, affiliationRequired);
 
 export const gatheringRecoveryRedeemSchema = z.object({
   phone: gatheringPhoneSchema,
@@ -143,9 +158,15 @@ export const gatheringRecoveryRequestSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
+const gatheringGroupScopeFields = {
+  scopeDistrictId: z.string().cuid().nullish(),
+  scopeLocalId: z.string().cuid().nullish(),
+};
+
 export const gatheringGroupCreateSchema = z.object({
   name: gatheringDisplayNameSchema,
   description: z.string().trim().max(500).optional(),
+  ...gatheringGroupScopeFields,
 });
 
 export const gatheringGroupUpdateSchema = z
@@ -153,6 +174,7 @@ export const gatheringGroupUpdateSchema = z
     name: gatheringDisplayNameSchema.optional(),
     description: z.string().trim().max(500).nullable().optional(),
     inviteRequiresApproval: z.boolean().optional(),
+    ...gatheringGroupScopeFields,
   })
   .refine((value) => Object.keys(value).length > 0, '변경할 항목이 없습니다.');
 
@@ -341,9 +363,24 @@ export type GatheringAuthUser = {
   status: string;
 };
 
-export type GatheringAuthProfile = {
-  displayName: string;
+export type JcOrgChoice = { id: string; name: string; displayName: string };
+
+export type JcDistrictChoice = JcOrgChoice & { localCount: number };
+
+export type JcDistrictRef = Pick<JcOrgChoice, 'id' | 'displayName'>;
+
+export type JcLocalSearchResult = JcOrgChoice & { district: JcDistrictRef };
+
+export type GatheringAffiliationView = {
   localJcName: string;
+  localId: string | null;
+  district: JcDistrictRef | null;
+  localDisplayName: string;
+  affiliationNeedsReselect: boolean;
+};
+
+export type GatheringAuthProfile = GatheringAffiliationView & {
+  displayName: string;
   birthDate: string | null;
   sex: 'MALE' | 'FEMALE' | null;
   directoryConsentAt: string;
@@ -361,7 +398,12 @@ export type GatheringSessionResponse = {
   recoveryCodes?: string[];
 };
 
-export type GatheringGroupSummary = {
+export type GatheringGroupScope = {
+  scopeDistrictId: string | null;
+  scopeLocalId: string | null;
+};
+
+export type GatheringGroupSummary = GatheringGroupScope & {
   id: string;
   name: string;
   description: string | null;
@@ -380,7 +422,7 @@ export type GatheringFinanceYearView = {
   openingBalanceWon: number;
 };
 
-export type GatheringGroupDetail = {
+export type GatheringGroupDetail = GatheringGroupScope & {
   id: string;
   name: string;
   description: string | null;
@@ -395,7 +437,7 @@ export type GatheringGroupDetail = {
   pendingCount: number | null;
 };
 
-export type GatheringMemberView = {
+export type GatheringMemberView = GatheringAffiliationView & {
   membershipId: string;
   userId: string | null;
   isAppRegistered: boolean;
@@ -404,7 +446,6 @@ export type GatheringMemberView = {
     'membershipId' | 'displayName' | 'localJcName' | 'phone'
   > | null;
   displayName: string;
-  localJcName: string;
   phone: string | null;
   birthDate: string | null;
   age: number | null;

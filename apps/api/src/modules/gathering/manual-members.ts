@@ -1,3 +1,4 @@
+import { resolveAffiliation } from '../jc-org/affiliation.js';
 import type { GatheringManualMemberInput } from '@member/contracts';
 import { parseBirthDate } from '@member/gathering-domain';
 import type { GatheringSex, Prisma } from '@prisma/client';
@@ -17,7 +18,7 @@ export type ManualMemberChange =
   | {
       action: 'UPDATE';
       membershipId: string;
-      input: Pick<GatheringManualMemberInput, 'name' | 'phone' | 'localJcName' | 'birthDate' | 'sex'>;
+      input: Pick<GatheringManualMemberInput, 'name' | 'phone' | 'localJcName' | 'localId' | 'birthDate' | 'sex'>;
     }
   | { action: 'DELETE'; membershipId: string }
   | { action: 'LINK'; membershipId: string; targetMembershipId: string };
@@ -126,10 +127,12 @@ export async function applyManualMemberChange(
     }
     const phone = requirePhone(change.input.phone);
     await checkPhone(tx, groupId, phone, targetId);
+    const affiliation = await resolveAffiliation(tx, change.input);
     const data = {
       manualDisplayName: change.input.name,
       manualPhone: phone,
-      manualLocalJcName: change.input.localJcName,
+      manualLocalJcName: affiliation.localJcName,
+      manualLocalId: affiliation.localId,
       manualBirthDate: parseBirthDate(change.input.birthDate),
       manualSex: change.input.sex,
     };
@@ -215,6 +218,7 @@ async function linkInside(
     manualDisplayName: null,
     manualPhone: null,
     manualLocalJcName: null,
+    manualLocalId: null,
     manualBirthDate: null,
     manualSex: null,
   };

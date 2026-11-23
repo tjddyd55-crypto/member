@@ -1,14 +1,18 @@
+import { currentAffiliation } from '../jc-org/affiliation.js';
+import { affiliationLocalSelect } from '../jc-org/directory.js';
 import type { GatheringGroupDetail } from '@member/contracts';
+import type { GatheringGroup } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from './access.js';
 import { blockedUserIds } from './moderation/blocks.js';
 import { hideMemberContacts, toFinanceYearView, toGroupSummary, toMemberView } from './presenters/group.js';
 
 export const memberInclude = {
+  manualLocal: { select: affiliationLocalSelect },
   user: {
     include: {
       gatheringProfile: true,
-      gatheringAffiliations: { where: { isCurrent: true }, take: 1 },
+      gatheringAffiliations: currentAffiliation,
     },
   },
   roles: { where: { revokedAt: null } },
@@ -26,18 +30,21 @@ export async function listMyGroups(userId: string, query?: string) {
   });
   const groupIds = memberships.map((membership) => membership.groupId);
   const context = await loadListContext(groupIds);
-  return memberships.map((membership) =>
-    toGroupSummary({
+  return memberships.map((membership) => {
+    const group = context.groups.get(membership.groupId);
+    return toGroupSummary({
       id: membership.groupId,
-      name: context.names.get(membership.groupId) ?? '',
-      description: context.descriptions.get(membership.groupId) ?? null,
+      name: group?.name ?? '',
+      description: group?.description ?? null,
+      scopeDistrictId: group?.scopeDistrictId ?? null,
+      scopeLocalId: group?.scopeLocalId ?? null,
       membershipStatus: membership.status === 'PENDING' ? 'PENDING' : 'ACTIVE',
       roles: membership.roles.map((role) => role.role),
       presidentName: context.presidents.get(membership.groupId) ?? null,
       memberCount: context.counts.get(membership.groupId) ?? 0,
       financeYear: context.years.get(membership.groupId) ?? null,
-    }),
-  );
+    });
+  });
 }
 
 async function loadListContext(groupIds: string[]) {
@@ -61,8 +68,7 @@ async function loadListContext(groupIds: string[]) {
     }),
   ]);
   return {
-    names: new Map(groups.map((group) => [group.id, group.name])),
-    descriptions: new Map(groups.map((group) => [group.id, group.description])),
+    groups: new Map(groups.map((group) => [group.id, group])),
     presidents: new Map(
       presidents.map((row) => [row.groupId, row.user?.gatheringProfile?.displayName ?? null]),
     ),
@@ -81,8 +87,7 @@ function firstOpenYear(rows: Array<{ groupId: string; year: number }>) {
 
 function emptyListContext() {
   return {
-    names: new Map<string, string>(),
-    descriptions: new Map<string, string | null>(),
+    groups: new Map<string, GatheringGroup>(),
     presidents: new Map<string, string | null>(),
     counts: new Map<string, number>(),
     years: new Map<string, number>(),
@@ -110,6 +115,8 @@ export async function getGroupDetail(
     id: group.id,
     name: group.name,
     description: group.description,
+    scopeDistrictId: group.scopeDistrictId,
+    scopeLocalId: group.scopeLocalId,
     inviteRequiresApproval: group.inviteRequiresApproval,
     fiscalStartMonth: group.fiscalStartMonth,
     fiscalStartDay: group.fiscalStartDay,
@@ -185,12 +192,16 @@ export function memberSearch(query: string, phoneGroupIds?: string[] | null) {
           gatheringAffiliations: {
             some: {
               isCurrent: true,
-              localJcName: { contains: query, mode: 'insensitive' as const },
+              OR: [
+                { localJcName: { contains: query, mode: 'insensitive' as const } },
+                { local: { displayName: { contains: query, mode: 'insensitive' as const } } },
+              ],
             },
           },
         },
       },
       { userId: null, manualDisplayName: { contains: query, mode: 'insensitive' as const } },
+      { userId: null, manualLocal: { displayName: { contains: query, mode: 'insensitive' as const } } },
       { userId: null, manualLocalJcName: { contains: query, mode: 'insensitive' as const } },
       {
         ...(phoneGroupIds ? { groupId: { in: phoneGroupIds } } : {}),

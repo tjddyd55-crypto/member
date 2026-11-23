@@ -1,3 +1,5 @@
+import { affiliationView, currentAffiliation } from '../../jc-org/affiliation.js';
+import { affiliationLocalSelect } from '../../jc-org/directory.js';
 import {
   FORMAL_ANNUAL_FEE_WON,
   STORAGE_QUOTA_BYTES,
@@ -78,7 +80,8 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
       ...(query ? memberSearch(query, phoneGroupIds) : {}),
     },
     include: {
-      user: { include: { gatheringProfile: true, gatheringAffiliations: { where: { isCurrent: true }, take: 1 } } },
+      user: { include: { gatheringProfile: true, gatheringAffiliations: currentAffiliation } },
+      manualLocal: { select: affiliationLocalSelect },
       group: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -100,6 +103,9 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
   return members.map((row) => {
     const contactRead = contactIds == null || contactIds.includes(row.groupId);
     const candidate = candidateFor(candidates, row);
+    const affiliation = row.user?.gatheringAffiliations[0];
+    const localName = row.userId === null ? row.manualLocalJcName : affiliation?.localJcName ?? null;
+    const local = row.userId === null ? row.manualLocal : affiliation?.local;
     return {
       membershipId: row.id,
       status: row.status,
@@ -112,10 +118,8 @@ export async function listScopedMembers(adminId: string, query?: string, groupId
           row.userId === null
             ? row.manualDisplayName
             : (row.user?.gatheringProfile?.displayName ?? null),
-        localJcName:
-          row.userId === null
-            ? row.manualLocalJcName
-            : (row.user?.gatheringAffiliations[0]?.localJcName ?? null),
+        ...affiliationView(localName ?? '', local),
+        localJcName: localName,
         phone: contactRead ? (row.userId === null ? row.manualPhone : (row.user?.phone ?? null)) : null,
         ...adminDemographics(row, contactRead),
       },

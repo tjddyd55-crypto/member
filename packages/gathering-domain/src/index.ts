@@ -91,3 +91,4 @@ export {
   sexLabel,
 } from './demographics.js';
 export type { GatheringSex } from './demographics.js';
+export { normalizeJcName } from './jc-name.js';

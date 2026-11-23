@@ -614,7 +614,7 @@ describe('앱 미가입 회원', () => {
       expect.arrayContaining([
         expect.objectContaining({
           isAppRegistered: false,
-          user: { id: null, name: '운영 수정', localJcName: '서울JC', phone: null, birthDate: null, age: null, sex: null },
+          user: expect.objectContaining({ id: null, name: '운영 수정', localJcName: '서울JC', phone: null, birthDate: null, age: null, sex: null }),
         }),
         expect.objectContaining({
           membershipId: pending.id,

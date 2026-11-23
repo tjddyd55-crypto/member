@@ -1,3 +1,4 @@
+import { resolveAffiliation, type AffiliationInput } from '../jc-org/affiliation.js';
 import type { GatheringSex, Prisma } from '@prisma/client';
 import { parseBirthDate } from '@member/gathering-domain';
 import { hashPassword } from '../../services/auth-service.js';
@@ -7,11 +8,10 @@ import { GatheringAuditAction, RECOVERY_CODE_COUNT } from './constants.js';
 import { createRecoveryCode, sha256 } from './crypto.js';
 import { issueGatheringSession } from './sessions.js';
 
-type NewAccount = {
+type NewAccount = AffiliationInput & {
   phone: string;
   passwordHash: string;
   name: string;
-  localJcName: string;
   birthDate: string;
   sex: GatheringSex;
   userAgent?: string;
@@ -30,6 +30,7 @@ export async function insertGatheringAccount(tx: Prisma.TransactionClient, input
   const codes = await attachProfile(tx, {
     userId: user.id,
     name: input.name,
+    localId: input.localId,
     localJcName: input.localJcName,
     birthDate: input.birthDate,
     sex: input.sex,
@@ -47,16 +48,16 @@ export async function insertGatheringAccount(tx: Prisma.TransactionClient, input
 
 export async function attachProfile(
   tx: Prisma.TransactionClient,
-  input: {
+  input: AffiliationInput & {
     userId: string;
     name: string;
-    localJcName: string;
     birthDate: string;
     sex: GatheringSex;
     now: Date;
   },
 ) {
   const birthDate = parseBirthDate(input.birthDate);
+  const affiliation = await resolveAffiliation(tx, input);
   await tx.gatheringProfile.create({
     data: {
       userId: input.userId,
@@ -67,7 +68,7 @@ export async function attachProfile(
     },
   });
   await tx.gatheringLocalAffiliation.create({
-    data: { userId: input.userId, localJcName: input.localJcName, isCurrent: true },
+    data: { userId: input.userId, ...affiliation, isCurrent: true },
   });
   return storeRecoveryCodes(tx, input.userId);
 }

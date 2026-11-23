@@ -1,6 +1,7 @@
+import { affiliationView, type AffiliationLocal, type AffiliationRecord } from '../../jc-org/affiliation.js';
 import type {
   GatheringFinanceYearView,
-  GatheringGroupDetail,
+  GatheringGroupScope,
   GatheringGroupSummary,
   GatheringInviteView,
   GatheringMemberView,
@@ -43,6 +44,7 @@ export function toMemberView(member: {
   userId: string | null;
   manualDisplayName: string | null;
   manualLocalJcName: string | null;
+  manualLocal?: AffiliationLocal | null;
   manualPhone: string | null;
   manualBirthDate?: Date | null;
   manualSex?: GatheringSex | null;
@@ -55,10 +57,11 @@ export function toMemberView(member: {
       birthDate?: Date | null;
       sex?: GatheringSex | null;
     } | null;
-    gatheringAffiliations: Array<{ localJcName: string }>;
+    gatheringAffiliations: AffiliationRecord[];
   } | null;
   roles: Array<{ id: string; role: GatheringRole; title: string | null }>;
 }): GatheringMemberView {
+  const affiliation = member.user?.gatheringAffiliations[0];
   const birth = member.userId === null ? (member.manualBirthDate ?? null) : (member.user?.gatheringProfile?.birthDate ?? null);
   const sex = member.userId === null ? (member.manualSex ?? null) : (member.user?.gatheringProfile?.sex ?? null);
   const birthDate = birth ? formatBirthDate(birth) : null;
@@ -71,10 +74,9 @@ export function toMemberView(member: {
         ? (member.manualDisplayName ?? '이름 없음')
         : (member.user?.gatheringProfile?.displayName ??
           (member.user?.status === 'DELETED' ? '탈퇴한 회원' : '이름 없음')),
-    localJcName:
-      member.userId === null
-        ? (member.manualLocalJcName ?? '')
-        : (member.user?.gatheringAffiliations[0]?.localJcName ?? ''),
+    ...(member.userId === null
+      ? affiliationView(member.manualLocalJcName ?? '', member.manualLocal)
+      : affiliationView(affiliation?.localJcName ?? '', affiliation?.local)),
     phone: member.userId === null ? member.manualPhone : (member.user?.phone ?? null),
     birthDate,
     age: birthDate ? koreanAge(birthDate) : null,
@@ -88,7 +90,7 @@ export function hideMemberContacts(member: GatheringMemberView): GatheringMember
   return { ...member, phone: null, birthDate: null, age: null, sex: null };
 }
 
-export function toGroupSummary(input: {
+export function toGroupSummary(input: GatheringGroupScope & {
   id: string;
   name: string;
   description: string | null;

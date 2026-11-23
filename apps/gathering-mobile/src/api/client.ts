@@ -23,6 +23,9 @@ import type {
   GatheringOfficerView,
   GatheringSessionResponse,
   GatheringStorageUsage,
+  JcDistrictChoice,
+  JcLocalSearchResult,
+  JcOrgChoice,
 } from '@member/contracts';
 import { tokenStorage } from '../storage/secure';
 
@@ -116,6 +119,16 @@ function receiptPath(groupId: string, scope: string | number) {
 }
 
 export const api = {
+  jcDistricts() {
+    return request<{ items: JcDistrictChoice[] }>('/api/gathering/jc-orgs/districts');
+  },
+  jcLocals(districtId: string, q?: string) {
+    const query = q ? `?q=${encodeURIComponent(q)}` : '';
+    return request<{ items: JcOrgChoice[] }>(`/api/gathering/jc-orgs/districts/${districtId}/locals${query}`);
+  },
+  jcLocalSearch(q: string) {
+    return request<{ items: JcLocalSearchResult[] }>(`/api/gathering/jc-orgs/search?q=${encodeURIComponent(q)}`);
+  },
   register(body: unknown) {
     return request<GatheringSessionResponse>(
       '/api/gathering/auth/register',

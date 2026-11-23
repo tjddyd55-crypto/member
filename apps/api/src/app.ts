@@ -1,3 +1,4 @@
+import { jcOrgPublicRoutes } from './modules/jc-org/public-routes.js';
 import Fastify from 'fastify';
 import { legalRoutes } from './routes/legal.js';
 import cors from '@fastify/cors';
@@ -59,6 +60,7 @@ export async function buildApp() {
   await app.register(localRoutes);
   await app.register(memberRoutes);
   await app.register(gatheringRoutes);
+  await app.register(jcOrgPublicRoutes);
   await app.register(gatheringAdminRoutes);
   await startDevStorageIfEnabled();
   app.addHook('onClose', async () => {

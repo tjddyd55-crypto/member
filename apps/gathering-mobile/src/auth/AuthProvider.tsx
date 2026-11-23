@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { GatheringAuthProfile, GatheringAuthUser } from '@member/contracts';
+import type { GatheringAuthProfile, GatheringAuthUser, GatheringProfileBody, GatheringRegisterBody } from '@member/contracts';
 import { api, onSessionCleared } from '../api/client';
 import { syncPushRegistration } from '../push/sync';
 import { recoveryReveal } from '../session/recovery-reveal';
@@ -10,22 +10,8 @@ type AuthState = {
   user: GatheringAuthUser | null;
   profile: GatheringAuthProfile | null;
   login: (phone: string, password: string) => Promise<void>;
-  register: (body: {
-    name: string;
-    phone: string;
-    password: string;
-    localJcName: string;
-    birthDate: string;
-    sex: 'MALE' | 'FEMALE';
-    directoryConsent: true;
-  }) => Promise<void>;
-  completeProfile: (body: {
-    name: string;
-    localJcName: string;
-    birthDate: string;
-    sex: 'MALE' | 'FEMALE';
-    directoryConsent: true;
-  }) => Promise<void>;
+  register: (body: GatheringRegisterBody) => Promise<void>;
+  completeProfile: (body: GatheringProfileBody) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
 };
@@ -90,22 +76,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const register = useCallback(
-    async (body: {
-      name: string;
-      phone: string;
-      password: string;
-      localJcName: string;
-      birthDate: string;
-      sex: 'MALE' | 'FEMALE';
-      directoryConsent: true;
-    }) => {
+    async (body: GatheringRegisterBody) => {
       await applySession(await api.register(body));
     },
     [applySession],
   );
 
   const completeProfile = useCallback(
-    async (body: { name: string; localJcName: string; birthDate: string; sex: 'MALE' | 'FEMALE'; directoryConsent: true }) => {
+    async (body: GatheringProfileBody) => {
       const result = await api.completeProfile(body);
       if (result.recoveryCodes?.length) recoveryReveal.set(result.recoveryCodes);
       setUser(result.user);

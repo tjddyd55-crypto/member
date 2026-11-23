@@ -46,7 +46,7 @@ export async function deleteGatheringAccount(userId: string, password: string) {
     });
     await tx.gatheringMembership.updateMany({
       where: { userId },
-      data: { manualDisplayName: null, manualPhone: null, manualLocalJcName: null },
+      data: { manualDisplayName: null, manualPhone: null, manualLocalJcName: null, manualLocalId: null },
     });
     await tx.gatheringMembership.updateMany({
       where: { userId, status: { in: ['ACTIVE', 'PENDING'] } },

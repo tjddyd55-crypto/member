@@ -12,9 +12,12 @@ import { assertPermission, requireGroupMember } from './access.js';
 import { writeGatheringAudit } from './audit.js';
 import { GatheringAuditAction } from './constants.js';
 import { getGroupDetail } from './group-read.js';
-import { gatheringGroupUpdateSchema } from '@member/contracts';
+import { gatheringGroupUpdateSchema, type GatheringGroupScope } from '@member/contracts';
+import { lockGroup } from './locks.js';
 
-export async function createGroup(userId: string, input: { name: string; description?: string }) {
+type GroupInput = { name: string; description?: string } & Partial<GatheringGroupScope>;
+
+export async function createGroup(userId: string, input: GroupInput) {
   const profile = await prisma.gatheringProfile.findUnique({ where: { userId } });
   if (!profile) {
     throw new AppError(409, 'PROFILE_REQUIRED', '모임에 쓸 이름과 소속 로컬을 먼저 등록하세요.');
@@ -29,8 +32,9 @@ async function insertGroup(
   tx: Prisma.TransactionClient,
   userId: string,
   consentAt: Date,
-  input: { name: string; description?: string },
+  input: GroupInput,
 ) {
+  await validateScope(tx, input);
   const now = new Date();
   const year = calendarYearKst(now);
   const range = calendarYearRange(year);
@@ -39,6 +43,8 @@ async function insertGroup(
       name: input.name,
       description: input.description ? input.description : null,
       createdByUserId: userId,
+      scopeDistrictId: input.scopeDistrictId,
+      scopeLocalId: input.scopeLocalId,
     },
   });
   const membership = await tx.gatheringMembership.create({
@@ -116,22 +122,34 @@ export async function updateGroup(userId: string, groupId: string, body: unknown
     throw new AppError(400, 'INVALID_PERIOD', '회계연도는 매년 1월 1일부터 12월 31일까지 자동으로 설정됩니다.');
   }
   const input = gatheringGroupUpdateSchema.parse(body);
-  if (input.name != null || input.description !== undefined || input.inviteRequiresApproval != null) {
-    await prisma.gatheringGroup.update({
-      where: { id: groupId },
-      data: {
-        name: input.name,
-        description: input.description,
-        inviteRequiresApproval: input.inviteRequiresApproval,
-      },
+  await prisma.$transaction(async (tx) => {
+    await lockGroup(tx, groupId);
+    if (input.scopeDistrictId !== undefined || input.scopeLocalId !== undefined) {
+      const group = await tx.gatheringGroup.findUniqueOrThrow({ where: { id: groupId } });
+      await validateScope(tx, {
+        scopeDistrictId: input.scopeDistrictId === undefined ? group.scopeDistrictId : input.scopeDistrictId,
+        scopeLocalId: input.scopeLocalId === undefined ? group.scopeLocalId : input.scopeLocalId,
+      });
+    }
+    await tx.gatheringGroup.update({ where: { id: groupId }, data: input });
+    await writeGatheringAudit(tx, {
+      groupId,
+      actorUserId: userId,
+      action: GatheringAuditAction.GROUP_UPDATE,
+      targetType: 'GatheringGroup',
+      targetId: groupId,
     });
-  }
-  await writeGatheringAudit(prisma, {
-    groupId,
-    actorUserId: userId,
-    action: GatheringAuditAction.GROUP_UPDATE,
-    targetType: 'GatheringGroup',
-    targetId: groupId,
   });
   return getGroupDetail(userId, groupId);
+}
+
+async function validateScope(tx: Prisma.TransactionClient, { scopeDistrictId, scopeLocalId }: Partial<GatheringGroupScope>) {
+  const [district, local] = await Promise.all([
+    scopeDistrictId ? tx.district.findUnique({ where: { id: scopeDistrictId }, select: { id: true } }) : null,
+    scopeLocalId ? tx.local.findUnique({ where: { id: scopeLocalId }, select: { districtId: true } }) : null,
+  ]);
+  if ((scopeDistrictId && !district) || (scopeLocalId && !local) ||
+      (scopeDistrictId && local && local.districtId !== scopeDistrictId)) {
+    throw new AppError(400, 'JC_SCOPE_INVALID', '모임 범위의 지구와 로컬을 확인해 주세요.');
+  }
 }

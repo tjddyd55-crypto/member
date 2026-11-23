@@ -65,7 +65,7 @@ export function CompactMemberRow({
           ) : null}
         </View>
         <Text style={{ fontSize: 15, lineHeight: 22, color: theme.colors.text.secondary }}>
-          {[member.localJcName, visibleRoleLabels(member.roles)].filter(Boolean).join(' · ')}
+          {[member.localDisplayName, visibleRoleLabels(member.roles)].filter(Boolean).join(' · ')}
         </Text>
         {demographics ? (
           <Text style={{ fontSize: 15, lineHeight: 22, color: theme.colors.text.secondary }}>

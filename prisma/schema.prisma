@@ -62,15 +62,26 @@ model District {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   locals    Local[]
+
+  displayName       String?
+  registryKey       String?                 @unique
+  verificationState JcVerificationState     @default(NEEDS_REVIEW)
+  reviewReason      String?
+  sourceUrl         String?
+  lastVerifiedAt    DateTime?               @db.Date
+  adminNote         String?
+  jcAliases         JcOrganizationAlias[]
+  jcHistory         JcOrganizationHistory[]
+  gatheringScopes   GatheringGroup[]
 }
 
 model Local {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   districtId     String
   name           String
   englishName    String?
-  code           String   @unique
-  slug           String   @unique
+  code           String    @unique
+  slug           String    @unique
   approvalNumber String?
   foundedAt      DateTime?
   officeAddress  String?
@@ -78,13 +89,13 @@ model Local {
   email          String?
   website        String?
   logoFileId     String?
-  primaryColor   String   @default("#1B3A6B")
+  primaryColor   String    @default("#1B3A6B")
   slogan         String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  district             District              @relation(fields: [districtId], references: [id])
+  district             District                @relation(fields: [districtId], references: [id])
   memberships          LocalMembership[]
   memberProfiles       MemberProfile[]
   memberCompanies      MemberCompany[]
@@ -103,6 +114,71 @@ model Local {
   documentJobs         DocumentProcessingJob[]
   printJobs            PrintExportJob[]
   auditLogs            AuditLog[]
+
+  displayName            String?
+  registryKey            String?                     @unique
+  verificationState      JcVerificationState         @default(NEEDS_REVIEW)
+  reviewReason           String?
+  sourceUrl              String?
+  lastVerifiedAt         DateTime?                   @db.Date
+  adminNote              String?
+  jcAliases              JcOrganizationAlias[]
+  jcHistory              JcOrganizationHistory[]
+  gatheringScopes        GatheringGroup[]
+  gatheringAffiliations  GatheringLocalAffiliation[]
+  gatheringManualMembers GatheringMembership[]
+
+  @@index([approvalNumber])
+}
+
+enum JcVerificationState {
+  CONFIRMED
+  NEEDS_REVIEW
+}
+
+enum JcOrgType {
+  DISTRICT
+  LOCAL
+}
+
+model JcOrganizationAlias {
+  id         String    @id @default(cuid())
+  orgType    JcOrgType
+  districtId String?
+  localId    String?
+  alias      String
+  normalized String
+  createdAt  DateTime  @default(now())
+
+  district District? @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  local    Local?    @relation(fields: [localId], references: [id], onDelete: Restrict)
+
+  @@unique([localId, normalized])
+  @@unique([districtId, normalized])
+  @@index([normalized])
+  @@map("jc_organization_aliases")
+}
+
+model JcOrganizationHistory {
+  id           String    @id @default(cuid())
+  orgType      JcOrgType
+  districtId   String?
+  localId      String?
+  action       String
+  before       Json?
+  after        Json?
+  actorAdminId String?
+  actorLabel   String?
+  note         String?
+  createdAt    DateTime  @default(now())
+
+  district   District?              @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  local      Local?                 @relation(fields: [localId], references: [id], onDelete: Restrict)
+  actorAdmin GatheringAdminAccount? @relation(fields: [actorAdminId], references: [id])
+
+  @@index([localId, createdAt])
+  @@index([districtId, createdAt])
+  @@map("jc_organization_histories")
 }
 
 model User {
@@ -655,30 +731,36 @@ model GatheringLocalAffiliation {
   id          String   @id @default(cuid())
   userId      String
   localJcName String
+  localId     String?
   isCurrent   Boolean  @default(true)
   createdAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
 
+  local Local? @relation(fields: [localId], references: [id], onDelete: Restrict)
+
+  @@index([localId])
   @@index([userId, isCurrent])
   @@map("gathering_local_affiliations")
 }
 
 /// 지시문 Group.
 model GatheringGroup {
-  id                     String   @id @default(cuid())
+  id                     String    @id @default(cuid())
   name                   String
   description            String?
-  inviteRequiresApproval Boolean  @default(false)
-  fiscalStartMonth       Int      @default(1)
-  fiscalStartDay         Int      @default(1)
+  inviteRequiresApproval Boolean   @default(false)
+  fiscalStartMonth       Int       @default(1)
+  fiscalStartDay         Int       @default(1)
   createdByUserId        String
+  scopeDistrictId        String?
+  scopeLocalId           String?
   /// 운영 정지. 이용권 갱신으로 풀리지 않는다. null 이면 정지되지 않음.
   suspendedAt            DateTime?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  createdBy          User                           @relation("GatheringGroupCreator", fields: [createdByUserId], references: [id])
+  createdBy          User                            @relation("GatheringGroupCreator", fields: [createdByUserId], references: [id])
   memberships        GatheringMembership[]
   invites            GatheringInvite[]
   roleAssignments    GatheringRoleAssignment[]
@@ -703,6 +785,11 @@ model GatheringGroup {
   adminScopes        GatheringAdminScope[]
   deposits           GatheringDeposit[]
 
+  scopeDistrict District? @relation(fields: [scopeDistrictId], references: [id], onDelete: Restrict)
+  scopeLocal    Local?    @relation(fields: [scopeLocalId], references: [id], onDelete: Restrict)
+
+  @@index([scopeDistrictId])
+  @@index([scopeLocalId])
   @@index([createdByUserId])
   @@map("gathering_groups")
 }
@@ -714,6 +801,7 @@ model GatheringMembership {
   manualDisplayName  String?
   manualPhone        String?
   manualLocalJcName  String?
+  manualLocalId      String?
   manualBirthDate    DateTime?                 @db.Date
   manualSex          GatheringSex?
   addedByUserId      String?
@@ -736,7 +824,10 @@ model GatheringMembership {
   dues           GatheringMemberDue[]
   roles          GatheringRoleAssignment[]
 
+  manualLocal Local? @relation(fields: [manualLocalId], references: [id], onDelete: Restrict)
+
   @@unique([groupId, userId])
+  @@index([manualLocalId])
   @@index([userId, status])
   @@index([groupId, status])
   @@map("gathering_memberships")
@@ -1166,13 +1257,15 @@ model GatheringAdminAccount {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  sessions    GatheringAdminSession[]
-  enrollments GatheringAdminEnrollment[]
-  scopes      GatheringAdminScope[]
-  audits      GatheringAdminAudit[]      @relation("GatheringAdminAuditActor")
-  approvedSubscriptions GatheringSubscription[] @relation("GatheringSubscriptionAdmin")
-  operations  GatheringAdminOperation[]
-  deposits    GatheringDeposit[]
+  sessions              GatheringAdminSession[]
+  enrollments           GatheringAdminEnrollment[]
+  scopes                GatheringAdminScope[]
+  audits                GatheringAdminAudit[]      @relation("GatheringAdminAuditActor")
+  approvedSubscriptions GatheringSubscription[]    @relation("GatheringSubscriptionAdmin")
+  operations            GatheringAdminOperation[]
+  deposits              GatheringDeposit[]
+
+  jcOrganizationHistory JcOrganizationHistory[]
 
   @@map("gathering_admin_accounts")
 }

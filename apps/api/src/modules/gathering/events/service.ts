@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { hasEventEnded } from '@member/gathering-domain';
 import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { assertPermission, requireGroupMember } from '../access.js';
@@ -247,6 +248,9 @@ export async function setEventAttendance(
   const event = await findGroupEvent(groupId, eventId);
   if (event.status === 'CANCELLED') {
     throw new AppError(409, 'EVENT_CANCELLED', '취소된 행사의 참석 상태는 바꾸지 않습니다.');
+  }
+  if (hasEventEnded(event)) {
+    throw new AppError(409, 'EVENT_ENDED', '종료된 행사의 참석 상태는 바꿀 수 없습니다.');
   }
   await prisma.gatheringEventAttendance.upsert({
     where: { eventId_userId: { eventId: event.id, userId } },

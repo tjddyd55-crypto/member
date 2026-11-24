@@ -1,4 +1,5 @@
 import type { GatheringAttendance, GatheringEvent, GatheringEventStatus } from '@prisma/client';
+import { hasEventEnded } from '@member/gathering-domain';
 import type { GatheringEventView } from '@member/contracts';
 
 type AttendanceRow = { userId: string; status: GatheringAttendance };
@@ -20,6 +21,7 @@ export function toEventView(
     place: event.place,
     description: event.description,
     status: event.status as GatheringEventStatus,
+    ended: hasEventEnded(event),
     myAttendance: mine?.status ?? null,
     counts: {
       attending: attendances.filter((row) => row.status === 'ATTENDING').length,

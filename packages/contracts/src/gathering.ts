@@ -479,6 +479,7 @@ export type GatheringEventView = {
   place: string | null;
   description: string | null;
   status: 'SCHEDULED' | 'CANCELLED';
+  ended: boolean;
   myAttendance: 'ATTENDING' | 'DECLINED' | 'UNDECIDED' | null;
   counts: { attending: number; declined: number; undecided: number };
 };

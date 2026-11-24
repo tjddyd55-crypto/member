@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
@@ -188,6 +188,7 @@ describe('행사, 캘린더, 참석, 알림', () => {
     });
     expect(created.statusCode).toBe(200);
     expect(created.json().groupName).toBe('행사 모임');
+    expect(created.json().ended).toBe(false);
     expect(sender.sent).toHaveLength(1);
     expect(sender.sent[0]?.to).toContain(member.user.id);
     expect(sender.sent[0]?.title).toBe('JCI KOREA');
@@ -220,6 +221,7 @@ describe('행사, 캘린더, 참석, 알림', () => {
       headers: auth(member.tokens.accessToken),
       payload: { status: 'ATTENDING' },
     });
+    expect(attending.statusCode).toBe(200);
     expect(attending.json().myAttendance).toBe('ATTENDING');
     expect(attending.json().counts.attending).toBe(1);
 
@@ -246,6 +248,75 @@ describe('행사, 캘린더, 참석, 알림', () => {
       payload: { status: 'DECLINED' },
     });
     expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe('EVENT_CANCELLED');
+  });
+
+  it('종료된 행사는 참석 변경을 거부하고, 종료 시각이 없는 오늘 행사는 허용한다', async () => {
+    const owner = await register('참석마감회장');
+    const group = await createGroup(owner.tokens.accessToken, '참석 마감 모임');
+    const headers = auth(owner.tokens.accessToken);
+    const now = Date.now() + 1;
+    const endedEvent = await prisma.gatheringEvent.create({
+      data: {
+        title: '종료된 행사',
+        groupId: group.id,
+        createdByUserId: owner.user.id,
+        startsAt: new Date(now - 2 * 60 * 60 * 1000),
+        endsAt: new Date(now - 60 * 60 * 1000),
+      },
+    });
+    await prisma.gatheringEventAttendance.create({
+      data: {
+        eventId: endedEvent.id,
+        groupId: group.id,
+        userId: owner.user.id,
+        status: 'ATTENDING',
+      },
+    });
+    const endedUrl = `/api/gathering/groups/${group.id}/events/${endedEvent.id}`;
+    const blocked = await app.inject({
+      method: 'PUT',
+      url: `${endedUrl}/attendance`,
+      headers,
+      payload: { status: 'DECLINED' },
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error).toMatchObject({
+      code: 'EVENT_ENDED',
+      message: '종료된 행사의 참석 상태는 바꿀 수 없습니다.',
+    });
+    const detail = await app.inject({ method: 'GET', url: endedUrl, headers });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      ended: true,
+      myAttendance: 'ATTENDING',
+      counts: { attending: 1, declined: 0, undecided: 0 },
+    });
+
+    const kstToday = new Date(now + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todayStart = new Date(`${kstToday}T00:00:00+09:00`);
+    const todayEvent = await prisma.gatheringEvent.create({
+      data: {
+        title: '오늘 행사',
+        groupId: group.id,
+        createdByUserId: owner.user.id,
+        startsAt: todayStart,
+      },
+    });
+    const todayUrl = `/api/gathering/groups/${group.id}/events/${todayEvent.id}`;
+    vi.useFakeTimers({ toFake: ['Date'], now: Math.max(now, todayStart.getTime() + 1) });
+    try {
+      const attending = await app.inject({
+        method: 'PUT',
+        url: `${todayUrl}/attendance`,
+        headers,
+        payload: { status: 'ATTENDING' },
+      });
+      expect(attending.statusCode).toBe(200);
+      expect(attending.json()).toMatchObject({ ended: false, myAttendance: 'ATTENDING' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('리마인드는 한 번만 보내고 만료 토큰은 끈다', async () => {

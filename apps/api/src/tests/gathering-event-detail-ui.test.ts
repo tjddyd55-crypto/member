@@ -5,13 +5,17 @@ import {
   EVENT_TABS,
   attendanceSummary,
   eventActions,
+  eventCopyAddress,
   eventFinanceActions,
   eventLocation,
   eventMapQuery,
+  eventMapUrls,
   eventTabLabelSize,
   financeYearState,
   initialEventTab,
+  parseEventAddress,
   splitEventLocation,
+  stripPostcode,
 } from '../../../gathering-mobile/src/features/events/detail';
 import { mediaGridLayout } from '../../../gathering-mobile/src/features/media/grid-layout';
 import { downloadFileName } from '../../../gathering-mobile/src/features/media/viewer-values';
@@ -137,12 +141,93 @@ describe('행사 상세 조회 로직', () => {
     expect(splitEventLocation(value)).toEqual({ place: '회의실', address: '서울시 중구\n3층' });
     expect(eventLocation('', '')).toBe('');
   });
-  it('지도는 상세 주소를 우선 사용하며 장소명이나 주소에 줄바꿈을 남기지 않는다', () => {
+  it('주소 번호가 없는 기존 값은 장소명 뒤의 텍스트를 지도 검색에 사용한다', () => {
     expect(eventMapQuery('회의실\n서울시 중구\n3층')).toBe('서울시 중구 3층');
     expect(eventMapQuery(' 회의실 ')).toBe('회의실');
     expect(eventMapQuery('회의실\n  \n')).toBe('회의실');
     expect(eventMapQuery(null)).toBe('');
     expect(eventMapQuery('회의실\r\n서울시 중구\r\n3층')).toBe('서울시 중구 3층');
+  });
+  it.each([
+    [
+      '(23211) 인천 영종구 흰바위로59번길 8 골든튀립인천공항호텔&스위트',
+      '',
+      '인천 영종구 흰바위로59번길 8',
+      '골든튀립인천공항호텔&스위트',
+    ],
+    [
+      '골든튤립 호텔\n(23211) 인천 영종구 흰바위로59번길 8 3층 연회장',
+      '골든튤립 호텔',
+      '인천 영종구 흰바위로59번길 8',
+      '3층 연회장',
+    ],
+    ['인천 영종구 흰바위로59번길 8', '', '인천 영종구 흰바위로59번길 8', ''],
+    ['회의실\n서울 중구 세종대로 110\n3층', '회의실', '서울 중구 세종대로 110', '3층'],
+    ['(06236) 서울 강남구 역삼동 823-1 2층', '', '서울 강남구 역삼동 823-1', '2층'],
+    ['경기 성남시 분당구 판교역로 235-1 A동', '', '경기 성남시 분당구 판교역로 235-1', 'A동'],
+    [
+      '호텔\n별관\n[23211] 인천 영종구 흰바위로59번길 8 (운서동, 호텔)\n3층',
+      '호텔 별관',
+      '인천 영종구 흰바위로59번길 8',
+      '(운서동, 호텔) 3층',
+    ],
+    [
+      '인천 영종구 흰바위로59번길 8(운서동) 3층',
+      '',
+      '인천 영종구 흰바위로59번길 8',
+      '(운서동) 3층',
+    ],
+    [
+      '행사장\n(04524) 서울 중구 세종대로 110 (3층 연회장)',
+      '행사장',
+      '서울 중구 세종대로 110',
+      '(3층 연회장)',
+    ],
+    [
+      '인천 영종구 운서동 123 흰바위로59번길 8, 3층',
+      '',
+      '인천 영종구 운서동 123 흰바위로59번길 8',
+      '3층',
+    ],
+    ['기존 회의실', '기존 회의실', '', ''],
+    ['회의실\n(23211) 인천 영종구\n3층', '회의실', '', '인천 영종구 3층'],
+    [null, '', '', ''],
+  ])(
+    '행사 장소 %s에서 지도 검색과 복사에 사용할 주소를 구분한다',
+    (value, placeName, road, detail) => {
+      const full = [road, detail].filter(Boolean).join(' ');
+      expect(parseEventAddress(value)).toEqual({ placeName, road, detail, full });
+      expect(eventMapQuery(value)).toBe(road || full || placeName);
+      expect(eventCopyAddress(value)).toBe(full || placeName);
+    },
+  );
+  it('앞에 붙은 우편번호만 제거하고 지도 검색의 공백을 정리한다', () => {
+    expect(stripPostcode('  (23211) 인천 ')).toBe('인천');
+    expect(stripPostcode('[23211] 인천')).toBe('인천');
+    expect(stripPostcode('23211 인천')).toBe('인천');
+    expect(stripPostcode('23211 ')).toBe('');
+    expect(stripPostcode('호텔 (23211)')).toBe('호텔 (23211)');
+    expect(eventMapQuery('23211  인천   영종구')).toBe('인천 영종구');
+    expect(eventCopyAddress('(23211)')).toBe('');
+  });
+  it('상세 주소의 동·호수 숫자나 카카오 괄호 표기는 도로명 검색어에 넣지 않는다', () => {
+    expect(eventMapQuery('(13529) 경기 성남시 분당구 분당내곡로 117 1동 302호')).toBe(
+      '경기 성남시 분당구 분당내곡로 117',
+    );
+    expect(eventMapQuery('(13529) 경기 성남시 분당구 분당내곡로 117 1동 302')).toBe(
+      '경기 성남시 분당구 분당내곡로 117',
+    );
+    expect(eventMapQuery('(22382) 인천 영종구 공항로 272 (운서동)')).toBe('인천 영종구 공항로 272');
+    expect(eventCopyAddress('(13529) 경기 성남시 분당구 분당내곡로 117 1동 302')).toBe(
+      '경기 성남시 분당구 분당내곡로 117 1동 302',
+    );
+  });
+
+  it('네이버 지도 앱과 웹 검색 URL에 검색어를 인코딩한다', () => {
+    expect(eventMapUrls('인천 호텔&스위트')).toEqual([
+      'nmap://search?query=%EC%9D%B8%EC%B2%9C%20%ED%98%B8%ED%85%94%26%EC%8A%A4%EC%9C%84%ED%8A%B8&appname=kr.jcikorea.app',
+      'https://map.naver.com/p/search/%EC%9D%B8%EC%B2%9C%20%ED%98%B8%ED%85%94%26%EC%8A%A4%EC%9C%84%ED%8A%B8',
+    ]);
   });
   it.each([256, 296, 359, 360, 390, 430, 600, 768])(
     '그리드 폭 %ipx에서는 3개 이상의 셀이 간격까지 들어간다',

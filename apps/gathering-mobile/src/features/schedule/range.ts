@@ -28,6 +28,7 @@ export function eventDateBlock(value: string, now = new Date()) {
   return {
     date: parts.slice(-2).join('.'),
     year: parts.length === 3 ? parts[0] : null,
-    time: `${weekday} ${time}`,
+    weekday,
+    time,
   };
 }

@@ -1,6 +1,7 @@
 import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
+  BackHandler,
   Linking,
   Modal,
   Pressable,
@@ -10,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import type {
   GatheringEventView,
   GatheringOfficerView,
@@ -67,6 +68,15 @@ export default function GroupDetailScreen() {
   const [group, setGroup] = useState<GatheringGroupDetail | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+
+  useFocusEffect(useCallback(() => {
+    // A menu reset leaves no native history. Consume back while this screen is focused.
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      router.replace('/(app)/groups');
+      return true;
+    });
+    return () => subscription.remove();
+  }, []));
 
   const load = useCallback(async () => {
     setStatus('loading');

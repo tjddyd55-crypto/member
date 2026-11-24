@@ -44,17 +44,17 @@ describe('t48 화면 구조', () => {
     [
       '2026-11-19T10:00:00Z',
       '2026-01-01T00:00:00Z',
-      { date: '11.19', year: null, time: '(목) 19:00' },
+      { date: '11.19', year: null, weekday: '(목)', time: '19:00' },
     ],
     [
       '2026-11-19T10:00:00Z',
       '2027-01-01T00:00:00Z',
-      { date: '11.19', year: '2026', time: '(목) 19:00' },
+      { date: '11.19', year: '2026', weekday: '(목)', time: '19:00' },
     ],
     [
       '2026-12-31T15:05:00Z',
       '2026-12-31T15:00:00Z',
-      { date: '01.01', year: null, time: '(금) 00:05' },
+      { date: '01.01', year: null, weekday: '(금)', time: '00:05' },
     ],
   ])('KST 날짜 블록 %s', (value, now, expected) =>
     expect(eventDateBlock(value, new Date(now))).toEqual(expected),

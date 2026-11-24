@@ -145,7 +145,9 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
           >
             <View style={styles.dateBlock}>
               {block.year ? <Text style={styles.date}>{block.year}</Text> : null}
-              <Text style={[styles.bigDate, past && styles.past]}>{block.date}</Text>
+              <Text style={[styles.bigDate, past && styles.past]}>
+                {block.date}<Text style={styles.weekday}> {block.weekday}</Text>
+              </Text>
               <Text style={[styles.date, past && styles.past]}>{block.time}</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
@@ -182,8 +184,9 @@ const styles = StyleSheet.create({
     gap: theme.space[16],
     paddingVertical: theme.space[12],
   },
-  dateBlock: { width: 94 },
+  dateBlock: { width: 112 },
   bigDate: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: theme.colors.text.primary },
+  weekday: { fontSize: 16, fontWeight: '600' },
   past: { color: theme.colors.text.disabled },
   groupName: { ...theme.typography.body, fontWeight: '700', color: theme.colors.text.primary },
   title: { ...theme.typography.body, color: theme.colors.text.primary },

@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import type { GatheringEventView } from '@member/contracts';
 import {
   Linking,
+  Platform,
   Modal,
   Pressable,
   StyleSheet,
@@ -184,7 +185,8 @@ function EventDetail({
   const openMap = async (value: string | null) => {
     const [appUrl, webUrl] = eventMapUrls(eventMapQuery(value));
     try {
-      await Linking.openURL(appUrl);
+      // react-native-web resolves openURL for unknown schemes, so the fallback would never run there.
+      await Linking.openURL(Platform.OS === 'web' ? webUrl : appUrl);
     } catch {
       try {
         await Linking.openURL(webUrl);

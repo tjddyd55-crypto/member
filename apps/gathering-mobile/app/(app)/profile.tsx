@@ -9,7 +9,7 @@ import { JcOrgPicker, jcPickerValue } from '../../src/features/forms/JcOrgPicker
 import { Body, Button, FormError, Notice, Screen, TextField, Title } from '../../src/design/ui';
 
 export default function ProfileScreen() {
-  const { profile, completeProfile } = useAuth();
+  const { profile, completeProfile, logout } = useAuth();
   const [name, setName] = useState(profile?.displayName ?? '');
   const [affiliation, setAffiliation] = useState(() => jcPickerValue(profile));
   const [birthDate, setBirthDate] = useState(profile?.birthDate ?? '');
@@ -54,7 +54,7 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <Title>내 정보</Title>
+      <Title>내 정보 및 설정</Title>
       {profile ? (
         <Body>
           {profile.displayName} · {profile.localDisplayName}
@@ -87,7 +87,7 @@ export default function ProfileScreen() {
         variant="text"
         onPress={() => router.push('/(app)/account-delete')}
       />
-      <Button label="내 모임으로" variant="text" onPress={() => router.back()} />
+      <Button label="로그아웃" variant="text" onPress={() => void logout()} />
     </Screen>
   );
 }

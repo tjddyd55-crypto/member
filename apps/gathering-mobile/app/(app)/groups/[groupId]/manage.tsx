@@ -119,11 +119,6 @@ export default function ManageScreen() {
     <Screen>
       <Title>관리</Title>
       {dialog}
-      <Button
-        label="모임으로"
-        variant="text"
-        onPress={() => router.replace(`/(app)/groups/${groupId}`)}
-      />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' ? (

@@ -46,7 +46,7 @@ describe('모임 화면 배치', () => {
         routes: [{ name: '(app)' }],
       }),
     ).toBeNull();
-    expect(GLOBAL_MENU_ROUTES.map((item) => item.label)).toEqual(['내 모임', '전체 일정']);
+    expect(GLOBAL_MENU_ROUTES.map((item) => item.label)).toEqual(['내 모임', '전체 일정', '내 정보 및 설정']);
     expect(GLOBAL_MENU_ROUTES.some((item) => item.label === '홈')).toBe(false);
     const items = gatheringSwitchItems(
       [

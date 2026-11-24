@@ -149,9 +149,9 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
               <Text style={[styles.date, past && styles.past]}>{block.time}</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              {!groupId ? <Text style={[styles.groupName, past && styles.past]}>{item.groupName}</Text> : null}
               <Text style={[styles.title, past && styles.past]}>{item.title}</Text>
               {item.status === 'CANCELLED' ? <Text style={styles.date}>취소</Text> : null}
-              {!groupId ? <Text style={[styles.date, past && styles.past]}>{item.groupName}</Text> : null}
               {item.place ? (
                 <Text numberOfLines={1} style={[styles.date, past && styles.past]}>
                   {item.place}
@@ -185,6 +185,7 @@ const styles = StyleSheet.create({
   dateBlock: { width: 94 },
   bigDate: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: theme.colors.text.primary },
   past: { color: theme.colors.text.disabled },
+  groupName: { ...theme.typography.body, fontWeight: '700', color: theme.colors.text.primary },
   title: { ...theme.typography.body, color: theme.colors.text.primary },
   date: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
 });

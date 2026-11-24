@@ -42,6 +42,20 @@ export function globalMenuNavigation() {
   return 'reset' as const;
 }
 
+/** Menu resets have no back stack; Android back should still return to a parent screen. */
+export function hardwareBackDestination(pathname: string, canGoBack: boolean): string | null {
+  const group = pathname.match(/^\/groups\/([^/]+)(?:\/|$)/);
+  if (group && group[1] !== 'create') {
+    const home = `/groups/${group[1]}`;
+    if (pathname === home || pathname === `${home}/`) return '/(app)/groups';
+    if (!canGoBack) return `/(app)${home}`;
+  }
+  if (canGoBack) return null;
+  if (pathname === '/account-delete') return '/(app)/profile';
+  if (['/profile', '/calendar', '/groups/create'].includes(pathname)) return '/(app)/groups';
+  return null;
+}
+
 /**
  * 경로 상태는 루트 내비게이터 모양이다. 포커스된 화면에 그대로 리셋하면
  * 루트 경로가 거절되고 이동이 무시된다. 루트가 받을 수 있을 때만 그 키를 돌려준다.

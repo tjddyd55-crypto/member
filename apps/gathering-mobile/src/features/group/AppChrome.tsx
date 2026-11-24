@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import {
+  BackHandler,
   Modal,
   Pressable,
   ScrollView,
@@ -22,6 +23,7 @@ import {
   drawerSections,
   type HandoverActions,
   globalMenuNavigation,
+  hardwareBackDestination,
   rootResetTarget,
   routeHeaderTitle,
   visibleGroupName,
@@ -104,6 +106,20 @@ export function AppChrome({ children }: { children: ReactNode }) {
     if (globalMenuNavigation() === 'reset' && resetToHref(href)) return;
     router.replace(href as '/(app)/groups');
   };
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (open) {
+        setOpen(false);
+        return true;
+      }
+      const href = hardwareBackDestination(pathname, router.canGoBack());
+      if (!href) return false;
+      if (!resetToHref(href)) router.replace(href as '/(app)/groups');
+      return true;
+    });
+    return () => subscription.remove();
+  }, [pathname, open]);
 
   return (
     <ChromeContext.Provider value>

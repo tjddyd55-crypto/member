@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import type { GatheringEventView } from '@member/contracts';
 import {
   Linking,
@@ -14,6 +15,7 @@ import { api } from '../../../../../src/api/client';
 import { EventFinancePane } from '../../../../../src/features/finance/FinancePanes';
 import { MediaPane } from '../../../../../src/features/media/MediaPane';
 import { AddressField, DateTimeField } from '../../../../../src/design/pickers';
+import { useToast } from '../../../../../src/design/toast';
 import {
   Body,
   Button,
@@ -29,10 +31,13 @@ import {
   EVENT_TABS,
   attendanceSummary,
   eventActions,
+  eventCopyAddress,
   eventLocation,
   eventMapQuery,
+  eventMapUrls,
   eventTabLabelSize,
   initialEventTab,
+  parseEventAddress,
   splitEventLocation,
   type EventTab,
 } from '../../../../../src/features/events/detail';
@@ -63,6 +68,7 @@ function EventDetail({
   initialTab: EventTab;
 }) {
   const { width, fontScale } = useWindowDimensions();
+  const showToast = useToast();
   const tabLabelSize = eventTabLabelSize(width - 2 * theme.layout.horizontalGutter, fontScale);
   const [tab, setTab] = useState(initialTab);
   const [visited, setVisited] = useState<EventTab[]>([initialTab]);
@@ -167,8 +173,27 @@ function EventDetail({
       setSaving(false);
     }
   };
-  const location = splitEventLocation(event?.place ?? null);
-  const mapQuery = eventMapQuery(event?.place ?? null);
+  const copyAddress = async (value: string | null) => {
+    try {
+      const copied = await Clipboard.setStringAsync(eventCopyAddress(value));
+      showToast(copied ? '주소를 복사했어요' : '주소를 복사하지 못했어요');
+    } catch {
+      showToast('주소를 복사하지 못했어요');
+    }
+  };
+  const openMap = async (value: string | null) => {
+    const [appUrl, webUrl] = eventMapUrls(eventMapQuery(value));
+    try {
+      await Linking.openURL(appUrl);
+    } catch {
+      try {
+        await Linking.openURL(webUrl);
+      } catch {
+        showToast('지도를 열지 못했습니다.');
+      }
+    }
+  };
+  const location = parseEventAddress(event?.place ?? null);
   const header =
     status === 'ready' && event ? (
       <>
@@ -241,34 +266,49 @@ function EventDetail({
             <Text accessibilityRole="header" style={styles.title}>
               {event.title}
             </Text>
-            <Text style={styles.date}>
-              {new Date(event.startsAt).toLocaleString('ko-KR', {
-                timeZone: 'Asia/Seoul',
-                year: 'numeric',
-                month: 'numeric',
-                day: 'numeric',
-                weekday: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </Text>
+            <View style={styles.dateRow}>
+              <Text accessible={false} accessibilityElementsHidden importantForAccessibility="no">
+                📅
+              </Text>
+              <Text style={styles.date} maxFontSizeMultiplier={1.4}>
+                {new Date(event.startsAt).toLocaleString('ko-KR', {
+                  timeZone: 'Asia/Seoul',
+                  year: 'numeric',
+                  month: 'numeric',
+                  day: 'numeric',
+                  weekday: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
+            </View>
 
-            {event.status === 'CANCELLED' ? <Body>취소된 행사</Body> : null}
-            {location.place || location.address ? (
-              <>
-                {location.place ? <Text style={styles.place}>{location.place}</Text> : null}
-                {location.address ? <Body>{location.address}</Body> : null}
+            {location.placeName || location.full ? (
+              <View>
+                {location.placeName && location.full ? (
+                  <Text style={styles.place}>{location.placeName}</Text>
+                ) : null}
+                <View style={styles.addressRow}>
+                  <Text style={[styles.address, !location.full && styles.place]}>
+                    {location.full || location.placeName}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="주소 복사"
+                    style={styles.copy}
+                    onPress={() => void copyAddress(event.place)}
+                  >
+                    <Text style={styles.editLabel}>복사</Text>
+                  </Pressable>
+                </View>
                 <Button
                   label="지도 열기"
                   variant="text"
-                  onPress={() =>
-                    void Linking.openURL(
-                      `https://map.naver.com/p/search/${encodeURIComponent(mapQuery)}`,
-                    ).catch(() => setMessage('지도를 열지 못했습니다.'))
-                  }
+                  onPress={() => void openMap(event.place)}
                 />
-              </>
+              </View>
             ) : null}
+            {event.status === 'CANCELLED' ? <Body>취소된 행사</Body> : null}
             {event.description ? <Body>{event.description}</Body> : null}
             <Body>{attendanceSummary(event.counts)}</Body>
             {event.status === 'SCHEDULED' ? (
@@ -389,7 +429,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.text.primary,
   },
-  date: { fontSize: 14, color: theme.colors.text.secondary, marginBottom: 4 },
+  dateRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  date: {
+    flex: 1,
+    fontSize: 19,
+    lineHeight: 26,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+  },
   back: { width: 44, minHeight: 44, justifyContent: 'center' },
   backLabel: { fontSize: 22, color: theme.colors.text.secondary },
   edit: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
@@ -421,7 +468,15 @@ const styles = StyleSheet.create({
     marginTop: -theme.layout.horizontalGutter,
     gap: 12,
   },
-  place: { ...theme.typography.body, fontWeight: '700', color: theme.colors.text.primary },
+  place: {
+    ...theme.typography.body,
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  addressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  address: { ...theme.typography.body, flex: 1, color: theme.colors.text.secondary },
+  copy: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   stack: { gap: 12 },
   hidden: { display: 'none' },
   feedback: { fontSize: 14, color: theme.colors.text.primary },

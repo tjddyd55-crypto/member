@@ -61,9 +61,65 @@ export function splitEventLocation(value: string | null) {
   return { place, address: address.join('\n') };
 }
 
+const addressNumber = /[로길동리가]\s*\d+(?:-\d+)?(?=[\s,(]|$)/;
+
+export function stripPostcode(s: string) {
+  return s
+    .trimStart()
+    .replace(/^(?:\(\d{5}\)|\[\d{5}\]|\d{5}(?=\s))/, '')
+    .trim();
+}
+
+export function parseEventAddress(value: string | null) {
+  const lines = (value ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const postcodeIndex = lines.findIndex((line) => /^\(\d{5}\)/.test(line));
+  const addressIndex =
+    postcodeIndex >= 0 ? postcodeIndex : lines.findIndex((line) => addressNumber.test(line));
+
+  if (addressIndex < 0) {
+    // Legacy free text uses the first line as the venue and retains the remaining text.
+    const [place = '', ...rest] = lines;
+    const detail = rest.map(stripPostcode).filter(Boolean).join(' ');
+    return { placeName: stripPostcode(place), road: '', detail, full: detail };
+  }
+
+  const placeName = lines.slice(0, addressIndex).map(stripPostcode).filter(Boolean).join(' ');
+  const address = stripPostcode(lines[addressIndex]);
+  // A road address has one 로/길 + building-number token; fall back to a jibun 동/리/가 token.
+  // Kakao's trailing parenthetical (e.g. "(운서동)") is consumed so it never becomes part of the query.
+  const token = (kind: string) =>
+    new RegExp(`([${kind}]\\s*\\d+(?:-\\d+)?)(?=[\\s,(]|$)(?:\\s*\\([^)]*\\))?`).exec(address);
+  const match = token('로길') ?? token('동리가');
+  const road = match ? address.slice(0, match.index + match[1].length) : '';
+  const detailStart = match ? match.index + match[0].length : 0;
+  const detail = [
+    address.slice(detailStart).replace(/^,\s*/, '').trim(),
+    ...lines.slice(addressIndex + 1).map(stripPostcode),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return { placeName, road, detail, full: [road, detail].filter(Boolean).join(' ') };
+}
+
 export function eventMapQuery(value: string | null) {
-  const { place, address } = splitEventLocation(value);
-  return (address.trim() || place.trim()).replace(/\s+/g, ' ');
+  const { placeName, road, full } = parseEventAddress(value);
+  return (road || full || placeName).replace(/\s+/g, ' ');
+}
+
+export function eventCopyAddress(value: string | null) {
+  const { placeName, full } = parseEventAddress(value);
+  return full || placeName;
+}
+
+export function eventMapUrls(q: string): [appUrl: string, webUrl: string] {
+  const query = encodeURIComponent(q);
+  return [
+    `nmap://search?query=${query}&appname=kr.jcikorea.app`,
+    `https://map.naver.com/p/search/${query}`,
+  ];
 }
 
 /** Longest tab label uses at most 5.5 em; reserve gaps and horizontal padding. */

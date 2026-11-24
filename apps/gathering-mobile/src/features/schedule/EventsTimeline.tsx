@@ -148,14 +148,14 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
               <Text style={[styles.bigDate, past && styles.past]}>
                 {block.date}<Text style={styles.weekday}> {block.weekday}</Text>
               </Text>
-              <Text style={[styles.date, past && styles.past]}>{block.time}</Text>
+              <Text style={[styles.time, past && styles.past]}>{block.time}</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
               {!groupId ? <Text style={[styles.groupName, past && styles.past]}>{item.groupName}</Text> : null}
               <Text style={[styles.title, past && styles.past]}>{item.title}</Text>
               {item.status === 'CANCELLED' ? <Text style={styles.date}>취소</Text> : null}
               {item.place ? (
-                <Text numberOfLines={1} style={[styles.date, past && styles.past]}>
+                <Text numberOfLines={1} style={[styles.place, past && styles.past]}>
                   {item.place}
                 </Text>
               ) : null}
@@ -180,15 +180,19 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: theme.space[16],
-    paddingVertical: theme.space[12],
+    paddingVertical: theme.space[16],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border.default,
   },
-  dateBlock: { width: 112 },
-  bigDate: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: theme.colors.text.primary },
-  weekday: { fontSize: 16, fontWeight: '600' },
+  dateBlock: { width: 96, flexShrink: 0 },
+  bigDate: { fontSize: 24, lineHeight: 30, fontWeight: '700', fontVariant: ['tabular-nums'], color: theme.colors.text.primary },
+  weekday: { fontSize: 13, fontWeight: '500' },
+  time: { fontSize: 15, lineHeight: 22, fontWeight: '500', fontVariant: ['tabular-nums'], color: theme.colors.text.secondary, marginTop: 4 },
   past: { color: theme.colors.text.disabled },
-  groupName: { ...theme.typography.body, fontWeight: '700', color: theme.colors.text.primary },
-  title: { ...theme.typography.body, color: theme.colors.text.primary },
+  groupName: { fontSize: 15, lineHeight: 22, fontWeight: '700', color: theme.colors.text.primary },
+  title: { fontSize: 17, lineHeight: 24, fontWeight: '500', color: theme.colors.text.primary },
+  place: { fontSize: 14, lineHeight: 20, color: theme.colors.text.secondary },
   date: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
 });

@@ -89,12 +89,13 @@ export function parseEventAddress(value: string | null) {
   const placeName = lines.slice(0, addressIndex).map(stripPostcode).filter(Boolean).join(' ');
   const address = stripPostcode(lines[addressIndex]);
   // A road address has one 로/길 + building-number token; fall back to a jibun 동/리/가 token.
-  // Kakao's trailing parenthetical (e.g. "(운서동)") is consumed so it never becomes part of the query.
+  // Text after the number, including parentheticals such as "(운서동)" or "(3층 연회장)", stays in
+  // the displayed/copied detail but never reaches the map query.
   const token = (kind: string) =>
-    new RegExp(`([${kind}]\\s*\\d+(?:-\\d+)?)(?=[\\s,(]|$)(?:\\s*\\([^)]*\\))?`).exec(address);
+    new RegExp(`([${kind}]\\s*\\d+(?:-\\d+)?)(?=[\\s,(]|$)`).exec(address);
   const match = token('로길') ?? token('동리가');
   const road = match ? address.slice(0, match.index + match[1].length) : '';
-  const detailStart = match ? match.index + match[0].length : 0;
+  const detailStart = match ? match.index + match[1].length : 0;
   const detail = [
     address.slice(detailStart).replace(/^,\s*/, '').trim(),
     ...lines.slice(addressIndex + 1).map(stripPostcode),

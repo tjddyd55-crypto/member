@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import type { GatheringEventView } from '@member/contracts';
+import { hasEventEnded } from '@member/gathering-domain';
 import {
   Linking,
   Platform,
@@ -12,7 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { api } from '../../../../../src/api/client';
+import { api, ApiError } from '../../../../../src/api/client';
 import { EventFinancePane } from '../../../../../src/features/finance/FinancePanes';
 import { MediaPane } from '../../../../../src/features/media/MediaPane';
 import { AddressField, DateTimeField } from '../../../../../src/design/pickers';
@@ -74,6 +75,7 @@ function EventDetail({
   const [tab, setTab] = useState(initialTab);
   const [visited, setVisited] = useState<EventTab[]>([initialTab]);
   const [event, setEvent] = useState<GatheringEventView | null>(null);
+  const ended = event && (event.ended ?? hasEventEnded(event));
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [formError, setFormError] = useState('');
@@ -126,7 +128,12 @@ function EventDetail({
       setEvent(await api.setAttendance(groupId, eventId, next));
       setMessage('참석 여부를 저장했습니다.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '참석 여부를 저장하지 못했습니다.');
+      if (error instanceof ApiError && error.status === 409 && error.code === 'EVENT_ENDED') {
+        showToast(error.message);
+        await load();
+      } else {
+        setMessage(error instanceof Error ? error.message : '참석 여부를 저장하지 못했습니다.');
+      }
     } finally {
       attendancePending.current = false;
       setSavingAttendance(false);
@@ -312,8 +319,11 @@ function EventDetail({
             ) : null}
             {event.status === 'CANCELLED' ? <Body>취소된 행사</Body> : null}
             {event.description ? <Body>{event.description}</Body> : null}
+            {event.status === 'SCHEDULED' && ended ? (
+              <Text style={styles.endedLabel}>종료된 일정</Text>
+            ) : null}
             <Body>{attendanceSummary(event.counts)}</Body>
-            {event.status === 'SCHEDULED' ? (
+            {event.status === 'SCHEDULED' && !ended ? (
               <View style={styles.attendance}>
                 {ATTENDANCE_OPTIONS.map((item) => (
                   <Pressable
@@ -482,6 +492,7 @@ const styles = StyleSheet.create({
   stack: { gap: 12 },
   hidden: { display: 'none' },
   feedback: { fontSize: 14, color: theme.colors.text.primary },
+  endedLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.text.secondary },
   attendance: { flexDirection: 'row', gap: 4 },
   attendanceButton: {
     flex: 1,

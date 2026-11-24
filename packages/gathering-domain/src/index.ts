@@ -92,3 +92,4 @@ export {
 } from './demographics.js';
 export type { GatheringSex } from './demographics.js';
 export { normalizeJcName } from './jc-name.js';
+export { eventEndInstant, hasEventEnded } from './event-time.js';

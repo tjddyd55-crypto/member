@@ -11,7 +11,7 @@ const formats: Record<string, string[]> = {
   ppt: ['application/vnd.ms-powerpoint'],
   pptx: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
   hwp: ['application/x-hwp', 'application/haansofthwp', 'application/vnd.hancom.hwp', 'application/hwp', 'application/x-ole-storage'],
-  hwpx: ['application/vnd.hancom.hwpx', 'application/hwpx', 'application/zip', 'application/x-hwpx'],
+  hwpx: ['application/vnd.hancom.hwpx', 'application/hwpx', 'application/hwp+zip', 'application/zip', 'application/x-hwpx'],
   txt: ['text/plain'],
   csv: ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'],
   jpg: ['image/jpeg', 'image/jpg'],

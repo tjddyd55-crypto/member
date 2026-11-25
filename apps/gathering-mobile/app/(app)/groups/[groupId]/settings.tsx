@@ -1,6 +1,6 @@
 import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
 import { useCallback, useRef, useState } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import type { GatheringFinanceSummary, GatheringGroupDetail } from '@member/contracts';
 import { api } from '../../../../src/api/client';
 import { Body, Button, ErrorState, LoadingState, Notice, Screen, Title } from '../../../../src/design/ui';
@@ -41,7 +41,6 @@ export default function GroupSettingsScreen() {
 
   return (
     <Screen>
-      <Button label="모임으로" variant="text" onPress={() => router.back()} />
       <Title>모임 설정</Title>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}

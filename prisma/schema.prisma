@@ -198,6 +198,7 @@ model User {
   auditLogs           AuditLog[]
   createdFiles        FileObject[]      @relation("FileCreator")
 
+  gatheringDocuments GatheringDocument[]
   gatheringProfile               GatheringProfile?
   gatheringAffiliations          GatheringLocalAffiliation[]
   gatheringMemberships           GatheringMembership[]           @relation("GatheringMemberUser")
@@ -766,6 +767,8 @@ model GatheringGroup {
   roleAssignments    GatheringRoleAssignment[]
   executiveTerms     GatheringExecutiveTerm[]
   events             GatheringEvent[]
+  documentFolders GatheringDocumentFolder[]
+  documents GatheringDocument[]
   mediaAssets        GatheringMediaAsset[]
   mediaFolders       GatheringMediaFolder[]
   uploadLinks        GatheringUploadLink[]
@@ -918,6 +921,9 @@ model GatheringEvent {
   transactions GatheringFinanceTransaction[]
   receipts     GatheringReceiptAsset[]
 
+  documents GatheringDocument[]
+
+  @@unique([id, groupId])
   @@index([groupId, startsAt])
   @@index([groupId, deletedAt])
   @@map("gathering_events")
@@ -1520,4 +1526,52 @@ model GatheringRecoveryRequest {
   @@index([userId, createdAt])
   @@index([phoneHash, createdAt])
   @@map("gathering_recovery_requests")
+}
+
+model GatheringDocumentFolder {
+  id        String   @id @default(cuid())
+  groupId   String
+  parentId  String?
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group    GatheringGroup           @relation(fields: [groupId], references: [id])
+  parent   GatheringDocumentFolder? @relation("GatheringDocumentFolderTree", fields: [parentId, groupId], references: [id, groupId], onDelete: Restrict)
+  children GatheringDocumentFolder[] @relation("GatheringDocumentFolderTree")
+  files    GatheringDocument[]
+
+  @@unique([id, groupId])
+  @@index([groupId, parentId, name, id])
+  @@map("gathering_document_folders")
+}
+
+model GatheringDocument {
+  id               String                @id @default(cuid())
+  groupId          String
+  eventId          String?
+  folderId         String?
+  uploadedByUserId String?
+  originalName     String
+  name             String
+  extension        String
+  mimeType         String
+  sizeBytes        BigInt
+  storageKey       String                @unique
+  checksum         String?
+  status           GatheringObjectStatus @default(PENDING)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  deletedAt        DateTime?
+  cleanedAt        DateTime?
+
+  group      GatheringGroup           @relation(fields: [groupId], references: [id])
+  event      GatheringEvent?          @relation(fields: [eventId, groupId], references: [id, groupId], onDelete: Restrict)
+  folder     GatheringDocumentFolder? @relation(fields: [folderId, groupId], references: [id, groupId], onDelete: Restrict)
+  uploadedBy User?                     @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, checksum])
+  @@index([groupId, eventId, folderId, status, createdAt, id])
+  @@index([cleanedAt, status, createdAt])
+  @@map("gathering_documents")
 }

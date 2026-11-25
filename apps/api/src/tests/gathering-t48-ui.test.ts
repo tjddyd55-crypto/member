@@ -17,26 +17,27 @@ describe('t48 화면 구조', () => {
     expect(screen.indexOf('{footer}')).toBeLessThan(screen.indexOf('</SafeAreaView>'));
     expect(screen).toContain("['left', 'right', 'bottom']");
   });
-  it('홈은 현재 임원진과 다음 행사 하나만 표시한다', () => {
+  it('홈은 현재 집행부와 다음 행사 하나만 표시한다', () => {
     const home = group.slice(
       group.indexOf('function HomePane'),
       group.indexOf('function MembersPane'),
     );
     for (const text of [
-      'group.name',
       'group.president?.displayName',
-      '임원진',
+      '집행부',
       'roleLabel(officer.role, officer.title)',
       'officer.displayName',
       ".events(group.id, new Date().toISOString(), '9999-12-31T23:59:59.999Z'",
       "order: 'asc'",
       "status: 'SCHEDULED'",
       'page.items[0]',
+      '<EventScheduleRow event={nextEvent} />',
       '예정된 행사가 없습니다',
     ])
       expect(home).toContain(text);
     for (const text of ['내 역할', '최근 행사', '최근 사진', '재무 요약', 'api.finance'])
       expect(home).not.toContain(text);
+    expect(home).not.toContain('group.name');
     expect(home).not.toContain('eventsTimeline');
     expect(source('src/features/group/app-menu.ts')).toContain("label: '모임 설정'");
   });
@@ -44,17 +45,17 @@ describe('t48 화면 구조', () => {
     [
       '2026-11-19T10:00:00Z',
       '2026-01-01T00:00:00Z',
-      { date: '11.19', year: null, time: '(목) 19:00' },
+      { date: '11.19', year: null, weekday: '(목)', time: '19:00' },
     ],
     [
       '2026-11-19T10:00:00Z',
       '2027-01-01T00:00:00Z',
-      { date: '11.19', year: '2026', time: '(목) 19:00' },
+      { date: '11.19', year: '2026', weekday: '(목)', time: '19:00' },
     ],
     [
       '2026-12-31T15:05:00Z',
       '2026-12-31T15:00:00Z',
-      { date: '01.01', year: null, time: '(금) 00:05' },
+      { date: '01.01', year: null, weekday: '(금)', time: '00:05' },
     ],
   ])('KST 날짜 블록 %s', (value, now, expected) =>
     expect(eventDateBlock(value, new Date(now))).toEqual(expected),

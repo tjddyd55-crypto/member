@@ -34,7 +34,7 @@ import {
 } from '../../../../src/design/ui';
 import { roleLabel } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
-import { formatEventDateTime } from '../../../../src/features/schedule/range';
+import { EventScheduleRow } from '../../../../src/features/schedule/EventScheduleRow';
 import { ManualMemberSheet } from '../../../../src/features/group/ManualMemberSheet';
 import { LinkMemberSheet } from '../../../../src/features/group/LinkMemberSheet';
 import { useAppAlert } from '../../../../src/design/dialog';
@@ -182,8 +182,7 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
   useInvalidatedRefresh(group.id, 'all', refreshHome);
   return (
     <View style={styles.stack}>
-      <Text style={styles.meta}>{group.name}</Text>
-      <Text style={styles.name}>협의회장: {group.president?.displayName ?? '미정'}</Text>
+      <Text style={styles.name}>협의회장 {group.president?.displayName ?? '미정'}</Text>
       {officers.length ? (
         <View style={styles.card}>
           <Text style={styles.name}>임원진</Text>
@@ -198,14 +197,7 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
       {error ? (
         <ErrorState message={error} onRetry={() => void refreshHome()} />
       ) : nextEvent ? (
-        <Pressable
-          accessibilityRole="button"
-          style={styles.card}
-          onPress={() => router.push(`/(app)/groups/${group.id}/events/${nextEvent.id}`)}
-        >
-          <Body>{formatEventDateTime(nextEvent.startsAt)}</Body>
-          <Text style={styles.name}>{nextEvent.title}</Text>
-        </Pressable>
+        <EventScheduleRow event={nextEvent} />
       ) : (
         <Body>예정된 행사가 없습니다</Body>
       )}

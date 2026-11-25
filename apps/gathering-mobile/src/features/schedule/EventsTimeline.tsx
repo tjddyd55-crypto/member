@@ -1,12 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, SectionList, StyleSheet, Text, View, type ViewToken } from 'react-native';
-import { router } from 'expo-router';
+import { SectionList, StyleSheet, Text, View, type ViewToken } from 'react-native';
 import type { GatheringEventView } from '@member/contracts';
 import { api } from '../../api/client';
 import { EmptyState, ErrorState, LoadingState } from '../../design/ui';
 import { theme } from '../../theme';
 import { useInvalidatedRefresh, useRefreshLoad } from '../../state/useInvalidatedRefresh';
-import { eventDateBlock } from './range';
+import { EventScheduleRow } from './EventScheduleRow';
 
 import {
   TimelinePageQueue,
@@ -134,35 +133,9 @@ export function EventsTimeline({ groupId }: { groupId?: string }) {
           <Text style={styles.section}>지난 일정</Text>
         ) : null
       }
-      renderItem={({ item, section }) => {
-        const block = eventDateBlock(item.startsAt);
-        const past = section.key === 'past';
-        return (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push(`/(app)/groups/${item.groupId}/events/${item.id}`)}
-            style={styles.row}
-          >
-            <View style={styles.dateBlock}>
-              {block.year ? <Text style={styles.date}>{block.year}</Text> : null}
-              <Text style={[styles.bigDate, past && styles.past]}>
-                {block.date}<Text style={styles.weekday}> {block.weekday}</Text>
-              </Text>
-              <Text style={[styles.time, past && styles.past]}>{block.time}</Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-              {!groupId ? <Text style={[styles.groupName, past && styles.past]}>{item.groupName}</Text> : null}
-              <Text style={[styles.title, past && styles.past]}>{item.title}</Text>
-              {item.status === 'CANCELLED' ? <Text style={styles.date}>취소</Text> : null}
-              {item.place ? (
-                <Text numberOfLines={1} style={[styles.place, past && styles.past]}>
-                  {item.place}
-                </Text>
-              ) : null}
-            </View>
-          </Pressable>
-        );
-      }}
+      renderItem={({ item, section }) => (
+        <EventScheduleRow event={item} past={section.key === 'past'} showGroupName={!groupId} />
+      )}
       ListFooterComponent={paging ? <LoadingState /> : null}
     />
   );
@@ -178,21 +151,4 @@ const styles = StyleSheet.create({
     paddingTop: theme.space[16],
     paddingBottom: theme.space[8],
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: theme.space[16],
-    paddingVertical: theme.space[16],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border.default,
-  },
-  dateBlock: { width: 96, flexShrink: 0 },
-  bigDate: { fontSize: 24, lineHeight: 30, fontWeight: '700', fontVariant: ['tabular-nums'], color: theme.colors.text.primary },
-  weekday: { fontSize: 13, fontWeight: '500' },
-  time: { fontSize: 15, lineHeight: 22, fontWeight: '500', fontVariant: ['tabular-nums'], color: theme.colors.text.secondary, marginTop: 4 },
-  past: { color: theme.colors.text.disabled },
-  groupName: { fontSize: 15, lineHeight: 22, fontWeight: '700', color: theme.colors.text.primary },
-  title: { fontSize: 17, lineHeight: 24, fontWeight: '500', color: theme.colors.text.primary },
-  place: { fontSize: 14, lineHeight: 20, color: theme.colors.text.secondary },
-  date: { ...theme.typography.bodySmall, color: theme.colors.text.secondary },
 });

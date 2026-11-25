@@ -104,7 +104,7 @@ describe('앨범·선택·연속 일정 UI', () => {
       'onViewableItemsChanged=',
       "useInvalidatedRefresh(groupId ?? '*', 'schedule', load)",
       '등록된 일정이 없습니다',
-      'eventDateBlock(item.startsAt)',
+      '<EventScheduleRow event={item}',
     ])
       expect(timeline).toContain(text);
     expect(timeline).not.toContain('더 보기');

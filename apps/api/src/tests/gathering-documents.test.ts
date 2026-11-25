@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import * as cfb from 'cfb';
 import { strToU8, zipSync } from 'fflate';
@@ -10,6 +10,7 @@ import { cleanDocumentObjects } from '../modules/gathering/documents/service.js'
 import { gatheringAuthLimiter } from '../modules/gathering/rate-limit.js';
 import { MemoryObjectStorage } from '../modules/gathering/storage/memory.js';
 import { useObjectStorage } from '../modules/gathering/storage/r2.js';
+import { R2ObjectStorage } from '../modules/gathering/storage/s3-sigv4.js';
 import { loadBillableUsage } from '../modules/gathering/storage/usage.js';
 
 const storage = new MemoryObjectStorage();
@@ -111,6 +112,22 @@ describe('document type validation', () => {
     expect(await matchesDocument('docx', office('xl/workbook.xml'))).toBe(false);
     expect(await matchesDocument('txt', Buffer.from([0, 1, 2, 3]))).toBe(false);
   });
+});
+
+it('bounds the R2 response body to the declared read length', async () => {
+  const r2 = new R2ObjectStorage({
+    bucket: 'test', endpoint: 'https://storage.test', accessKeyId: 'fake', secretAccessKey: 'fake',
+    region: 'auto', prefixEnv: 'test',
+  });
+  const fetch = vi.spyOn(globalThis, 'fetch');
+  try {
+    fetch.mockResolvedValueOnce(new Response('ABC', { status: 206 }));
+    expect(Buffer.from(await r2.readPrefix('key', 3)).toString()).toBe('ABC');
+    fetch.mockResolvedValueOnce(new Response('ABCD', { status: 206 }));
+    await expect(r2.readPrefix('key', 3)).rejects.toThrow();
+  } finally {
+    fetch.mockRestore();
+  }
 });
 
 it('shares one event record, gates writes and reads, and accounts for all storage', async () => {

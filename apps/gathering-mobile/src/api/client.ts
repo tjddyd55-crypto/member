@@ -52,7 +52,7 @@ export class ApiError extends Error {
 
 type ErrorBody = { error?: { code?: string; message?: string } };
 
-async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const accessToken = await tokenStorage.getAccessToken();
   const headers: Record<string, string> = {
     ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),

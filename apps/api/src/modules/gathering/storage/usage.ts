@@ -5,11 +5,12 @@ type UsageDb = Prisma.TransactionClient | PrismaClient;
 
 export async function loadBillableUsage(db: UsageDb, groupId: string, now: Date): Promise<StorageUsage> {
   const pendingSince = new Date(now.getTime() - UPLOAD_INTENT_TTL_MS);
-  const [media, receipts] = await Promise.all([
+  const [media, receipts, documents] = await Promise.all([
     sumBytes(db, 'media', groupId, pendingSince),
     sumBytes(db, 'receipt', groupId, pendingSince),
+    sumBytes(db, 'document', groupId, pendingSince),
   ]);
-  return { mediaBytes: media, receiptBytes: receipts, otherBytes: 0 };
+  return { mediaBytes: media, receiptBytes: receipts, otherBytes: documents };
 }
 
 export async function loadGroupQuotaBytes(db: UsageDb, groupId: string, now = new Date()) {
@@ -40,7 +41,7 @@ export async function isSubscriptionActive(db: UsageDb, groupId: string, now: Da
   return row !== null;
 }
 
-async function sumBytes(db: UsageDb, kind: 'media' | 'receipt', groupId: string, pendingSince: Date) {
+async function sumBytes(db: UsageDb, kind: 'media' | 'receipt' | 'document', groupId: string, pendingSince: Date) {
   const where = {
     groupId,
     deletedAt: null,
@@ -49,6 +50,8 @@ async function sumBytes(db: UsageDb, kind: 'media' | 'receipt', groupId: string,
   const aggregate =
     kind === 'media'
       ? await db.gatheringMediaAsset.aggregate({ where, _sum: { sizeBytes: true } })
-      : await db.gatheringReceiptAsset.aggregate({ where, _sum: { sizeBytes: true } });
+      : kind === 'receipt'
+        ? await db.gatheringReceiptAsset.aggregate({ where, _sum: { sizeBytes: true } })
+        : await db.gatheringDocument.aggregate({ where, _sum: { sizeBytes: true } });
   return Number(aggregate._sum.sizeBytes ?? 0n);
 }

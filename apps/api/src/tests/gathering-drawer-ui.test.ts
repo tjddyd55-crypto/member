@@ -21,16 +21,16 @@ describe('drawer sections and permission gates', () => {
     expect(sections[2].items.map((i) => i.label)).toEqual(['전체 일정', '내 정보 및 설정']);
     expect(drawerSections([], 'b', group(['PRESIDENT']))).toHaveLength(2);
   });
-  it.each(['MEMBER', 'EXECUTIVE', 'TREASURER'] as GatheringRole[])('%s can view officers only', (role) => {
-    expect(ids([role])).toEqual(['officers']);
+  it.each(['MEMBER', 'EXECUTIVE', 'TREASURER'] as GatheringRole[])('%s can view documents and officers', (role) => {
+    expect(ids([role])).toEqual(['documents', 'officers']);
   });
   it('uses the settings and management screen grants', () => {
-    expect(ids(['SECRETARY'])).toEqual(['manage', 'officers']);
-    expect(ids(['PRESIDENT'])).toEqual(['settings', 'manage', 'officers', 'handover']);
+    expect(ids(['SECRETARY'])).toEqual(['documents', 'manage', 'officers']);
+    expect(ids(['PRESIDENT'])).toEqual(['documents', 'settings', 'manage', 'officers', 'handover']);
     for (const permission of ['GROUP_SETTINGS', 'INVITE_MANAGE', 'MEMBER_MANAGE']) {
       expect(groupMenuItems({ id: 'a', name: '모임', permissions: [permission] }).map((i) => i.id)).toContain('manage');
     }
-    expect(groupMenuItems({ id: 'a', name: '모임', permissions: [] })).toEqual([]);
+    expect(groupMenuItems({ id: 'a', name: '모임', permissions: [] }).map((item) => item.id)).toEqual(['documents']);
   });
   it('allows handover participants using server actions', () => {
     const none: HandoverActions = { nominate: false, accept: false, confirm: false, finalize: false, cancel: false };
@@ -72,7 +72,7 @@ describe('drawer loading', () => {
     input.loadHandover.mockImplementation(() => new Promise((done) => { resolve = done; }));
     const loading = loadDrawerGroup(input);
     await Promise.resolve();
-    expect(groupMenuItems(input.onGroup.mock.calls[0][0]).map((item) => item.id)).toEqual(['settings', 'manage', 'officers']);
+    expect(groupMenuItems(input.onGroup.mock.calls[0][0]).map((item) => item.id)).toEqual(['documents', 'settings', 'manage', 'officers']);
     expect(input.onActions).not.toHaveBeenCalled();
     resolve({ actions });
     await loading;
@@ -81,7 +81,7 @@ describe('drawer loading', () => {
   it('shows handover from permission without requesting handover', async () => {
     const input = setup(['HANDOVER']);
     await loadDrawerGroup(input);
-    expect(groupMenuItems(input.onGroup.mock.calls[0][0]).map((item) => item.id)).toEqual(['handover']);
+    expect(groupMenuItems(input.onGroup.mock.calls[0][0]).map((item) => item.id)).toEqual(['documents', 'handover']);
     expect(input.loadHandover).not.toHaveBeenCalled();
   });
   it('keeps group entries when handover fails', async () => {

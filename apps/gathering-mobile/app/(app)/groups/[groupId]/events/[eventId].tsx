@@ -8,12 +8,14 @@ import {
   Platform,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { api, ApiError } from '../../../../../src/api/client';
+import { DocumentsPane } from '../../../../../src/features/documents/DocumentsPane';
 import { EventFinancePane } from '../../../../../src/features/finance/FinancePanes';
 import { MediaPane } from '../../../../../src/features/media/MediaPane';
 import { AddressField, DateTimeField } from '../../../../../src/design/pickers';
@@ -71,7 +73,7 @@ function EventDetail({
 }) {
   const { width, fontScale } = useWindowDimensions();
   const showToast = useToast();
-  const tabLabelSize = eventTabLabelSize(width - 2 * theme.layout.horizontalGutter, fontScale);
+  const tabLabelSize = eventTabLabelSize(Math.max(328, width - 2 * theme.layout.horizontalGutter), fontScale);
   const [tab, setTab] = useState(initialTab);
   const [visited, setVisited] = useState<EventTab[]>([initialTab]);
   const [event, setEvent] = useState<GatheringEventView | null>(null);
@@ -229,7 +231,7 @@ function EventDetail({
           )}
         </View>
 
-        <View style={styles.tabs}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
           {EVENT_TABS.map(([id, label]) => (
             <Pressable
               key={id}
@@ -257,7 +259,7 @@ function EventDetail({
               </Text>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       </>
     ) : undefined;
   return (
@@ -368,6 +370,11 @@ function EventDetail({
               />
             </View>
           ) : null}
+          {visited.includes('documents') ? (
+            <View style={tab !== 'documents' && styles.hidden}>
+              <DocumentsPane groupId={groupId} eventId={eventId} active={tab === 'documents'} />
+            </View>
+          ) : null}
           {visited.includes('finance') ? (
             <View style={tab !== 'finance' && styles.hidden}>
               <EventFinancePane
@@ -453,10 +460,10 @@ const styles = StyleSheet.create({
   backLabel: { fontSize: 22, color: theme.colors.text.secondary },
   edit: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
   editLabel: { fontSize: 14, fontWeight: '600', color: theme.colors.primary.default },
-  tabs: { flexDirection: 'row', gap: 2 },
+  tabs: { flexGrow: 1, flexDirection: 'row', gap: 2 },
   tab: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 80,
     minHeight: 46,
     alignItems: 'center',
     justifyContent: 'center',

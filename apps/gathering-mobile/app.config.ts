@@ -13,6 +13,8 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'light',
   newArchEnabled: true,
   plugins: [
+    '@config-plugins/react-native-pdf',
+    '@config-plugins/react-native-blob-util',
     'expo-dev-client',
     'expo-router',
     'expo-secure-store',

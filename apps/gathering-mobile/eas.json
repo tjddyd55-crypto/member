@@ -45,6 +45,13 @@
         "EXPO_PUBLIC_EAS_PROJECT_ID": "f5a017a3-82f8-4d73-bc8a-ecd249e994f3"
       }
     },
+    "preview-qa": {
+      "extends": "preview",
+      "autoIncrement": true,
+      "ios": {
+        "simulator": true
+      }
+    },
     "production-apk": {
       "extends": "production",
       "android": {

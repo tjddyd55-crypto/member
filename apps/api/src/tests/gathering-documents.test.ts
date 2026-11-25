@@ -174,7 +174,7 @@ it('shares one event record, gates writes and reads, and accounts for all storag
   expect((await call(null, 'GET', docs)).statusCode).toBe(401);
   expect((await call(outsider.token, 'GET', docs)).statusCode).toBe(404);
 
-  const staged = async (name: string, body: Buffer, location: { eventId?: string; folderId?: string }) => {
+  const staged = async (name: string, body: Buffer, location: { eventId?: string; folderId?: string; mimeType?: string }) => {
     const response = await call(member.token, 'POST', docs + '/uploads', { name, sizeBytes: body.length, ...location });
     expect(response.statusCode, response.body).toBe(200);
     const { id, target } = response.json();
@@ -197,6 +197,10 @@ it('shares one event record, gates writes and reads, and accounts for all storag
   expect((await call(outsider.token, 'GET', `/groups/${other.json().id}/documents/files/${pdfUpload.id}/download`)).statusCode).toBe(404);
   expect((await call(chair.token, 'GET', `${docs}/files/${hwpUpload.id}/download`)).json().url)
     .toBe(`https://storage.test/get/${encodeURIComponent(storedHwp![0])}`);
+
+  const hwpxUpload = await staged('회의.hwpx', hwpx, { eventId: first, mimeType: 'application/hwp+zip' });
+  expect((await hwpxUpload.complete()).statusCode).toBe(200);
+  expect((await call(member.token, 'DELETE', `${docs}/files/${hwpxUpload.id}`)).statusCode).toBe(200);
 
   const same = await staged('중복.pdf', pdf, { eventId: first });
   expect((await same.complete()).json().id).toBe(pdfUpload.id);

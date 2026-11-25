@@ -17,14 +17,14 @@ describe('t48 화면 구조', () => {
     expect(screen.indexOf('{footer}')).toBeLessThan(screen.indexOf('</SafeAreaView>'));
     expect(screen).toContain("['left', 'right', 'bottom']");
   });
-  it('홈은 현재 임원진과 다음 행사 하나만 표시한다', () => {
+  it('홈은 현재 집행부와 다음 행사 하나만 표시한다', () => {
     const home = group.slice(
       group.indexOf('function HomePane'),
       group.indexOf('function MembersPane'),
     );
     for (const text of [
       'group.president?.displayName',
-      '임원진',
+      '집행부',
       'roleLabel(officer.role, officer.title)',
       'officer.displayName',
       ".events(group.id, new Date().toISOString(), '9999-12-31T23:59:59.999Z'",

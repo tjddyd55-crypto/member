@@ -182,17 +182,15 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
   useInvalidatedRefresh(group.id, 'all', refreshHome);
   return (
     <View style={styles.stack}>
-      <Text style={styles.name}>협의회장 {group.president?.displayName ?? '미정'}</Text>
-      {officers.length ? (
-        <View style={styles.card}>
-          <Text style={styles.name}>임원진</Text>
-          {officers.map((officer) => (
-            <Body key={officer.assignmentId}>
-              {roleLabel(officer.role, officer.title)} · {officer.displayName}
-            </Body>
-          ))}
-        </View>
-      ) : null}
+      <View style={styles.card}>
+        <Text style={styles.name}>집행부</Text>
+        <Body>협의회장 · {group.president?.displayName ?? '미정'}</Body>
+        {officers.map((officer) => (
+          <Body key={officer.assignmentId}>
+            {roleLabel(officer.role, officer.title)} · {officer.displayName}
+          </Body>
+        ))}
+      </View>
       <Text style={styles.name}>다음 행사</Text>
       {error ? (
         <ErrorState message={error} onRetry={() => void refreshHome()} />

@@ -18,7 +18,7 @@ describe('drawer sections and permission gates', () => {
       { id: 'all-groups', label: '모든 모임 보기', href: '/(app)/groups', icon: 'albums-outline' },
       { id: 'create', label: '모임 만들기', href: '/(app)/groups/create', icon: 'add-outline' },
     ]);
-    expect(sections[2].items.map((i) => i.label)).toEqual(['전체 일정']);
+    expect(sections[2].items.map((i) => i.label)).toEqual(['전체 일정', '내 정보 및 설정']);
     expect(drawerSections([], 'b', group(['PRESIDENT']))).toHaveLength(2);
   });
   it.each(['MEMBER', 'EXECUTIVE', 'TREASURER'] as GatheringRole[])('%s can view documents and officers', (role) => {

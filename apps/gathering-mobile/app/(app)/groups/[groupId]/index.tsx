@@ -1,6 +1,7 @@
 import { useInvalidatedRefresh, useRefreshLoad } from '../../../../src/state/useInvalidatedRefresh';
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
+  BackHandler,
   Linking,
   Modal,
   Pressable,
@@ -10,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import type {
   GatheringEventView,
   GatheringOfficerView,
@@ -33,7 +34,7 @@ import {
 } from '../../../../src/design/ui';
 import { roleLabel } from '../../../../src/copy';
 import { tabIconSize, tabLabelSize } from '../../../../src/features/group/tab-layout';
-import { formatEventDateTime } from '../../../../src/features/schedule/range';
+import { EventScheduleRow } from '../../../../src/features/schedule/EventScheduleRow';
 import { ManualMemberSheet } from '../../../../src/features/group/ManualMemberSheet';
 import { LinkMemberSheet } from '../../../../src/features/group/LinkMemberSheet';
 import { useAppAlert } from '../../../../src/design/dialog';
@@ -67,6 +68,15 @@ export default function GroupDetailScreen() {
   const [group, setGroup] = useState<GatheringGroupDetail | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
+
+  useFocusEffect(useCallback(() => {
+    // A menu reset leaves no native history. Consume back while this screen is focused.
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      router.replace('/(app)/groups');
+      return true;
+    });
+    return () => subscription.remove();
+  }, []));
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -172,30 +182,20 @@ function HomePane({ group }: { group: GatheringGroupDetail }) {
   useInvalidatedRefresh(group.id, 'all', refreshHome);
   return (
     <View style={styles.stack}>
-      <Text style={styles.meta}>{group.name}</Text>
-      <Text style={styles.name}>협의회장: {group.president?.displayName ?? '미정'}</Text>
-      {officers.length ? (
-        <View style={styles.card}>
-          <Text style={styles.name}>임원진</Text>
-          {officers.map((officer) => (
-            <Body key={officer.assignmentId}>
-              {roleLabel(officer.role, officer.title)} · {officer.displayName}
-            </Body>
-          ))}
-        </View>
-      ) : null}
+      <View style={styles.card}>
+        <Text style={styles.name}>집행부</Text>
+        <Body>협의회장 · {group.president?.displayName ?? '미정'}</Body>
+        {officers.map((officer) => (
+          <Body key={officer.assignmentId}>
+            {roleLabel(officer.role, officer.title)} · {officer.displayName}
+          </Body>
+        ))}
+      </View>
       <Text style={styles.name}>다음 행사</Text>
       {error ? (
         <ErrorState message={error} onRetry={() => void refreshHome()} />
       ) : nextEvent ? (
-        <Pressable
-          accessibilityRole="button"
-          style={styles.card}
-          onPress={() => router.push(`/(app)/groups/${group.id}/events/${nextEvent.id}`)}
-        >
-          <Body>{formatEventDateTime(nextEvent.startsAt)}</Body>
-          <Text style={styles.name}>{nextEvent.title}</Text>
-        </Pressable>
+        <EventScheduleRow event={nextEvent} />
       ) : (
         <Body>예정된 행사가 없습니다</Body>
       )}

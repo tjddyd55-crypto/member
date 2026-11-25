@@ -6,6 +6,7 @@ import {
   gatheringSwitchItems,
   GLOBAL_MENU_ROUTES,
   globalMenuNavigation,
+  hardwareBackDestination,
   rootResetTarget,
   routeHeaderTitle,
 } from '../../../gathering-mobile/src/features/group/app-menu';
@@ -14,6 +15,18 @@ import { uploadAlbumFiles } from '../../../gathering-mobile/src/features/media/a
 import { chunkForReserve, handoverInProgress, uploadBlockReason } from '../../../gathering-mobile/src/features/media/upload-block';
 
 describe('모임 화면 배치', () => {
+  it('Android 뒤로 가기는 메뉴로 연 화면에서도 상위 화면으로 돌아가고 기존 상세 이력은 유지한다', () => {
+    expect(hardwareBackDestination('/groups/group-1', false)).toBe('/(app)/groups');
+    expect(hardwareBackDestination('/groups/group-1', true)).toBe('/(app)/groups');
+    expect(hardwareBackDestination('/groups/group-1/settings', false)).toBe('/(app)/groups/group-1');
+    expect(hardwareBackDestination('/groups/group-1/manage', false)).toBe('/(app)/groups/group-1');
+    expect(hardwareBackDestination('/groups/group-1/events/event-1', true)).toBeNull();
+    expect(hardwareBackDestination('/profile', false)).toBe('/(app)/groups');
+    expect(hardwareBackDestination('/calendar', false)).toBe('/(app)/groups');
+    expect(hardwareBackDestination('/groups/create', false)).toBe('/(app)/groups');
+    expect(hardwareBackDestination('/account-delete', false)).toBe('/(app)/profile');
+    expect(hardwareBackDestination('/groups', false)).toBeNull();
+  });
   it('320dp와 360dp에서 다섯 탭이 한 칸씩 들어간다', () => {
     expect(tabSlotWidth(320)).toBeCloseTo(59.2);
     expect(tabSlotWidth(360)).toBeCloseTo(67.2);
@@ -46,7 +59,7 @@ describe('모임 화면 배치', () => {
         routes: [{ name: '(app)' }],
       }),
     ).toBeNull();
-    expect(GLOBAL_MENU_ROUTES.map((item) => item.label)).toEqual(['내 모임', '전체 일정']);
+    expect(GLOBAL_MENU_ROUTES.map((item) => item.label)).toEqual(['내 모임', '전체 일정', '내 정보 및 설정']);
     expect(GLOBAL_MENU_ROUTES.some((item) => item.label === '홈')).toBe(false);
     const items = gatheringSwitchItems(
       [

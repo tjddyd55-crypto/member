@@ -3,6 +3,7 @@ export const GATHERING_TABS = ['홈', '회원', '일정', '사진', '회계'] as
 export const GLOBAL_MENU_ROUTES = [
   { id: 'groups', label: '내 모임', href: '/(app)/groups' },
   { id: 'calendar', label: '전체 일정', href: '/(app)/calendar' },
+  { id: 'profile', label: '내 정보 및 설정', href: '/(app)/profile' },
 ] as const;
 
 export type GatheringSwitchTarget = {
@@ -28,7 +29,7 @@ export function compactHeaderTitle(input: { groupName?: string | null; routeTitl
 
 export function routeHeaderTitle(pathname: string) {
   if (pathname.includes('/calendar')) return '전체 일정';
-  if (pathname.includes('/profile')) return '내 정보';
+  if (pathname.includes('/profile')) return '내 정보 및 설정';
   if (pathname.includes('/account-delete')) return '계정 삭제';
   if (pathname.includes('/groups/create')) return '모임 만들기';
   if (/\/groups\/[^/]+/.test(pathname)) return '모임';
@@ -39,6 +40,20 @@ export function routeHeaderTitle(pathname: string) {
 /** 메뉴 이동은 한 번의 내비게이션으로 이전 모임을 스택에 남기지 않는다. */
 export function globalMenuNavigation() {
   return 'reset' as const;
+}
+
+/** Menu resets have no back stack; Android back should still return to a parent screen. */
+export function hardwareBackDestination(pathname: string, canGoBack: boolean): string | null {
+  const group = pathname.match(/^\/groups\/([^/]+)(?:\/|$)/);
+  if (group && group[1] !== 'create') {
+    const home = `/groups/${group[1]}`;
+    if (pathname === home || pathname === `${home}/`) return '/(app)/groups';
+    if (!canGoBack) return `/(app)${home}`;
+  }
+  if (canGoBack) return null;
+  if (pathname === '/account-delete') return '/(app)/profile';
+  if (['/profile', '/calendar', '/groups/create'].includes(pathname)) return '/(app)/groups';
+  return null;
 }
 
 /**
@@ -83,7 +98,7 @@ export type DrawerItem = {
   id: string;
   label: string;
   href: string;
-  icon?: 'settings-outline' | 'shield-checkmark-outline' | 'people-outline' | 'swap-horizontal-outline' | 'calendar-outline' | 'add-outline' | 'albums-outline' | 'folder-outline';
+  icon?: 'settings-outline' | 'shield-checkmark-outline' | 'people-outline' | 'swap-horizontal-outline' | 'calendar-outline' | 'add-outline' | 'albums-outline' | 'person-circle-outline' | 'folder-outline';
   selected?: boolean;
 };
 
@@ -112,6 +127,6 @@ export function drawerSections(groups: readonly GatheringSwitchTarget[], current
     ] },
   ];
   if (currentId && group?.id === currentId) sections.push({ id: 'current', title: group.name, items: groupMenuItems(group, actions) });
-  sections.push({ id: 'global', title: '전체', items: GLOBAL_MENU_ROUTES.filter((item) => item.id !== 'groups').map((item) => ({ ...item, icon: 'calendar-outline' })) });
+  sections.push({ id: 'global', title: '전체', items: GLOBAL_MENU_ROUTES.filter((item) => item.id !== 'groups').map((item) => ({ ...item, icon: item.id === 'profile' ? 'person-circle-outline' : 'calendar-outline' })) });
   return sections;
 }

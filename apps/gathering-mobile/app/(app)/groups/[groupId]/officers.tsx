@@ -84,11 +84,6 @@ export default function OfficersScreen() {
   return (
     <Screen>
       <Title>집행부</Title>
-      <Button
-        label="모임으로"
-        variant="text"
-        onPress={() => router.replace(`/(app)/groups/${groupId}`)}
-      />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={message} onRetry={() => void load()} /> : null}
       {status === 'ready' ? (

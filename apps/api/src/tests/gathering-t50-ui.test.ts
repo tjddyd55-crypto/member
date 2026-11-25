@@ -25,13 +25,12 @@ describe('t50 compact UX', () => {
   it('calendar reuses the group timeline with group names and past divider', () => {
     expect(source('app/(app)/calendar.tsx')).toContain('<EventsTimeline />');
     const timeline = source('src/features/schedule/EventsTimeline.tsx');
-    for (const text of [
-      '지난 일정',
-      'item.groupName',
-      'eventDateBlock(item.startsAt)',
-      'styles.past',
-    ])
-      expect(timeline).toContain(text);
+    expect(timeline).toContain('지난 일정');
+    expect(timeline).toContain('<EventScheduleRow event={item}');
+    expect(timeline).toContain('showGroupName={!groupId}');
+    const row = source('src/features/schedule/EventScheduleRow.tsx');
+    expect(row).toContain('event.groupName');
+    expect(row).toContain('eventDateBlock(event.startsAt)');
     expect(timeline).not.toContain('>예정<');
   });
   it('album dates use KST across midnight', () => {

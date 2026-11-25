@@ -38,8 +38,22 @@ export class R2ObjectStorage implements ObjectStorage {
     if (response.status === 404) {
       throw new AppError(409, 'OBJECT_MISSING', '업로드된 파일을 찾지 못했습니다.');
     }
-    if (!response.ok) throw storageFailure();
-    return new Uint8Array(await response.arrayBuffer());
+    if (!response.ok || !response.body) throw storageFailure();
+    const reader = response.body.getReader();
+    const result = new Uint8Array(length);
+    let offset = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return result.subarray(0, offset);
+        if (value.byteLength > length - offset) throw storageFailure();
+        result.set(value, offset);
+        offset += value.byteLength;
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
   }
 
   async remove(key: string) {

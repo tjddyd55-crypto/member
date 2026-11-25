@@ -1,7 +1,8 @@
 export const EVENT_TABS = [
-  ['info', '안내'],
-  ['media', '갤러리'],
-  ['finance', '회계'],
+  ['info', '안내·참석'],
+  ['media', '사진·영상'],
+  ['documents', '자료실'],
+  ['finance', '재무·영수증'],
 ] as const;
 export type EventTab = (typeof EVENT_TABS)[number][0];
 export const ATTENDANCE_OPTIONS = [
@@ -10,7 +11,7 @@ export const ATTENDANCE_OPTIONS = [
   { status: 'UNDECIDED', label: '미정' },
 ] as const;
 export function initialEventTab(value: unknown): EventTab {
-  return value === 'media' || value === 'finance' ? value : 'info';
+  return value === 'media' || value === 'documents' || value === 'finance' ? value : 'info';
 }
 export function attendanceSummary(counts: {
   attending: number;
@@ -125,7 +126,7 @@ export function eventMapUrls(q: string): [appUrl: string, webUrl: string] {
 
 /** Longest tab label uses at most 5.5 em; reserve gaps and horizontal padding. */
 export function eventTabLabelSize(width: number, fontScale = 1) {
-  const labelWidth = Math.max(0, (width - 4) / 3 - 6);
+  const labelWidth = Math.max(0, (width - 6) / 4 - 6);
   const scale = Math.max(1, Math.min(fontScale, 1.3));
   return Math.max(1, Math.min(14, Math.floor(labelWidth / (5.5 * scale))));
 }

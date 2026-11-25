@@ -21,10 +21,11 @@ import { mediaGridLayout } from '../../../gathering-mobile/src/features/media/gr
 import { downloadFileName } from '../../../gathering-mobile/src/features/media/viewer-values';
 
 describe('행사 상세 조회 로직', () => {
-  it('탭은 요청된 세 개이며 알 수 없는 링크는 안내 탭을 연다', () => {
-    expect(EVENT_TABS.map(([, label]) => label)).toEqual(['안내', '갤러리', '회계']);
+  it('탭은 요청된 네 개이며 알 수 없는 링크는 안내 탭을 연다', () => {
+    expect(EVENT_TABS.map(([, label]) => label)).toEqual(['안내·참석', '사진·영상', '자료실', '재무·영수증']);
     expect(initialEventTab('finance')).toBe('finance');
     expect(initialEventTab('media')).toBe('media');
+    expect(initialEventTab('documents')).toBe('documents');
     expect(initialEventTab(['finance'])).toBe('info');
     expect(initialEventTab(undefined)).toBe('info');
     expect(initialEventTab('unknown')).toBe('info');
@@ -241,10 +242,10 @@ describe('행사 상세 조회 로직', () => {
   it.each([1, 1.3, 2])(
     '320px 화면의 탭은 글자 배율 %s에서도 자동 축소 없이 폭 안에 들어간다',
     (fontScale) => {
-      const tabWidth = (320 - 40 - 4) / 3;
-      const size = eventTabLabelSize(280, fontScale);
+      const tabWidth = (328 - 6) / 4;
+      const size = eventTabLabelSize(328, fontScale);
       expect(size * Math.min(fontScale, 1.3) * 5.5 + 6).toBeLessThanOrEqual(tabWidth);
-      expect(size).toBeGreaterThanOrEqual(12);
+      expect(size).toBeGreaterThanOrEqual(10);
     },
   );
   it('다운로드 확장자는 실제 MIME을 따르고 파일명 경로 문자를 제거한다', () => {

@@ -3,6 +3,7 @@ import { AppError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { verifyGatheringAccessToken } from '../tokens.js';
 import { gatheringAccountRoutes } from './account.js';
+import { gatheringDocumentRoutes } from './documents.js';
 import { gatheringAuthRoutes } from './auth.js';
 import { gatheringFinanceRoutes } from './finance.js';
 import { gatheringHandoverRoutes } from './handover.js';
@@ -31,6 +32,7 @@ export const gatheringRoutes: FastifyPluginAsync = async (app) => {
   await app.register(gatheringGroupRoutes);
   await app.register(gatheringScheduleRoutes);
   await app.register(gatheringMediaRoutes);
+  await app.register(gatheringDocumentRoutes);
   await app.register(gatheringFinanceRoutes);
   await app.register(gatheringSubscriptionRoutes);
   await app.register(gatheringHandoverRoutes);

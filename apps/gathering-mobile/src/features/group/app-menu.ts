@@ -83,7 +83,7 @@ export type DrawerItem = {
   id: string;
   label: string;
   href: string;
-  icon?: 'settings-outline' | 'shield-checkmark-outline' | 'people-outline' | 'swap-horizontal-outline' | 'calendar-outline' | 'add-outline' | 'albums-outline';
+  icon?: 'settings-outline' | 'shield-checkmark-outline' | 'people-outline' | 'swap-horizontal-outline' | 'calendar-outline' | 'add-outline' | 'albums-outline' | 'folder-outline';
   selected?: boolean;
 };
 
@@ -95,7 +95,7 @@ export function groupMenuItems(group: DrawerGroup | null, actions?: HandoverActi
   if (!group) return [];
   const has = (permission: string) => group.permissions.includes(permission);
   const base = `/(app)/groups/${group.id}`;
-  const items: DrawerItem[] = [];
+  const items: DrawerItem[] = [{ id: 'documents', label: '자료실', href: `${base}/documents`, icon: 'folder-outline' }];
   if (has('GROUP_SETTINGS')) items.push({ id: 'settings', label: '모임 설정', href: `${base}/settings`, icon: 'settings-outline' });
   if (['GROUP_SETTINGS', 'INVITE_MANAGE', 'MEMBER_MANAGE'].some(has)) items.push({ id: 'manage', label: '관리', href: `${base}/manage`, icon: 'shield-checkmark-outline' });
   if (has('MEMBER_READ')) items.push({ id: 'officers', label: '집행부', href: `${base}/officers`, icon: 'people-outline' });

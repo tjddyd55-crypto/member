@@ -28,10 +28,26 @@ export async function uploadDocument(
   });
 }
 
+// The original name stays in metadata. Native filesystems limit a single component to 255 bytes.
+export function nativeDocumentName(file: Pick<DocumentFile, 'name'>) {
+  const suffix = file.name.slice(file.name.lastIndexOf('.'));
+  const base = file.name.slice(0, file.name.length - suffix.length);
+  let name = '';
+  let remaining = 240 - suffix.length;
+  for (const character of base) {
+    const cp = character.codePointAt(0)!;
+    const bytes = cp <= 0x7f ? 1 : cp <= 0x7ff ? 2 : cp <= 0xffff ? 3 : 4;
+    if (bytes > remaining) break;
+    remaining -= bytes;
+    name += character;
+  }
+  return (name.trim() || 'document') + suffix;
+}
+
 async function localDocument(url: string, file: DocumentFile) {
   const dir = new Directory(Paths.cache, 'documents', file.id);
   dir.create({ idempotent: true, intermediates: true });
-  const dest = new File(dir, file.name);
+  const dest = new File(dir, nativeDocumentName(file));
   const result = await downloadAsync(url, dest.uri);
   if (result.status !== 200 || dest.size !== file.sizeBytes) {
     if (dest.exists) dest.delete();
@@ -59,7 +75,7 @@ export async function transferDocumentFile(url: string, file: DocumentFile, acti
   }
 
   const local = await localDocument(url, file);
-  if (action === 'download' && await saveToDownloads(local.uri, file.name, file.mimeType)) return;
+  if (action === 'download' && await saveToDownloads(local.uri, nativeDocumentName(file), file.mimeType)) return;
   if (Platform.OS === 'android' && action === 'open') {
     try {
       await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {

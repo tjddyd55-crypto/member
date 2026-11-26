@@ -107,7 +107,7 @@ export async function listDocuments(actor: Actor, options: Location & {
       include: uploader, skip: offset, take: pageSize + 1,
     }),
     prisma.gatheringDocumentFolder.findMany({
-      where: { groupId, eventId, ...(q ? { name: { contains: q, mode: 'insensitive' } } : { parentId: folderId }) },
+      where: { groupId, eventId, ...(q ? { name: { contains: q, mode: 'insensitive' }, ...(folderId ? { parentId: folderId } : {}) } : { parentId: folderId }) },
       orderBy: options.sort === 'name' ? [{ name: 'asc' }, { id: 'asc' }] : [{ createdAt: options.sort === 'oldest' ? 'asc' : 'desc' }, { id: 'asc' }], skip: offset, take: pageSize + 1,
       select: {
         id: true, name: true, createdByUserId: true,

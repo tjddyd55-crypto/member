@@ -62,12 +62,15 @@ const TABS: Array<{ id: Tab; label: string; icon: ComponentProps<typeof Ionicons
 ];
 
 export default function GroupDetailScreen() {
-  const params = useLocalSearchParams<{ groupId: string }>();
+  const params = useLocalSearchParams<{ groupId: string; view?: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
   const { width } = useWindowDimensions();
   const labelSize = tabLabelSize(width);
   const iconSize = tabIconSize(width);
   const [tab, setTab] = useState<Tab>('home');
+  useEffect(() => {
+    setTab(TABS.find((item) => item.id === params.view)?.id ?? 'home');
+  }, [params.view, groupId]);
   const [group, setGroup] = useState<GatheringGroupDetail | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');

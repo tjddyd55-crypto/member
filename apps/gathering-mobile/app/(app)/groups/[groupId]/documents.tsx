@@ -1,14 +1,8 @@
-import { useLocalSearchParams } from 'expo-router';
-import { Screen, Title } from '../../../../src/design/ui';
-import { DocumentsPane } from '../../../../src/features/documents/DocumentsPane';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 
+// Keep existing drawer/deep links while sharing the fixed group tab bar.
 export default function GroupDocumentsScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   if (typeof groupId !== 'string') return null;
-  return (
-    <Screen>
-      <Title>자료실</Title>
-      <DocumentsPane key={groupId} groupId={groupId} />
-    </Screen>
-  );
+  return <Redirect href={{ pathname: '/(app)/groups/[groupId]', params: { groupId, view: 'documents' } }} />;
 }

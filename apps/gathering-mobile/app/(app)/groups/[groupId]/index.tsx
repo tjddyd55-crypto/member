@@ -48,23 +48,29 @@ import { useToast } from '../../../../src/design/toast';
 import { phoneDigits } from '../../../../src/utils/phone';
 import { theme } from '../../../../src/theme';
 
-type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance';
+import { DocumentsPane } from '../../../../src/features/documents/DocumentsPane';
+
+type Tab = 'home' | 'members' | 'schedule' | 'photos' | 'finance' | 'documents';
 
 const TABS: Array<{ id: Tab; label: string; icon: ComponentProps<typeof Ionicons>['name'] }> = [
   { id: 'home', label: '홈', icon: 'home' },
   { id: 'members', label: '회원', icon: 'people' },
   { id: 'schedule', label: '일정', icon: 'calendar' },
   { id: 'photos', label: '사진', icon: 'images' },
+  { id: 'documents', label: '자료실', icon: 'folder' },
   { id: 'finance', label: '회계', icon: 'wallet' },
 ];
 
 export default function GroupDetailScreen() {
-  const params = useLocalSearchParams<{ groupId: string }>();
+  const params = useLocalSearchParams<{ groupId: string; view?: string }>();
   const groupId = typeof params.groupId === 'string' ? params.groupId : '';
   const { width } = useWindowDimensions();
   const labelSize = tabLabelSize(width);
   const iconSize = tabIconSize(width);
   const [tab, setTab] = useState<Tab>('home');
+  useEffect(() => {
+    setTab(TABS.find((item) => item.id === params.view)?.id ?? 'home');
+  }, [params.view, groupId]);
   const [group, setGroup] = useState<GatheringGroupDetail | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState('');
@@ -142,6 +148,7 @@ export default function GroupDetailScreen() {
           {tab === 'schedule' ? (
             <EventsPane groupId={group.id} canManage={group.permissions.includes('EVENT_MANAGE')} />
           ) : null}
+          {tab === 'documents' ? <DocumentsPane groupId={group.id} /> : null}
           {tab === 'photos' ? <AlbumsPane groupId={group.id} /> : null}
           {tab === 'finance' ? (
             <GroupFinancePane

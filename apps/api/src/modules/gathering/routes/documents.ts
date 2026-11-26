@@ -12,8 +12,8 @@ const name = z.string().trim().min(1).max(180)
   .refine((value) => value !== '.' && value !== '..' && !/[\p{Cc}\p{Cf}\\/:*?"<>|]/u.test(value), '파일 또는 폴더 이름을 확인해 주세요.');
 const location = z.object({ folderId: id.nullable().default(null), eventId: id.nullable().default(null) });
 const offset = z.coerce.number().int().min(0).max(100000).default(0);
-const list = location.extend({ q: z.string().trim().max(180).optional(), sort: z.enum(['recent','name']).default('recent'), offset });
-const folderPatch = z.object({ name: name.optional(), parentId: id.nullable().optional() });
+const list = location.extend({ q: z.string().trim().max(180).optional(), sort: z.enum(['recent','oldest','name']).default('recent'), offset });
+const folderPatch = z.object({ name: name.optional(), parentId: id.nullable().optional(), eventId: id.nullable().optional() });
 const upload = location.extend({
   name, mimeType: z.string().max(150).optional(), sizeBytes: z.number().int().positive().max(100 * 1024 ** 2),
 });

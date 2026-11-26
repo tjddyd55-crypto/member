@@ -61,8 +61,10 @@ async function getFile(db: Db, groupId: string, id: string) {
 }
 
 async function checkLocation(db: Db, groupId: string, location: Location, activeEvent = false) {
-  if (location.folderId && location.eventId) throw new AppError(400, 'DOCUMENT_LOCATION', '폴더와 행사를 동시에 지정할 수 없습니다.');
-  if (location.folderId) await getFolder(db, groupId, location.folderId);
+  if (location.folderId) {
+    const folder = await getFolder(db, groupId, location.folderId);
+    if (folder.eventId !== location.eventId) throw notFound();
+  }
   if (location.eventId && !await db.gatheringEvent.findFirst({
     where: { id: location.eventId, groupId, ...(activeEvent ? { deletedAt: null } : {}) },
     select: { id: true },
@@ -85,7 +87,7 @@ function audit(tx: Db, actor: Actor, action: string, targetType: string, targetI
 }
 
 export async function listDocuments(actor: Actor, options: Location & {
-  q?: string; sort: 'recent' | 'name'; offset: number;
+  q?: string; sort: 'recent' | 'oldest' | 'name'; offset: number;
 }) {
   const { groupId } = actor;
   const access = await requireGroupMember(actor.userId, groupId, 'read');
@@ -101,24 +103,31 @@ export async function listDocuments(actor: Actor, options: Location & {
   const [files, folders, folder] = await Promise.all([
     prisma.gatheringDocument.findMany({
       where: filesWhere,
-      orderBy: options.sort === 'name' ? [{ name: 'asc' }, { id: 'asc' }] : [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: options.sort === 'name' ? [{ name: 'asc' }, { id: 'asc' }] : [{ createdAt: options.sort === 'oldest' ? 'asc' : 'desc' }, { id: 'asc' }],
       include: uploader, skip: offset, take: pageSize + 1,
     }),
-    eventId || q ? [] : prisma.gatheringDocumentFolder.findMany({
-      where: { groupId, parentId: folderId },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }], skip: offset, take: pageSize + 1,
+    prisma.gatheringDocumentFolder.findMany({
+      where: { groupId, eventId, ...(q ? { name: { contains: q, mode: 'insensitive' } } : { parentId: folderId }) },
+      orderBy: options.sort === 'name' ? [{ name: 'asc' }, { id: 'asc' }] : [{ createdAt: options.sort === 'oldest' ? 'asc' : 'desc' }, { id: 'asc' }], skip: offset, take: pageSize + 1,
       select: {
-        id: true, name: true,
+        id: true, name: true, createdByUserId: true,
         _count: { select: { files: { where: { status: 'READY', deletedAt: null } } } },
       },
     }),
     folderId ? getFolder(prisma, groupId, folderId) : null,
   ]);
+  const breadcrumbs: { id: string; name: string }[] = [];
+  let ancestor = folder;
+  while (ancestor && breadcrumbs.length < 32) {
+    breadcrumbs.unshift({ id: ancestor.id, name: ancestor.name });
+    ancestor = ancestor.parentId ? await getFolder(prisma, groupId, ancestor.parentId) : null;
+  }
   return {
+    breadcrumbs,
     files: files.slice(0, pageSize).map((file) => present(file, actor, manager)),
-    folders: folders.slice(0, pageSize).map(({ id, name, _count }) => ({ id, name, fileCount: _count.files })),
+    folders: folders.slice(0, pageSize).map(({ id, name, _count, createdByUserId }) => ({ id, name, fileCount: _count.files, canManage: manager || createdByUserId === actor.userId })),
     folder: folder && { name: folder.name, parentId: folder.parentId },
-    canManage: manager, maxBytes: fileLimit(),
+    canManage: manager, canCreateFolder: true, maxBytes: fileLimit(),
     nextOffset: files.length > pageSize || folders.length > pageSize ? offset + pageSize : null,
   };
 }
@@ -128,7 +137,7 @@ export async function listDocumentEvents(actor: Actor, offset: number) {
   const rows = await prisma.gatheringEvent.findMany({
     where: {
       groupId: actor.groupId,
-      OR: [{ deletedAt: null }, { documents: { some: { status: 'READY', deletedAt: null } } }],
+      OR: [{ deletedAt: null }, { documents: { some: { status: 'READY', deletedAt: null } } }, { documentFolders: { some: {} } }],
     },
     orderBy: [{ startsAt: 'desc' }, { id: 'desc' }],
     skip: offset, take: pageSize + 1,
@@ -142,11 +151,23 @@ export async function listDocumentEvents(actor: Actor, offset: number) {
   };
 }
 
-export function saveDocumentFolder(actor: Actor, id: string | null, data: { name?: string; parentId?: string | null }) {
+export function saveDocumentFolder(actor: Actor, id: string | null, data: { name?: string; parentId?: string | null; eventId?: string | null }) {
   return mutate(actor, async (tx, manager) => {
-    if (!manager) throw forbidden();
     const previous = id ? await getFolder(tx, actor.groupId, id) : null;
+    if (previous && !manager && previous.createdByUserId !== actor.userId) throw forbidden();
+    if (previous && !manager) {
+      let level = [previous.id];
+      while (level.length) {
+        if (await tx.gatheringDocument.count({ where: { groupId: actor.groupId, folderId: { in: level }, deletedAt: null, OR: [{ uploadedByUserId: null }, { uploadedByUserId: { not: actor.userId } }] } })) throw forbidden();
+        const children = await tx.gatheringDocumentFolder.findMany({ where: { groupId: actor.groupId, parentId: { in: level } }, select: { id: true, createdByUserId: true } });
+        if (children.some((child) => child.createdByUserId !== actor.userId)) throw forbidden();
+        level = children.map((child) => child.id);
+      }
+    }
+    const eventId = data.eventId === undefined ? previous?.eventId ?? null : data.eventId;
     const parentId = data.parentId === undefined ? previous?.parentId ?? null : data.parentId;
+    await checkLocation(tx, actor.groupId, { folderId: parentId, eventId }, true);
+    if (previous && previous.eventId !== eventId) throw new AppError(409, 'FOLDER_SCOPE', '폴더는 같은 자료실 안에서 이동해 주세요.');
     let ancestorId = parentId;
     const ancestors = new Set<string>();
     while (ancestorId) {
@@ -160,7 +181,7 @@ export function saveDocumentFolder(actor: Actor, id: string | null, data: { name
     const name = data.name ?? previous!.name;
     const folder = previous
       ? await tx.gatheringDocumentFolder.update({ where: { id: previous.id }, data: { name, parentId } })
-      : await tx.gatheringDocumentFolder.create({ data: { groupId: actor.groupId, name, parentId } });
+      : await tx.gatheringDocumentFolder.create({ data: { groupId: actor.groupId, name, parentId, eventId, createdByUserId: actor.userId } });
     await audit(tx, actor, previous ? 'DOCUMENT_FOLDER_UPDATE' : 'DOCUMENT_FOLDER_CREATE', 'documentFolder', folder.id,
       { parentId, previousParentId: previous?.parentId ?? null });
     return { id: folder.id };
@@ -169,8 +190,8 @@ export function saveDocumentFolder(actor: Actor, id: string | null, data: { name
 
 export function deleteDocumentFolder(actor: Actor, id: string) {
   return mutate(actor, async (tx, manager) => {
-    if (!manager) throw forbidden();
-    await getFolder(tx, actor.groupId, id);
+    const folder = await getFolder(tx, actor.groupId, id);
+    if (!manager && folder.createdByUserId !== actor.userId) throw forbidden();
     if (await tx.gatheringDocumentFolder.count({ where: { parentId: id, groupId: actor.groupId } }) ||
         await tx.gatheringDocument.count({ where: { folderId: id, groupId: actor.groupId, deletedAt: null } })) {
       throw new AppError(409, 'FOLDER_NOT_EMPTY', '파일과 하위 폴더를 먼저 옮기거나 삭제해 주세요.');
@@ -292,8 +313,8 @@ function markDeleted(tx: Db, id: string, now: Date) {
 
 export function updateDocument(actor: Actor, id: string, input: { name?: string; location?: Location }) {
   return mutate(actor, async (tx, manager) => {
-    if (!manager) throw forbidden();
     const file = await getFile(tx, actor.groupId, id);
+    if (!manager && file.uploadedByUserId !== actor.userId) throw forbidden();
     if (file.status !== 'READY') throw notFound();
     if (input.location) await checkLocation(tx, actor.groupId, input.location, true);
     if (input.name && documentFormat(input.name).extension !== file.extension) {

@@ -6,8 +6,9 @@ import type { DocumentEvent, DocumentFolder, DocumentLocation, documentApi } fro
 
 const root = { folderId: null, eventId: null };
 
-export function DocumentDestination({ api, folderOnly, excludeFolder, browseEvents = false, onCancel, onSelect }: {
+export function DocumentDestination({ api, folderOnly, excludeFolder, browseEvents = false, eventId = null, onCancel, onSelect }: {
   api: ReturnType<typeof documentApi>;
+  eventId?: string | null;
   folderOnly: boolean;
   excludeFolder?: string;
   browseEvents?: boolean;
@@ -38,7 +39,7 @@ export function DocumentDestination({ api, folderOnly, excludeFolder, browseEven
           setEvents((prev) => offset ? [...prev, ...result.events] : result.events);
           setNext(result.nextOffset);
         } else {
-          const result = await api.list({ ...root, folderId }, '', 'name', offset);
+          const result = await api.list({ eventId, folderId }, '', 'name', offset);
           if (!active) return;
           setFolders((prev) => offset ? [...prev, ...result.folders] : result.folders);
           setParentId(result.folder?.parentId ?? null);
@@ -52,7 +53,7 @@ export function DocumentDestination({ api, folderOnly, excludeFolder, browseEven
     }
     void load();
     return () => { active = false; };
-  }, [api, folderId, eventsMode, offset, attempt]);
+  }, [api, folderId, eventId, eventsMode, offset, attempt]);
 
   const navigate = (destination: DocumentFolder | null, eventList = false) => {
     setFolders([]);
@@ -83,8 +84,8 @@ export function DocumentDestination({ api, folderOnly, excludeFolder, browseEven
             {folderId ? <Button label="상위 폴더" variant="text"
               onPress={() => navigate(parentId ? { id: parentId, name: '', fileCount: 0 } : null)} /> : null}
             <Button label={folderId ? '이 폴더로 이동' : '자료실 첫 화면으로 이동'}
-              onPress={() => onSelect({ ...root, folderId })} />
-            {eventPicker && !folderId ? <Button label="행사 자료" variant="secondary" onPress={() => navigate(null, true)} /> : null}
+              onPress={() => onSelect({ eventId, folderId })} />
+            {eventPicker && !eventId && !folderId ? <Button label="행사 자료" variant="secondary" onPress={() => navigate(null, true)} /> : null}
             {folders.filter((item) => item.id !== excludeFolder).map((item) => (
               <Button key={item.id} label={item.name} variant="secondary" onPress={() => navigate(item)} />
             ))}

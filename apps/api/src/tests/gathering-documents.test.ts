@@ -158,7 +158,9 @@ it('shares one event record, gates writes and reads, and accounts for all storag
     expect(response.statusCode, response.body).toBe(200);
     return response.json().id as string;
   };
-  expect((await call(member.token, 'POST', docs + '/folders', { name: '금지' })).statusCode).toBe(403);
+  const own = await call(member.token, 'POST', docs + '/folders', { name: '회원 폴더' });
+  expect(own.statusCode).toBe(200);
+  expect((await call(outsider.token, 'POST', docs + '/folders', { name: '격리' })).statusCode).toBe(404);
   const parent = await folder('회의록');
   const child = await folder('11월', parent);
   expect((await call(chair.token, 'PATCH', docs + '/folders/' + parent, { parentId: child })).json().error.code).toBe('FOLDER_CYCLE');
@@ -208,10 +210,51 @@ it('shares one event record, gates writes and reads, and accounts for all storag
   expect((await otherEvent.complete()).json().error.code).toBe('DOCUMENT_DUPLICATE');
   const mismatch = await staged('잘못된파일.pdf', Buffer.from('plain text'), { folderId: child });
   expect((await mismatch.complete()).statusCode).toBe(415);
-  expect((await call(member.token, 'PATCH', `${docs}/files/${pdfUpload.id}`, { name: '변경.pdf' })).statusCode).toBe(403);
+  expect((await call(member.token, 'PATCH', `${docs}/files/${pdfUpload.id}`, { name: '변경.pdf' })).statusCode).toBe(200);
   expect((await call(chair.token, 'PATCH', `${docs}/files/${pdfUpload.id}`, { name: '변경.pdf', location: { folderId: child } })).statusCode).toBe(200);
   expect((await call(chair.token, 'GET', docs + '?folderId=' + child + '&sort=name')).json().files[0].name).toBe('변경.pdf');
   expect((await call(chair.token, 'DELETE', docs + '/folders/' + child)).statusCode).toBe(409);
+
+  const ef = await call(member.token, 'POST', docs + '/folders', { name: '행사 폴더', eventId: first });
+  expect(ef.statusCode, ef.body).toBe(200);
+  const efId = ef.json().id;
+  const nested = await call(member.token, 'POST', docs + '/folders', { name: '하위 폴더', parentId: efId, eventId: first });
+  expect(nested.statusCode, nested.body).toBe(200);
+  const nestedId = nested.json().id;
+  expect((await call(member.token, 'PATCH', docs + '/folders/' + nestedId, { name: '한글 자료' })).statusCode).toBe(200);
+  const keyBefore = (await prisma.gatheringDocument.findUniqueOrThrow({ where: { id: hwpUpload.id } })).storageKey;
+  expect((await call(member.token, 'PATCH', `${docs}/files/${hwpUpload.id}`, { location: { folderId: nestedId, eventId: first } })).statusCode).toBe(200);
+  expect((await prisma.gatheringDocument.findUniqueOrThrow({ where: { id: hwpUpload.id } })).storageKey).toBe(keyBefore);
+  expect((await call(member.token, 'GET', `${docs}?eventId=${first}&folderId=${nestedId}`)).json().files[0].id).toBe(hwpUpload.id);
+  expect((await call(member.token, 'GET', `${docs}?eventId=${first}&folderId=${efId}`)).json().folders[0].fileCount).toBe(1);
+  expect((await call(member.token, 'GET', `${docs}?eventId=${first}&q=한글`)).json().folders[0].id).toBe(nestedId);
+  expect((await call(member.token, 'GET', `${docs}?eventId=${second}&folderId=${nestedId}`)).statusCode).toBe(404);
+  expect((await call(member.token, 'DELETE', docs + '/folders/' + nestedId)).statusCode).toBe(409);
+  expect((await call(member.token, 'PATCH', docs + '/folders/' + child, { name: '타인 폴더' })).statusCode).toBe(403);
+  expect((await call(member.token, 'PATCH', docs + '/folders/' + nestedId, { parentId: null })).statusCode).toBe(200);
+  expect((await call(member.token, 'GET', `${docs}?eventId=${first}&sort=oldest`)).json().folders.map((item: { id: string }) => item.id)).toContain(nestedId);
+
+  const ownId = own.json().id;
+  const nestedGeneral = await call(member.token, 'POST', docs + '/folders', { name: '일반 하위', parentId: ownId });
+  expect(nestedGeneral.statusCode).toBe(200);
+  const generalId = nestedGeneral.json().id;
+  const generalPdf = await staged('일반.pdf', Buffer.concat([pdf, Buffer.from('general')]), { folderId: ownId });
+  expect((await generalPdf.complete()).statusCode).toBe(200);
+  const generalHwp = await staged('일반.hwp', compound('FileHeader', 'HWP Document File\0general'), { folderId: generalId });
+  expect((await generalHwp.complete()).statusCode).toBe(200);
+  expect((await call(member.token, 'GET', `${docs}?folderId=${ownId}`)).json().files[0].eventId).toBeNull();
+  expect((await call(member.token, 'GET', `${docs}?folderId=${generalId}`)).json().breadcrumbs.map((item: { id: string }) => item.id)).toEqual([ownId, generalId]);
+  expect((await call(chair.token, 'PATCH', `${docs}/files/${pdfUpload.id}`, { location: { folderId: ownId } })).statusCode).toBe(200);
+  // A folder becomes shared when another member's file is placed inside it.
+  await prisma.gatheringDocument.update({ where: { id: pdfUpload.id }, data: { uploadedByUserId: chair.id } });
+  expect((await call(member.token, 'PATCH', docs + '/folders/' + ownId, { name: '공유 폴더 변경' })).statusCode).toBe(403);
+  expect((await call(member.token, 'DELETE', `${docs}/files/${pdfUpload.id}`)).statusCode).toBe(403);
+  await prisma.gatheringDocument.update({ where: { id: pdfUpload.id }, data: { uploadedByUserId: member.id } });
+  expect((await call(member.token, 'PATCH', `${docs}/files/${pdfUpload.id}`, { location: { folderId: child } })).statusCode).toBe(200);
+  for (const id of [generalPdf.id, generalHwp.id]) expect((await call(member.token, 'DELETE', `${docs}/files/${id}`)).statusCode).toBe(200);
+  expect((await call(member.token, 'GET', `${docs}?folderId=${ownId}`)).json().folders[0].fileCount).toBe(0);
+  expect((await call(member.token, 'DELETE', docs + '/folders/' + generalId)).statusCode).toBe(200);
+  expect((await call(member.token, 'DELETE', docs + '/folders/' + ownId)).statusCode).toBe(200);
 
   const financeYear = (await prisma.gatheringFinanceYear.findFirstOrThrow({ where: { groupId } })).id;
   const mediaBytes = STORAGE_QUOTA_BYTES - 4096;

@@ -1,4 +1,4 @@
-export type DataKind = 'media' | 'finance' | 'schedule';
+export type DataKind = 'media' | 'finance' | 'schedule' | 'documents';
 const versions = new Map<string, number>();
 const listeners = new Set<() => void>();
 export const dataVersion = (groupId: string, kind: DataKind) =>
@@ -23,6 +23,7 @@ export function invalidateMutation(path: string, method: string) {
   const match = path.match(/^\/api\/gathering\/groups\/([^/]+)\/(.+)$/);
   if (!match) return;
   const [, groupId, resource] = match;
+  if (/^documents\//.test(resource)) { invalidate(groupId, 'documents'); invalidate(groupId, 'media'); }
   if (/^events(?:\/[^/]+)?$/.test(resource)) {
     invalidate(groupId, 'schedule');
     invalidate(groupId, 'media');

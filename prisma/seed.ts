@@ -199,6 +199,7 @@ async function main() {
   await prisma.memberBusinessCard.deleteMany();
   await prisma.memberPositionHistory.deleteMany();
   await prisma.localMemberClassChange.deleteMany();
+  await prisma.localMemberProfileLink.deleteMany();
   await prisma.localMembership.deleteMany();
   await prisma.memberProfile.deleteMany();
   await prisma.positionMaster.deleteMany();

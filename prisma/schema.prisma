@@ -199,6 +199,7 @@ model User {
   approvedMemberships LocalMembership[] @relation("MembershipApprover")
   auditLogs           AuditLog[]
   localMemberClassChanges LocalMemberClassChange[]
+  localMemberProfileLinks LocalMemberProfileLink[]
   createdFiles        FileObject[]      @relation("FileCreator")
 
   gatheringDocuments GatheringDocument[]
@@ -258,6 +259,7 @@ model LocalMembership {
   approvedByUser  User?          @relation("MembershipApprover", fields: [approvedByUserId], references: [id])
   refreshSessions RefreshSession[]
   classChanges    LocalMemberClassChange[]
+  profileLinks    LocalMemberProfileLink[]
 
   @@unique([userId, localId])
   @@index([localId, status])
@@ -284,6 +286,30 @@ model LocalMemberClassChange {
 
   @@index([membershipId, createdAt])
   @@map("local_member_class_changes")
+}
+
+enum LocalProfileLinkAction {
+  LINKED
+  UNLINKED
+}
+
+model LocalMemberProfileLink {
+  id               String                 @id @default(cuid())
+  localId          String
+  membershipId     String
+  memberProfileId  String
+  action           LocalProfileLinkAction
+  verificationNote String
+  actedByUserId    String
+  createdAt        DateTime               @default(now())
+
+  membership    LocalMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  memberProfile MemberProfile   @relation(fields: [memberProfileId], references: [id], onDelete: Restrict)
+  actedByUser   User            @relation(fields: [actedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([membershipId, createdAt])
+  @@index([memberProfileId, createdAt])
+  @@map("local_member_profile_links")
 }
 
 model RefreshSession {
@@ -359,6 +385,7 @@ model MemberProfile {
   families           MemberFamily[]
   businessCard       MemberBusinessCard?
   positionHistories  MemberPositionHistory[]
+  profileLinks       LocalMemberProfileLink[]
   privacySettings    PrivacySetting[]
 
   @@index([localId, deletedAt])

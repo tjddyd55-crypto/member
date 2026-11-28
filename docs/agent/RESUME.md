@@ -6,7 +6,7 @@
 재개 절차: `git fetch` → develop/main 최신 커밋·열린 PR 확인 → 이 파일 → `TASK_QUEUE.md` → `BLOCKERS.md` → Codex 사용량 확인(`codex exec --json` 짧은 호출, "usage limit" 메시지 여부) → IN_PROGRESS/WAITING_QUOTA 작업부터.
 
 ## 현재 상태 (2026-11-29 KST)
-- PHASE 1. P1-01과 P1-02는 develop `da48ee1`에 포함되어 있다. P1-03과 P1-04는 `feat/local-p1-03-04`에서 REVIEW.
+- PHASE 1. P1-01~P1-04 DONE(develop에 병합, PR #62~#64). 다음 P1-05. 작업 브랜치 없음.
 - 내 로컬 상태는 모임 로그인과 가장 최근의 현재 소속을 기준으로 조회한다. 가입 요청은 사용자가 직접 제출할 때만 생성되며 대기 중에는 로컬 데이터 접근이 차단된다.
 - 가입 요청과 취소는 기존 프로세스 메모리 레이트리미터를 공유하며 계정당 분당 30회로 제한한다.
 - 취소한 요청은 다시 제출할 수 있다. 거절 후 재요청 정책은 D-OPEN-8b 참고. 검증 결과는 `TEST_RESULTS.md` 참고.

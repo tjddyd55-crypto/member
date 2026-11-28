@@ -19,8 +19,8 @@
 |---|---|---|---|
 | P1-01 | 로컬 권한 guard: 기존 모임 세션(휴대폰+비밀번호 로그인) 기반 `requireLocalMember(localId)`(해당 로컬 LocalMembership ACTIVE만 통과, 매 요청 DB 검사), `requireLocalPermission(key)`; 다른 로컬/대기/거절/정지/탈퇴/모임 전용/비로그인 거부 API 테스트. 전화번호만으로 관리자 권한·기존 회원 자동 연결 금지(D-8) | DONE | D-7, D-8 |
 | P1-02 | `Local` **서비스 활성화 상태** 별도 필드(추가형 마이그레이션, 기본 비활성; `Local.isActive`와 별개) + 본사 최고관리자 웹 토글 + 감사로그 | DONE | P1-01, D-10 |
-| P1-03 | 내 로컬 상태 API `GET /api/local/me`: A 미활성 / B 미요청 / C 대기 / D 승인 (소속은 GatheringLocalAffiliation 기준) | REVIEW | P1-02 |
-| P1-04 | 가입 승인 요청 `POST` (버튼 누를 때만 생성, 중복 방지) + 취소 | REVIEW | P1-03 |
+| P1-03 | 내 로컬 상태 API `GET /api/local/me`: A 미활성 / B 미요청 / C 대기 / D 승인 (소속은 GatheringLocalAffiliation 기준) | DONE | P1-02 |
+| P1-04 | 가입 승인 요청 `POST` (버튼 누를 때만 생성, 중복 방지) + 취소 | DONE | P1-03 |
 | P1-05 | 로컬 관리자 승인/거절 API (관리자 확인 필수, 사유, 감사로그, 승인 시 YB/OB 지정) | TODO | P1-04 |
 | P1-06 | YB/OB 고정 분류(enum) — 로컬 소속정보(LocalMembership/MemberProfile 쪽) 연결 + 관리자 수동 YB→OB 전환·되돌리기 + 전환 이력(변경자·일시·사유) | TODO | D-9 |
 | P1-07 | 앱 미사용 회원 ↔ 앱 계정 연결: **관리자가 본인 여부 확인 후에만** link, 전화번호 일치만으로 자동 연결 금지, 과거 이력·사진 재생성 금지 | TODO | P1-05, D-8 |

@@ -54,3 +54,16 @@
 | 2026-11-29 | 신규 로컬 테스트 재실행 | `npm run test -w @member/api -- src/tests/local-join.test.ts` | PASS | 10개 통과. 종료 후 가상 지구 잔여 행 0건 확인 |
 | 2026-11-29 | 원격 CI | — | NOT_RUN | |
 | 2026-11-29 | PR #64 Codex P2 반영(미승인 가입 요청이 계정 삭제를 막지 않음) | `npm test` + 신규 gathering-account 테스트 | PASS | API 414 + domain 73, typecheck/build PASS |
+
+## PHASE 1 — P1-05 / P1-06
+
+| 날짜(KST) | 대상 | 방법 | 결과 | 증빙 |
+|---|---|---|---|---|
+| 2026-11-29 | 로컬 추가형 마이그레이션 | `npx prisma migrate dev --create-only --name local_member_class`, SQL 검토, `npx prisma migrate deploy`, `npx prisma migrate status` | PASS | 기존 모임 외래 키 재작성 구문을 제거한 뒤 로컬 Postgres 55432에 `20261129040234_local_member_class` 적용 확인 |
+| 2026-11-29 | Prisma Client 생성 | `npm run db:generate` | PASS | 종료 코드 0 |
+| 2026-11-29 | 워크스페이스 빌드 | `npm run build` | PASS | 종료 코드 0 |
+| 2026-11-29 | 전체 타입 검사 | `npm run typecheck` | PASS | API 포함, 종료 코드 0 |
+| 2026-11-29 | 로컬 승인·거절 및 분류 | `npm test -w @member/api -- src/tests/local-approval.test.ts` | PASS | 가상 데이터 사용, 5개 통과. 전체 테스트 후 가상 지구 잔여 0건 |
+| 2026-11-29 | 전체 테스트 | `npm test` | PASS | 로컬 Postgres 55432. 모임 도메인 73개, API 419개 통과. local-approval 5개, local-access 13개, local-join 10개, member-book-regression 4개 포함 |
+| 2026-11-29 | 원격 CI 및 실기기 QA | — | NOT_RUN | |
+| 2026-11-29 | PR #66 Codex P2 반영(시드가 분류 이력 먼저 삭제) | `npm run db:seed` (분류 이력 1행 삽입 후 재실행) | PASS | 이력 행 존재 상태에서 시드 성공, 이력 0행으로 정리 |

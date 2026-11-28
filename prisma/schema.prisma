@@ -198,6 +198,7 @@ model User {
   memberProfiles      MemberProfile[]   @relation("UserMemberProfiles")
   approvedMemberships LocalMembership[] @relation("MembershipApprover")
   auditLogs           AuditLog[]
+  localMemberClassChanges LocalMemberClassChange[]
   createdFiles        FileObject[]      @relation("FileCreator")
 
   gatheringDocuments GatheringDocument[]
@@ -243,6 +244,7 @@ model LocalMembership {
   localId          String
   memberProfileId  String?          @unique
   role             MembershipRole   @default(MEMBER)
+  memberClass      LocalMemberClass?
   status           MembershipStatus @default(PENDING)
   joinedAt         DateTime?
   approvedAt       DateTime?
@@ -255,9 +257,33 @@ model LocalMembership {
   memberProfile   MemberProfile? @relation(fields: [memberProfileId], references: [id])
   approvedByUser  User?          @relation("MembershipApprover", fields: [approvedByUserId], references: [id])
   refreshSessions RefreshSession[]
+  classChanges    LocalMemberClassChange[]
 
   @@unique([userId, localId])
   @@index([localId, status])
+}
+
+enum LocalMemberClass {
+  YB
+  OB
+}
+
+model LocalMemberClassChange {
+  id              String            @id @default(cuid())
+  membershipId    String
+  localId         String
+  fromClass       LocalMemberClass?
+  toClass         LocalMemberClass
+  changedByUserId String
+  reason          String
+  revertsChangeId String?
+  createdAt       DateTime          @default(now())
+
+  membership    LocalMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  changedByUser User            @relation(fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([membershipId, createdAt])
+  @@map("local_member_class_changes")
 }
 
 model RefreshSession {

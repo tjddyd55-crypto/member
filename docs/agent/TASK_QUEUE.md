@@ -11,7 +11,7 @@
 | P0-02 | Figma 6화면 구조·토큰 확인 | DONE | §3 |
 | P0-03 | 종이 수첩 PDF 6개 구조 확인 | BLOCKED | B-001 파일 미존재 |
 | P0-04 | 데이터 모델·권한 매핑 | DONE | §4–5 |
-| P0-05 | docs/agent 상태 파일 작성 | REVIEW | 이 PR |
+| P0-05 | docs/agent 상태 파일 작성 | DONE | PR #60 |
 
 ## PHASE 1 — 공통 계정·로컬 권한 통합
 | ID | 작업 | 상태 | 의존 |

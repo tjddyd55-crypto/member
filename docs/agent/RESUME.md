@@ -7,10 +7,10 @@
 
 ## 현재 상태 (2026-11-29 00:45 KST)
 - 현재 Phase: **PHASE 0 완료(상태 파일 PR) → PHASE 1 대기**
-- 마지막 완료 작업: P0-01, P0-02, P0-04 (분석). P0-05 상태 파일은 PR 리뷰 중
+- 마지막 완료 작업: P0-01, P0-02, P0-04 (분석). P0-05 상태 파일(PR #60)
 - 마지막 확인 커밋: develop `8ad67a7`, main `1a63143` (main에만 merge 커밋 1개 있음 → 12/1 승격은 fast-forward 불가, develop→main merge PR 필요)
-- 작업 브랜치: `docs/agent-phase0`
-- 진행 중인 PR: docs/agent 상태 파일 PR (develop 대상)
+- 작업 브랜치: 없음 (다음: `feat/local-p1-01`)
+- 진행 중인 PR: 없음 (PR #60 상태 파일 develop 병합)
 - 사용량: **WAITING_QUOTA** — Codex CLI "usage limit, try again at 2:41 AM"(2026-11-29 KST)
 - 사용자 확인 대기: D-OPEN-8(apps/mobile 처리·통합 앱 기준), D-OPEN-6/7(아이디·SMS 인증), B-001(PDF 재첨부)
 

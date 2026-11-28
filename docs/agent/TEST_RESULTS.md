@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | 2026-11-28 | develop `8ad67a7` 전체 CI | GitHub Actions `ci` | PASS | run 46123667219 |
 | 2026-11-28 | main `1a63143` 전체 CI | GitHub Actions `ci` | PASS | run 46126711548 |
-| 2026-11-29 | docs/agent PR | GitHub Actions `ci` | (PR에서 갱신) | |
+| 2026-11-29 | PR #60 docs/agent (`5411433`) | GitHub Actions `ci` | PASS | run 46161326258 (1m53s). Codex 자동 리뷰는 사용량 한도로 실행 실패(문서 전용이라 CI 기준 병합) |
 
 ## PHASE 1 이후
 (아직 없음)

@@ -10,3 +10,8 @@
 | 날짜(KST) | 항목 | 증빙 |
 |---|---|---|
 | 2026-11-29 | 저장소·CI·배포 구조 분석, Figma 6화면 확인, 모델 매핑, 상태 파일 작성 | 이 PR (`docs/agent-phase0`), `PHASE0_ANALYSIS.md` |
+
+## PHASE 1
+| 날짜(KST) | 항목 | 증빙 |
+|---|---|---|
+| 2026-11-29 | P1-01 REVIEW. 모임 로그인 기반 로컬 접근·관리 권한 검사와 보호 라우트 추가 | `apps/api/src/modules/local/`, `local-access.test.ts`, `TEST_RESULTS.md` |

@@ -11,6 +11,7 @@ import { gatheringGroupRoutes } from './groups.js';
 import { gatheringMediaRoutes } from './media.js';
 import { gatheringScheduleRoutes } from './schedule.js';
 import { gatheringSubscriptionRoutes } from './subscription.js';
+import { gatheringLocalRoutes } from '../../local/routes.js';
 
 export const gatheringRoutes: FastifyPluginAsync = async (app) => {
   app.decorate('authenticateGathering', async (request: FastifyRequest, _reply: FastifyReply) => {
@@ -36,6 +37,8 @@ export const gatheringRoutes: FastifyPluginAsync = async (app) => {
   await app.register(gatheringFinanceRoutes);
   await app.register(gatheringSubscriptionRoutes);
   await app.register(gatheringHandoverRoutes);
+  // 로컬 권한 guard 는 같은 모임 로그인(authenticateGathering)을 공유한다.
+  await app.register(gatheringLocalRoutes);
 };
 
 declare module 'fastify' {

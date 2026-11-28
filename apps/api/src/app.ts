@@ -1,5 +1,5 @@
 import { jcOrgPublicRoutes } from './modules/jc-org/public-routes.js';
-import Fastify from 'fastify';
+import Fastify, { type FastifyServerOptions } from 'fastify';
 import { legalRoutes } from './routes/legal.js';
 import cors from '@fastify/cors';
 import { ZodError } from 'zod';
@@ -13,8 +13,8 @@ import { gatheringAdminRoutes } from './modules/gathering/admin/routes.js';
 import { gatheringRoutes } from './modules/gathering/routes/index.js';
 import { startDevStorageIfEnabled, stopDevStorage } from './modules/gathering/storage/file-sink.js';
 
-export async function buildApp() {
-  const app = Fastify({ logger: env.NODE_ENV !== 'test' });
+export async function buildApp(logger: FastifyServerOptions['logger'] = env.NODE_ENV !== 'test') {
+  const app = Fastify({ logger });
 
   // Older mobile clients send JSON headers even when the request has no body.
   const parseJson = app.getDefaultJsonParser('error', 'error');

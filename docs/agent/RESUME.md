@@ -6,7 +6,7 @@
 재개 절차: `git fetch` → develop/main 최신 커밋·열린 PR 확인 → 이 파일 → `TASK_QUEUE.md` → `BLOCKERS.md` → Codex 사용량 확인(`codex exec --json` 짧은 호출, "usage limit" 메시지 여부) → IN_PROGRESS/WAITING_QUOTA 작업부터.
 
 ## 현재 상태 (2026-11-29 KST)
-- PHASE 1. P1-01~P1-04 DONE(develop에 병합, PR #62~#64). P1-05~P1-06은 develop에 병합됨(PR #66, `60a497b`). P1-07 REVIEW(`feat/local-p1-07`).
+- PHASE 1. P1-01~P1-04 DONE(develop에 병합, PR #62~#64). P1-05~P1-06은 develop에 병합됨(PR #66, `60a497b`). P1-07 DONE(PR #67, `4835bb8`, CI PASS, Codex 자동리뷰 지적 0). P1-08은 **WAITING_QUOTA**: Codex가 초안을 만든 뒤 한도로 중단.
 - 내 로컬 상태는 모임 로그인과 가장 최근의 현재 소속을 기준으로 조회한다. 가입 요청은 사용자가 직접 제출할 때만 생성되며 대기 중에는 로컬 데이터 접근이 차단된다.
 - 가입 요청과 취소는 기존 프로세스 메모리 레이트리미터를 공유하며 계정당 분당 30회로 제한한다.
 - 취소한 요청은 다시 제출할 수 있다. 거절 후 재요청 정책은 D-OPEN-8b 참고. 검증 결과는 `TEST_RESULTS.md` 참고.
@@ -14,5 +14,7 @@
 - P8-05 휴대폰 본인 확인은 유료 연동 승인 대기. 별도 트랙 JCI-4(12/1 09:00 KST) 유지.
 - 로컬 관리자의 명시적 본인 확인과 메모를 받아 기존 프로필을 앱 계정에 연결한다. 후보는 이름·회원번호로 찾을 수 있으며 연결과 해제는 감사로그와 이력에 기록한다(D-8).
 
-## 다음 작업 (P1-08)
+## 다음 작업 (P1-08 — WAITING_QUOTA, 2026-11-29 07:42 KST 이후 재개)
+- WIP 브랜치 `feat/local-p1-08`(push됨, PR 없음, 커밋 `wip(local)...`). 구현·API 테스트 6개(local-owner-assignment) 통과·typecheck 통과 확인. **남은 것**: 전체 `npm test`/build, 관리자 웹 build, docs(TASK_QUEUE·PROGRESS·TEST_RESULTS), 자기검토 후 PR.
+- 검토 필요: 마이그레이션이 기존 `local_member_class_changes.changedByUserId`를 NULL 허용으로 바꾸고 `changedByAdminId` 추가(+CHECK 둘 중 하나 필수). 기존 행 변경 없음이나 '추가만' 규칙의 완화이므로 병합 전 재검토.
 - 본사 최고관리자 웹에서 최초 로컬 관리자를 지정한다. `LOCAL_OWNER` 부여와 감사로그를 구현한다(D-10).

@@ -1,4 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { z } from 'zod';
+import { requireGatheringUserId } from '../gathering/http.js';
+import { SlidingWindowLimiter } from '../gathering/rate-limit.js';
+import { cancelLocalJoin, getLocalMe, requestLocalJoin } from './join-request.js';
 import { localMemberGuard, localPermissionGuard } from './access.js';
 
 type LocalRoute = { Params: { localId: string } };
@@ -17,6 +21,26 @@ export const gatheringLocalRoutes: FastifyPluginAsync = async (app) => {
       serializers: { req: (request: FastifyRequest) => ({ method: request.method }) },
     }),
   );
+
+  const auth = { preHandler: [app.authenticateGathering] };
+  const joinLimiter = new SlidingWindowLimiter(30, 60_000);
+  const emptyBody = z.object({}).strict().optional();
+
+  app.get('/api/local/me', auth, (request) => getLocalMe(requireGatheringUserId(request)));
+
+  app.post<LocalRoute>('/api/local/:localId/join-request', auth, async (request, reply) => {
+    const userId = requireGatheringUserId(request);
+    joinLimiter.assert(userId);
+    emptyBody.parse(request.body);
+    const { created, membership } = await requestLocalJoin(userId, request.params.localId);
+    return reply.code(created ? 201 : 200).send({ membership });
+  });
+
+  app.delete<LocalRoute>('/api/local/:localId/join-request', auth, async (request) => {
+    const userId = requireGatheringUserId(request);
+    joinLimiter.assert(userId);
+    return { membership: await cancelLocalJoin(userId, request.params.localId) };
+  });
 
   app.get<LocalRoute>('/api/local/:localId/ping', {
     preHandler: [app.authenticateGathering, localMemberGuard],

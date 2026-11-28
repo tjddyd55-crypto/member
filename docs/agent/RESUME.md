@@ -6,12 +6,12 @@
 재개 절차: `git fetch` → develop/main 최신 커밋·열린 PR 확인 → 이 파일 → `TASK_QUEUE.md` → `BLOCKERS.md` → Codex 사용량 확인(`codex exec --json` 짧은 호출, "usage limit" 메시지 여부) → IN_PROGRESS/WAITING_QUOTA 작업부터.
 
 ## 현재 상태 (2026-11-29 KST)
-- PHASE 1. P1-01은 develop `6de04d2`에 병합됨. P1-02는 `feat/local-p1-02`에서 REVIEW. 다음 작업은 P1-03.
-- P1-02에서 `Local.serviceEnabled`(기본값 false)와 `serviceEnabledAt`을 추가했다. 최고관리자는 웹에서 서비스를 켜거나 끌 수 있다. 변경 시 조직 이력과 관리자 감사로그가 함께 기록된다.
-- ACTIVE 로컬 멤버는 서비스가 꺼져 있으면 `LOCAL_SERVICE_DISABLED`(403)를 받는다. 관리자 목록·상세에서 서비스 상태를 조회할 수 있다. 검증 결과는 `TEST_RESULTS.md` 참고.
-- 로컬 커밋은 원본 `.git`의 읽기 전용 마운트로 보류. 변경 사항은 작업 트리에 남아 있다.
+- PHASE 1. P1-01과 P1-02는 develop `da48ee1`에 포함되어 있다. P1-03과 P1-04는 `feat/local-p1-03-04`에서 REVIEW.
+- 내 로컬 상태는 모임 로그인과 가장 최근의 현재 소속을 기준으로 조회한다. 가입 요청은 사용자가 직접 제출할 때만 생성되며 대기 중에는 로컬 데이터 접근이 차단된다.
+- 가입 요청과 취소는 기존 프로세스 메모리 레이트리미터를 공유하며 계정당 분당 30회로 제한한다.
+- 취소한 요청은 다시 제출할 수 있다. 거절 후 재요청 정책은 D-OPEN-8b 참고. 검증 결과는 `TEST_RESULTS.md` 참고.
+- 사용량: Codex 2026-11-29 03:00 KST 회복 확인, P1-01~04 구현에 사용. 한도 신호가 나오면 WAITING_QUOTA 기록.
 - P8-05 휴대폰 본인 확인은 유료 연동 승인 대기. 별도 트랙 JCI-4(12/1 09:00 KST) 유지.
 
-## 다음 작업 (P1-03)
-- `GET /api/local/me`에서 모임 세션과 `GatheringLocalAffiliation`을 기준으로 내 로컬 상태를 반환한다. A 미활성 / B 미요청 / C 대기 / D 승인.
-- 서비스 미활성 상태도 응답할 수 있도록 기존 로컬 가드의 접근 조건을 고려한다.
+## 다음 작업 (P1-05)
+- 로컬 관리자 승인·거절 API를 구현한다. 관리자 권한과 대상 로컬을 확인하고, 사유와 감사로그를 남기며, 승인 시 YB/OB를 지정한다.

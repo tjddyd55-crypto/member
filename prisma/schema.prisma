@@ -900,6 +900,7 @@ model GatheringExecutiveTerm {
 
 /// 회원수첩 Event 와 별개의 모임 행사.
 model GatheringEvent {
+  documentFolders GatheringDocumentFolder[]
   id              String                @id @default(cuid())
   groupId         String
   title           String
@@ -1529,6 +1530,10 @@ model GatheringRecoveryRequest {
 }
 
 model GatheringDocumentFolder {
+  event GatheringEvent? @relation(fields: [eventId, groupId], references: [id, groupId], onDelete: Restrict, map: "document_folder_event_group_fk")
+
+  eventId String?
+  createdByUserId String?
   id        String   @id @default(cuid())
   groupId   String
   parentId  String?
@@ -1543,6 +1548,7 @@ model GatheringDocumentFolder {
 
   @@unique([id, groupId])
   @@index([groupId, parentId, name, id])
+  @@index([groupId, eventId, parentId], map: "document_folder_scope_idx")
   @@map("gathering_document_folders")
 }
 

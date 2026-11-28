@@ -12,7 +12,7 @@ export type DocumentFile = DocumentLocation & {
   uploadedBy: string;
   canDelete: boolean;
 };
-export type DocumentFolder = { id: string; name: string; fileCount: number };
+export type DocumentFolder = { id: string; name: string; fileCount: number; canManage?: boolean };
 export type DocumentEvent = { id: string; title: string; startsAt: string; archived: boolean };
 type Target = { url: string; headers: Record<string, string> };
 
@@ -27,13 +27,13 @@ export function documentApi(groupId: string) {
       if (location.folderId) params.set('folderId', location.folderId);
       if (location.eventId) params.set('eventId', location.eventId);
       return request<{
-        files: DocumentFile[]; folders: DocumentFolder[];
+        breadcrumbs: { id: string; name: string }[]; files: DocumentFile[]; folders: DocumentFolder[];
         folder: { name: string; parentId: string | null } | null;
-        canManage: boolean; maxBytes: number; nextOffset: number | null;
+        canManage: boolean; canCreateFolder: boolean; maxBytes: number; nextOffset: number | null;
       }>(`${base}?${params}`);
     },
     events: (offset = 0) => request<{ events: DocumentEvent[]; nextOffset: number | null }>(`${base}/events?offset=${offset}`),
-    saveFolder: (id: string | null, data: { name?: string; parentId?: string | null }) =>
+    saveFolder: (id: string | null, data: { name?: string; parentId?: string | null; eventId?: string | null }) =>
       change<{ id: string }>(id ? `/folders/${id}` : '/folders', id ? 'PATCH' : 'POST', data),
     deleteFolder: (id: string) => change(`/folders/${id}`, 'DELETE'),
     reserve: (data: DocumentLocation & { name: string; mimeType?: string; sizeBytes: number }) =>

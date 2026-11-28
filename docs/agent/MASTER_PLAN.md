@@ -15,10 +15,18 @@ JCI KOREA **로컬JC 전자 회원수첩·로컬 운영 기능**을 하나의 iO
 | 자료 | 위치 | 상태 |
 |---|---|---|
 | 확정 Figma (6화면) | https://www.figma.com/design/SSdT1N1zyaaOjFBteoksYo | 접근 가능 (PHASE 0에서 구조·토큰 확인) |
-| 종이 회원수첩 PDF 6개 (서울광진JC 2016) | 저장소 밖 비공개 보관만 허용 | **BLOCKED** — 박스에 파일이 실제로 없음 (BLOCKERS B-001) |
+| 종이 회원수첩 PDF 6개 (서울광진JC 2016) | 저장소 밖 비공개 보관만 허용 (`/home/box/.secrets/jci-handbook`) | 확인 완료, 구조 요약은 PHASE0_ANALYSIS §10 |
 | 기존 저장소 | https://github.com/tjddyd55-crypto/member | 접근 가능 |
 
 PDF는 개인정보 포함 과거 자료다. 저장소·로그·데모 데이터·스크린샷에 내용을 복사하지 않는다. 2016년 내용을 현재 회장단·현행 정관으로 표시하지 않는다.
+
+## 2.1 확정된 아키텍처 방침 (DECISIONS D-6~D-13)
+- 통합 앱 = `apps/gathering-mobile`(JCI KOREA)에 "내 로컬" 추가. `apps/mobile`은 참고용 유지(삭제·수정 금지)
+- 공통 로그인 = 기존 모임 로그인(휴대폰 번호). 로컬 API는 매 요청 서버에서 (userId, localId) ACTIVE 멤버십 + 권한 검사
+- 휴대폰 본인 확인은 최종 요구사항(유료 서비스 승인 후). 인증 전 자동 연결·번호만으로 관리자 부여 금지
+- YB/OB 고정 분류(로컬 소속 단위), YB→OB 관리자 수동
+- 서비스 활성화(본사 웹) ≠ `Local.isActive`. 최초 로컬 관리자도 본사 웹에서 지정 → 이후 회장이 사무국장 지정·권한 부여·매년 인계
+- 주소: 무료 도로명주소 검색, 우편번호·도로명·상세·우편물/선물 수신지 분리 관리
 
 ## 3. Phase 개요와 완료 조건
 | Phase | 내용 | 완료 조건 |

@@ -8,6 +8,7 @@ type Dialog =
   | { mode: 'edit'; type: OrgType; org?: JcDistrict | JcLocal }
   | { mode: 'parent'; org: JcLocal }
   | { mode: 'service'; org: JcLocal }
+  | { mode: 'owner'; org: JcLocal }
   | { mode: 'status' | 'history'; type: OrgType; org: JcOrg };
 
 function errorMessage(error: unknown) {
@@ -273,7 +274,16 @@ export function JcOrganizationsPage() {
           </section>
         </div>
       )}
-      {dialog ? (
+      {dialog?.mode === 'owner' ? (
+        <LocalOwnerDialog
+          org={dialog.org}
+          onClose={() => setDialog(null)}
+          onSaved={() => {
+            setDialog(null);
+            reload();
+          }}
+        />
+      ) : dialog ? (
         <OrgDialog
           dialog={dialog}
           districts={districts.items}
@@ -331,6 +341,11 @@ function OrgActions({
           >
             서비스 {org.serviceEnabled ? '끄기' : '켜기'}
           </button>
+          {org.hasOwner || (org.serviceEnabled && org.isActive) ? (
+            <button type="button" className="ghost" onClick={() => onOpen({ mode: 'owner', org })}>
+              {org.hasOwner ? '현재 관리자' : '최초 관리자 지정'}
+            </button>
+          ) : null}
         </>
       ) : null}
       <button type="button" className="ghost" onClick={() => onOpen({ mode: 'status', type, org })}>
@@ -354,7 +369,7 @@ function OrgDialog({
   onClose,
   onSaved,
 }: {
-  dialog: Dialog;
+  dialog: Exclude<Dialog, { mode: 'owner' }>;
   districts: JcDistrict[];
   districtId?: string;
   onClose: () => void;
@@ -618,5 +633,201 @@ function HistoryList({ type, id }: { type: OrgType; id: string }) {
         ))}
       </ul>
     </>
+  );
+}
+
+type OwnerCandidate = {
+  membershipId: string;
+  displayName: string | null;
+  phoneMasked: string | null;
+  status: 'PENDING' | 'ACTIVE';
+  memberClass: 'YB' | 'OB' | null;
+};
+
+type OwnerDetails = {
+  owner: (Pick<OwnerCandidate, 'membershipId' | 'displayName' | 'phoneMasked'> & {
+    appointedAt: string | null;
+  }) | null;
+  history: {
+    id: string;
+    action: 'APPOINTED' | 'REVOKED';
+    actorLabel: string;
+    note: string;
+    createdAt: string;
+  }[];
+};
+
+function ownerDate(value: string) {
+  return new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) + ' KST';
+}
+
+function LocalOwnerDialog({
+  org, onClose, onSaved,
+}: {
+  org: JcLocal;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const path = `${base}/locals/${org.id}`;
+  const ref = useRef<HTMLDialogElement>(null);
+  const [details, setDetails] = useState<OwnerDetails>();
+  const [loadError, setLoadError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const [selection, setSelection] = useState('');
+  const [verified, setVerified] = useState(false);
+  const [memo, setMemo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const owner = details?.owner;
+  const canAppoint = details?.owner === null && org.isActive && org.serviceEnabled;
+  const candidates = useOrgList<OwnerCandidate>(canAppoint ? `${path}/owner-candidates` : '');
+  const candidate = candidates.items.find((item) => item.membershipId === selection);
+  const needsClass = candidate && (candidate.status === 'PENDING' || !candidate.memberClass);
+
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api<OwnerDetails>(`${path}/owner`, { signal: controller.signal }).then(
+      setDetails,
+      (cause) => {
+        if (!controller.signal.aborted) setLoadError(errorMessage(cause));
+      },
+    );
+    return () => controller.abort();
+  }, [path, attempt]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy || !memo.trim() || (!owner && (!candidate || !verified || !canAppoint))) return;
+    const memberClass = new FormData(event.currentTarget).get('memberClass') || undefined;
+    const body = owner
+      ? { membershipId: owner.membershipId, reason: memo }
+      : { membershipId: candidate?.membershipId, memberClass, identityVerified: verified, note: memo };
+    setBusy(true);
+    setError('');
+    try {
+      await api(`${path}/owner${owner ? '/revoke' : ''}`, {
+        method: 'POST', body: JSON.stringify(body),
+      });
+      onSaved();
+    } catch (cause) {
+      setError(errorMessage(cause));
+      if (cause instanceof ApiError && cause.status === 409) {
+        setDetails(undefined);
+        setSelection('');
+        setVerified(false);
+        setMemo('');
+        setAttempt((count) => count + 1);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <dialog
+      className="panel org-dialog org-owner-dialog"
+      ref={ref}
+      aria-labelledby="local-owner-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h2 id="local-owner-title">{(details ? owner : org.hasOwner) ? '현재 관리자' : '최초 관리자 지정'}</h2>
+      <p>{org.displayName}</p>
+      <ListFeedback
+        loading={!details && !loadError}
+        error={loadError}
+        empty={false}
+        retry={() => {
+          setLoadError('');
+          setAttempt((count) => count + 1);
+        }}
+      />
+      {error ? <p className="error" role="alert">{error}</p> : null}
+      {owner || canAppoint ? (
+        <form className="org-stack" onSubmit={(event) => void submit(event)}>
+          {owner ? (
+            <>
+              <p>
+                {owner.displayName ?? '표시명 없음'} {owner.phoneMasked}
+                {owner.appointedAt ? <><br />지정 일시 {ownerDate(owner.appointedAt)}</> : null}
+              </p>
+              <p>해임하면 로컬 관리자 권한이 해제됩니다. 회원 상태와 분류는 유지됩니다.</p>
+            </>
+          ) : (
+            <>
+              <ListFeedback {...candidates} empty={!candidates.items.length} />
+              <label>
+                가입 요청
+                <select
+                  required value={selection} disabled={busy || candidates.loading || !candidates.items.length}
+                  onChange={(event) => {
+                    setSelection(event.target.value);
+                    setVerified(false);
+                  }}
+                >
+                  <option value="">후보 선택</option>
+                  {candidates.items.map((item) => (
+                    <option key={item.membershipId} value={item.membershipId}>
+                      {item.displayName ?? '표시명 없음'} {item.phoneMasked ?? ''} · {item.status === 'PENDING' ? '대기' : '승인'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {needsClass ? (
+                <label>
+                  회원 분류
+                  <select name="memberClass" required key={selection} defaultValue="">
+                    <option value="">분류 선택</option>
+                    <option value="YB">YB (현역)</option>
+                    <option value="OB">OB (특우)</option>
+                  </select>
+                </label>
+              ) : null}
+              <label className="org-owner-confirm">
+                <input type="checkbox" required checked={verified} onChange={(event) => setVerified(event.target.checked)} />
+                본인 확인을 마쳤습니다
+              </label>
+              <p>
+                선택한 회원에게 로컬 관리자 권한을 부여합니다.
+                {candidate?.status === 'PENDING' ? ' 대기 중인 가입 요청도 함께 승인합니다.' : ''}
+              </p>
+            </>
+          )}
+          <label>
+            {owner ? '해임 사유' : '확인 메모'}
+            <textarea required maxLength={300} value={memo} onChange={(event) => setMemo(event.target.value)} />
+            <span className="hint">전화번호, 이메일 등 개인정보는 입력하지 마세요.</span>
+          </label>
+          <div className="org-actions">
+            <button type="submit" disabled={busy || !memo.trim() || (!owner && (!candidate || !verified))}>
+              {owner ? '해임' : '관리자 지정'}
+            </button>
+            <button type="button" className="ghost" disabled={busy} onClick={onClose}>취소</button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" className="ghost" onClick={onClose}>닫기</button>
+      )}
+      {details?.history.length ? (
+        <details>
+          <summary>최근 지정·해임 이력</summary>
+          <ul className="org-list">
+            {details.history.map((item) => (
+              <li className="org-history" key={item.id}>
+                <strong>{item.action === 'APPOINTED' ? '지정' : '해임'}</strong>
+                <p className="hint">{ownerDate(item.createdAt)} · {item.actorLabel}</p>
+                <p>{item.note}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </dialog>
   );
 }

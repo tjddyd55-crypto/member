@@ -89,6 +89,7 @@ export type JcLocal = JcOrg & {
   approvalNumber: string | null;
   serviceEnabled: boolean;
   serviceEnabledAt: string | null;
+  hasOwner: boolean;
 };
 
 export type JcReview = (JcDistrict & { orgType: 'DISTRICT' }) | (JcLocal & { orgType: 'LOCAL' });

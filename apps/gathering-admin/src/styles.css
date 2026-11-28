@@ -103,3 +103,8 @@ th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e4e8ee; vert
   .org-columns.show-locals .org-locals { display: grid; }
   .org-back { display: block; justify-self: start; }
 }
+
+.org-owner-confirm { display: flex; align-items: center; gap: 8px; }
+.org-owner-dialog { overflow-wrap: anywhere; }
+.org-owner-dialog .org-stack { grid-template-columns: minmax(0, 1fr); }
+.org-owner-dialog select { min-width: 0; }

@@ -20,6 +20,11 @@ import {
 } from './admin.js';
 import { assertAdminCsrf, requireAdminSession } from '../gathering/admin/service.js';
 
+import {
+  appointLocalOwner, appointOwnerBody, localOwner, localOwnerCandidates, revokeLocalOwner,
+  revokeOwnerBody,
+} from './local-owner.js';
+
 const prefix = '/api/gathering-admin/jc-orgs';
 const id = z.object({ id: z.string().cuid() });
 const target = id.extend({
@@ -71,6 +76,22 @@ export function registerJcOrgAdminRoutes(
   app.get(`${prefix}/locals/:id`, async (request) => {
     await authorize(request);
     return { local: await adminLocal(id.parse(request.params).id) };
+  });
+  app.get(`${prefix}/locals/:id/owner-candidates`, async (request) => {
+    await authorize(request);
+    return localOwnerCandidates(id.parse(request.params).id);
+  });
+  app.get(`${prefix}/locals/:id/owner`, async (request) => {
+    await authorize(request);
+    return localOwner(id.parse(request.params).id);
+  });
+  app.post(`${prefix}/locals/:id/owner`, async (request) => {
+    const actor = await authorize(request, true);
+    return appointLocalOwner(actor, id.parse(request.params).id, appointOwnerBody.parse(request.body));
+  });
+  app.post(`${prefix}/locals/:id/owner/revoke`, async (request) => {
+    const actor = await authorize(request, true);
+    return revokeLocalOwner(actor, id.parse(request.params).id, revokeOwnerBody.parse(request.body));
   });
   app.patch(`${prefix}/locals/:id/service`, async (request) => {
     const actor = await authorize(request, true);

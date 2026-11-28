@@ -163,7 +163,7 @@ async function getClassHistory(localId: string, membershipId: string) {
   });
   if (!membership) throw membershipNotFound();
   return { items: membership.classChanges.map(({ changedByUser, ...change }) => ({
-    ...change, changedByDisplayName: changedByUser.gatheringProfile?.displayName ?? null,
+    ...change, changedByDisplayName: changedByUser?.gatheringProfile?.displayName ?? null,
   })) };
 }
 

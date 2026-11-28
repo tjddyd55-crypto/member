@@ -98,6 +98,7 @@ model Local {
   updatedAt         DateTime  @updatedAt
 
   district             District                @relation(fields: [districtId], references: [id])
+  ownerAssignments     LocalOwnerAssignment[]
   memberships          LocalMembership[]
   memberProfiles       MemberProfile[]
   memberCompanies      MemberCompany[]
@@ -260,9 +261,32 @@ model LocalMembership {
   refreshSessions RefreshSession[]
   classChanges    LocalMemberClassChange[]
   profileLinks    LocalMemberProfileLink[]
+  ownerAssignments LocalOwnerAssignment[]
 
   @@unique([userId, localId])
   @@index([localId, status])
+}
+
+enum LocalOwnerAssignmentAction {
+  APPOINTED
+  REVOKED
+}
+
+model LocalOwnerAssignment {
+  id           String                     @id @default(cuid())
+  localId      String
+  membershipId String
+  action       LocalOwnerAssignmentAction
+  actorAdminId String
+  actorLabel   String
+  note         String
+  createdAt    DateTime                   @default(now())
+
+  local      Local           @relation(fields: [localId], references: [id], onDelete: Restrict)
+  membership LocalMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@index([localId, createdAt])
+  @@map("local_owner_assignments")
 }
 
 enum LocalMemberClass {
@@ -271,18 +295,19 @@ enum LocalMemberClass {
 }
 
 model LocalMemberClassChange {
-  id              String            @id @default(cuid())
-  membershipId    String
-  localId         String
-  fromClass       LocalMemberClass?
-  toClass         LocalMemberClass
-  changedByUserId String
-  reason          String
-  revertsChangeId String?
-  createdAt       DateTime          @default(now())
+  id               String            @id @default(cuid())
+  membershipId     String
+  localId          String
+  fromClass        LocalMemberClass?
+  toClass          LocalMemberClass
+  changedByUserId  String?
+  changedByAdminId String?
+  reason           String
+  revertsChangeId  String?
+  createdAt        DateTime          @default(now())
 
   membership    LocalMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
-  changedByUser User            @relation(fields: [changedByUserId], references: [id], onDelete: Restrict)
+  changedByUser User?           @relation(fields: [changedByUserId], references: [id], onDelete: Restrict)
 
   @@index([membershipId, createdAt])
   @@map("local_member_class_changes")

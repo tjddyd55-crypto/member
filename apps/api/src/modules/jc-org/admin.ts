@@ -76,7 +76,10 @@ export async function adminLocals(filters: z.infer<typeof localFilters>) {
       serviceEnabled: filters.service ? filters.service === 'ENABLED' : undefined,
       verificationState: filters.verification,
     },
-    include,
+    include: {
+      ...include,
+      _count: { select: { memberships: { where: { status: 'ACTIVE', role: 'LOCAL_OWNER' } } } },
+    },
   });
   return locals
     .filter(
@@ -85,7 +88,7 @@ export async function adminLocals(filters: z.infer<typeof localFilters>) {
         [...orgNames(org)].some((label) => label.includes(query)) ||
         org.approvalNumber?.toLowerCase().includes(filters.q?.toLowerCase() ?? ''),
     )
-    .map((org) => ({ ...org, displayName: displayName(org) }))
+    .map(({ _count, ...org }) => ({ ...org, displayName: displayName(org), hasOwner: _count.memberships > 0 }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName, 'ko'));
 }
 

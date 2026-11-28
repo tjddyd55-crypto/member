@@ -5,6 +5,7 @@ import { SlidingWindowLimiter } from '../gathering/rate-limit.js';
 import { cancelLocalJoin, getLocalMe, requestLocalJoin } from './join-request.js';
 import { localMemberGuard, localPermissionGuard } from './access.js';
 import { localAdminMemberRoutes } from './admin-members.js';
+import { localAdminProfileLinkRoutes } from './admin-profile-link.js';
 
 type LocalRoute = { Params: { localId: string } };
 
@@ -24,6 +25,7 @@ export const gatheringLocalRoutes: FastifyPluginAsync = async (app) => {
   );
 
   await app.register(localAdminMemberRoutes);
+  await app.register(localAdminProfileLinkRoutes);
 
   const auth = { preHandler: [app.authenticateGathering] };
   const joinLimiter = new SlidingWindowLimiter(30, 60_000);

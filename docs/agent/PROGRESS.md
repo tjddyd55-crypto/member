@@ -18,6 +18,7 @@
 | 2026-11-29 | P1-02 DONE (PR #63, da48ee1, CI PASS, Codex 자동리뷰 지적 0). 로컬 서비스 활성화 상태, 최고관리자 웹 토글, 조직 이력·감사로그, 로컬 접근 가드 연동 | 마이그레이션 `20261129031913_local_service_enabled`, `TEST_RESULTS.md` |
 | 2026-11-29 | P1-03 및 P1-04 DONE (PR #64, CI PASS, Codex P2 1건 반영 후 병합; 수정 커밋은 재리뷰 없음). 내 로컬 상태 조회, 수동 가입 요청·취소·재요청, 중복 방지, 로컬 감사로그 | `apps/api/src/modules/local/`, `local-join.test.ts`, `TEST_RESULTS.md` |
 | 2026-11-29 | P1-05 및 P1-06 REVIEW. 로컬 가입 대기 목록·승인·거절, YB/OB 수동 지정·변경·되돌리기, 이력 조회·감사로그 구현 | `apps/api/src/modules/local/admin-members.ts`, `local-approval.test.ts`, `TEST_RESULTS.md` |
+| 2026-11-29 | P1-07 REVIEW. 관리자 본인 확인 후 프로필 연결·해제, 이름·회원번호 후보 검색, 처리 이력·감사로그 | `admin-profile-link.ts`, `local-profile-link.test.ts`, `TEST_RESULTS.md` |
 
 ### P1-05 / P1-06 API 동작
 

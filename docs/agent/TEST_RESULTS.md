@@ -67,3 +67,18 @@
 | 2026-11-29 | 전체 테스트 | `npm test` | PASS | 로컬 Postgres 55432. 모임 도메인 73개, API 419개 통과. local-approval 5개, local-access 13개, local-join 10개, member-book-regression 4개 포함 |
 | 2026-11-29 | 원격 CI 및 실기기 QA | — | NOT_RUN | |
 | 2026-11-29 | PR #66 Codex P2 반영(시드가 분류 이력 먼저 삭제) | `npm run db:seed` (분류 이력 1행 삽입 후 재실행) | PASS | 이력 행 존재 상태에서 시드 성공, 이력 0행으로 정리 |
+
+## PHASE 1 — P1-07
+
+| 날짜(KST) | 대상 | 방법 | 결과 | 증빙 |
+|---|---|---|---|---|
+| 2026-11-29 | 기존 로컬 DB에서 마이그레이션 생성 시도 | `npm run db:migrate -- --create-only --name member_profile_link` | FAIL | 기존 모임 마이그레이션 체크섬 불일치. 기존 DB는 초기화하지 않음 |
+| 2026-11-29 | 별도 로컬 DB의 추가형 마이그레이션 | `npm run db:migrate -- --create-only --name member_profile_link`, SQL 검토, `npm run db:migrate:deploy`, `prisma migrate status` | PASS | 로컬 Postgres 55432. 생성된 SQL에서 기존 모임 외래 키 재작성 구문을 제거하고 최종 SQL 적용. 새 enum·테이블·인덱스·외래 키만 추가 |
+| 2026-11-29 | Prisma Client 생성 | `npm run db:generate` | PASS | 종료 코드 0 |
+| 2026-11-29 | 신규 프로필 연결 테스트 | `npm run test -w @member/api -- src/tests/local-profile-link.test.ts` | PASS | 가상 데이터로 4개 통과 |
+| 2026-11-29 | 전체 테스트 최초 실행 | `npm test` | FAIL | 시드가 없는 검증 DB에서 도메인 73개 통과, API 409개 통과 및 시드 의존 테스트 14개 실패 |
+| 2026-11-29 | 가상 시드 초기 적재 | `npm run db:seed` | PASS | 새 검증 DB에 가상 데이터만 초기 적재 |
+| 2026-11-29 | 워크스페이스 빌드 | `npm run build` | PASS | 종료 코드 0 |
+| 2026-11-29 | 전체 타입 검사 | `npm run typecheck` | PASS | 종료 코드 0 |
+| 2026-11-29 | 전체 테스트 재실행 | `npm test` | PASS | 로컬 Postgres 55432. 도메인 73개, API 423개. local-profile-link 4개, local-access 13개, local-join 10개, local-approval 5개, member-book-regression 4개 포함. P1-07 가상 지구와 연결 이력 잔여 0건 확인 |
+| 2026-11-29 | 원격 CI 및 실기기 QA | — | NOT_RUN | |

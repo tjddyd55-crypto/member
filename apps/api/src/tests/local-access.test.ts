@@ -61,7 +61,7 @@ beforeAll(async () => {
   for (const suffix of ['a', 'b']) {
     const code = `${fixtureId}-${suffix}`;
     const local = await prisma.local.create({
-      data: { districtId, name: `가상 테스트 로컬 ${suffix}`, code, slug: code },
+      data: { districtId, name: `가상 테스트 로컬 ${suffix}`, code, slug: code, serviceEnabled: true },
     });
     localIds.push(local.id);
   }
@@ -133,6 +133,15 @@ describe('모임 로그인 기반 로컬 접근', () => {
       expectError(await ping(), 403, code);
     } finally {
       await setMembershipStatus('ACTIVE');
+    }
+  });
+
+  it('서비스를 끈 로컬의 ACTIVE 회원을 거부한다', async () => {
+    await prisma.local.update({ where: { id: localId }, data: { serviceEnabled: false } });
+    try {
+      expectError(await ping(), 403, 'LOCAL_SERVICE_DISABLED');
+    } finally {
+      await prisma.local.update({ where: { id: localId }, data: { serviceEnabled: true } });
     }
   });
 

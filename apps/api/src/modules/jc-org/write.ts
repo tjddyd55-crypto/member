@@ -46,6 +46,7 @@ export async function recordOrgChange(
       | 'RENAME'
       | 'UPDATE'
       | 'STATUS'
+      | 'SERVICE'
       | 'PARENT_CHANGE'
       | 'VERIFY'
       | 'SEED_CREATE'

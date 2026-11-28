@@ -76,24 +76,26 @@ model District {
 }
 
 model Local {
-  id             String    @id @default(cuid())
-  districtId     String
-  name           String
-  englishName    String?
-  code           String    @unique
-  slug           String    @unique
-  approvalNumber String?
-  foundedAt      DateTime?
-  officeAddress  String?
-  officePhone    String?
-  email          String?
-  website        String?
-  logoFileId     String?
-  primaryColor   String    @default("#1B3A6B")
-  slogan         String?
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  districtId        String
+  name              String
+  englishName       String?
+  code              String    @unique
+  slug              String    @unique
+  approvalNumber    String?
+  foundedAt         DateTime?
+  officeAddress     String?
+  officePhone       String?
+  email             String?
+  website           String?
+  logoFileId        String?
+  primaryColor      String    @default("#1B3A6B")
+  slogan            String?
+  isActive          Boolean   @default(true)
+  serviceEnabled    Boolean   @default(false)
+  serviceEnabledAt  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   district             District                @relation(fields: [districtId], references: [id])
   memberships          LocalMembership[]

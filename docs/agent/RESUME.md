@@ -5,14 +5,13 @@
 
 재개 절차: `git fetch` → develop/main 최신 커밋·열린 PR 확인 → 이 파일 → `TASK_QUEUE.md` → `BLOCKERS.md` → Codex 사용량 확인(`codex exec --json` 짧은 호출, "usage limit" 메시지 여부) → IN_PROGRESS/WAITING_QUOTA 작업부터.
 
-## 현재 상태 (2026-11-29 03:20 KST)
-- 현재 Phase: PHASE 1. P0 완료. **P1-01 REVIEW**(PR 리뷰·CI 대기), 다음 P1-02.
-- 마지막 확인 커밋: develop `2b04133`. 작업 브랜치 `feat/local-p1-01`(PR → develop). main `1a63143`(main에만 merge 커밋 1개 → 12/1 승격은 develop→main merge PR 필요).
-- 사용량: Codex 2026-11-29 03:00 KST 짧은 호출로 회복 확인(02:41 복구). P1-01 구현에 사용. 이후 한도 신호가 나오면 `WAITING_QUOTA` + `BLOCKERS.md`에 회복 시각 기록.
-- 구현 요약: 기존 모임 로그인으로 `/api/local/:localId/ping`, `/admin-ping` 접근. 매 요청 DB에서 (userId, localId) ACTIVE 멤버십·로컬/계정 상태·역할 검사. 권한은 임시로 역할 기반(P5-01에서 부여 기록으로 교체). 증빙은 `TEST_RESULTS.md`. 원격 CI는 PR에서 확인.
+## 현재 상태 (2026-11-29 KST)
+- PHASE 1. P1-01은 develop `6de04d2`에 병합됨. P1-02는 `feat/local-p1-02`에서 REVIEW. 다음 작업은 P1-03.
+- P1-02에서 `Local.serviceEnabled`(기본값 false)와 `serviceEnabledAt`을 추가했다. 최고관리자는 웹에서 서비스를 켜거나 끌 수 있다. 변경 시 조직 이력과 관리자 감사로그가 함께 기록된다.
+- ACTIVE 로컬 멤버는 서비스가 꺼져 있으면 `LOCAL_SERVICE_DISABLED`(403)를 받는다. 관리자 목록·상세에서 서비스 상태를 조회할 수 있다. 검증 결과는 `TEST_RESULTS.md` 참고.
+- 로컬 커밋은 원본 `.git`의 읽기 전용 마운트로 보류. 변경 사항은 작업 트리에 남아 있다.
 - P8-05 휴대폰 본인 확인은 유료 연동 승인 대기. 별도 트랙 JCI-4(12/1 09:00 KST) 유지.
 
-## 다음에 Codex에 전달할 작업 지시 (P1-02, D-10)
-- `Local.isActive`와 별개인 로컬 서비스 활성화 필드를 추가한다. 추가형 마이그레이션의 기본값은 비활성이다.
-- 본사 최고관리자 웹에서 활성화 상태를 변경할 수 있게 하고 변경 내역을 감사로그에 기록한다.
-- P1-01의 로컬 권한 테스트와 회원수첩·모임 회귀 테스트를 로컬 Postgres에서 실행한다. Production 변경은 별도 승인 후 진행한다.
+## 다음 작업 (P1-03)
+- `GET /api/local/me`에서 모임 세션과 `GatheringLocalAffiliation`을 기준으로 내 로컬 상태를 반환한다. A 미활성 / B 미요청 / C 대기 / D 승인.
+- 서비스 미활성 상태도 응답할 수 있도록 기존 로컬 가드의 접근 조건을 고려한다.

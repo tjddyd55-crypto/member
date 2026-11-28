@@ -49,6 +49,7 @@ afterAll(async () => {
   await prisma.gatheringRecoveryCode.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.gatheringLocalAffiliation.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.gatheringProfile.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.localMembership.deleteMany({ where: { userId: { in: userIds }, localId: { in: localIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.jcOrganizationHistory.deleteMany({
     where: { OR: [{ districtId: { in: districtIds } }, { localId: { in: localIds } }] },
@@ -424,6 +425,147 @@ describe('JC organization master data', () => {
     );
   });
 
+  it('changes local service independently and records each transition once', async () => {
+    const parent = await district('서비스');
+    const org = await local(parent.id, `서비스${key}JC`);
+    const url = `${adminBase}/locals/${org.id}`;
+    const toggle = (enabled: boolean, note?: string) =>
+      app.inject({
+        method: 'PATCH',
+        url: `${url}/service`,
+        headers: adminHeaders,
+        payload: { enabled, note },
+      });
+    const detail = async () => (await app.inject({ url, headers: adminHeaders })).json().local;
+    const setActive = async (active: boolean) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `${url}/status`,
+        headers: adminHeaders,
+        payload: { active },
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json().org;
+    };
+    const list = async (service: 'ENABLED' | 'DISABLED') => {
+      const response = await app.inject({
+        url: `${adminBase}/locals?districtId=${parent.id}&service=${service}`,
+        headers: adminHeaders,
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json().items;
+    };
+    const signup = await register({ localId: org.id });
+    const membership = await prisma.localMembership.create({
+      data: { localId: org.id, userId: signup.user.id, status: 'ACTIVE' },
+    });
+    const ping = () => app.inject({ url: `/api/local/${org.id}/ping`, headers: signup.headers });
+
+    expect(await detail()).toMatchObject({
+      isActive: true,
+      serviceEnabled: false,
+      serviceEnabledAt: null,
+    });
+    expect(await list('ENABLED')).toEqual([]);
+    expect(await list('DISABLED')).toMatchObject([
+      { id: org.id, serviceEnabled: false, serviceEnabledAt: null },
+    ]);
+    expect((await toggle(false)).statusCode).toBe(200);
+    expect(await setActive(false)).toMatchObject({ isActive: false, serviceEnabled: false });
+    expect((await toggle(true)).statusCode).toBe(409);
+    expect(await setActive(true)).toMatchObject({ isActive: true, serviceEnabled: false });
+
+    const [response, retry] = await Promise.all([
+      toggle(true, '가상 서비스 시작'),
+      toggle(true, '가상 서비스 시작'),
+    ]);
+    expect(response.statusCode).toBe(200);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json().local.serviceEnabledAt).toBe(response.json().local.serviceEnabledAt);
+    const enabled = response.json().local;
+    expect(enabled).toMatchObject({
+      isActive: true,
+      serviceEnabled: true,
+      serviceEnabledAt: expect.any(String),
+    });
+    expect(await detail()).toMatchObject({
+      serviceEnabled: true,
+      serviceEnabledAt: enabled.serviceEnabledAt,
+    });
+    const publicList = await app.inject({ url: `${publicBase}/districts/${parent.id}/locals` });
+    expect(publicList.statusCode).toBe(200);
+    expect(publicList.json().items).toEqual([
+      { id: org.id, name: org.name, displayName: org.displayName },
+    ]);
+    expect(await list('DISABLED')).toEqual([]);
+    expect(await list('ENABLED')).toMatchObject([
+      { id: org.id, serviceEnabled: true, serviceEnabledAt: enabled.serviceEnabledAt },
+    ]);
+    expect(await setActive(false)).toMatchObject({
+      isActive: false,
+      serviceEnabled: true,
+      serviceEnabledAt: enabled.serviceEnabledAt,
+    });
+    expect(await setActive(true)).toMatchObject({
+      isActive: true,
+      serviceEnabled: true,
+      serviceEnabledAt: enabled.serviceEnabledAt,
+    });
+    const repeated = await toggle(true);
+    expect(repeated.statusCode).toBe(200);
+    expect(repeated.json().local).toMatchObject({ serviceEnabledAt: enabled.serviceEnabledAt });
+    expect((await ping()).statusCode).toBe(200);
+
+    const disabled = await toggle(false);
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().local).toMatchObject({
+      isActive: true,
+      serviceEnabled: false,
+      serviceEnabledAt: null,
+    });
+    expect((await toggle(false)).statusCode).toBe(200);
+    const denied = await ping();
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json().error.code).toBe('LOCAL_SERVICE_DISABLED');
+    expect(await prisma.localMembership.findUnique({ where: { id: membership.id } })).toEqual(
+      membership,
+    );
+
+    const changes = [
+      { before: { serviceEnabled: false }, after: { serviceEnabled: true } },
+      { before: { serviceEnabled: true }, after: { serviceEnabled: false } },
+    ];
+    const history = await prisma.jcOrganizationHistory.findMany({
+      where: { localId: org.id, action: 'SERVICE' },
+    });
+    const audit = await prisma.gatheringAdminAudit.findMany({
+      where: { targetId: org.id, action: 'JC_ORG_SERVICE' },
+    });
+    expect(history).toHaveLength(2);
+    expect(audit).toHaveLength(2);
+    for (const change of changes) {
+      expect(history).toContainEqual(
+        expect.objectContaining({ ...change, actorAdminId: adminIds[0] }),
+      );
+      expect(audit).toContainEqual(
+        expect.objectContaining({
+          beforeJson: JSON.stringify(change.before),
+          afterJson: JSON.stringify(change.after),
+          actorAdminId: adminIds[0],
+        }),
+      );
+    }
+    expect(history).toContainEqual(
+      expect.objectContaining({ ...changes[0], note: '가상 서비스 시작' }),
+    );
+    expect(audit).toContainEqual(
+      expect.objectContaining({
+        afterJson: JSON.stringify(changes[0].after),
+        reason: '가상 서비스 시작',
+      }),
+    );
+  });
+
   it('requires a super-admin cookie and CSRF for mutation', async () => {
     const signup = await register({ localJcName: `권한 ${key}` });
     const scopedGroup = await group(signup.headers);
@@ -445,6 +587,17 @@ describe('JC organization master data', () => {
       (await prisma.gatheringAdminAccount.findUniqueOrThrow({ where: { loginId } })).id,
     );
     const scopedHeaders = await signIn(loginId);
+    const parent = await district('서비스권한');
+    const org = await local(parent.id, `서비스권한${key}JC`);
+    const serviceUrl = `${adminBase}/locals/${org.id}/service`;
+    for (const [url, payload, status] of [
+      [serviceUrl, { enabled: 'true' }, 400],
+      [serviceUrl, { enabled: true, note: 'a'.repeat(501) }, 400],
+      [`${adminBase}/locals/${'c00000000000000000000000'}/service`, { enabled: true }, 404],
+    ] as const) {
+      const response = await app.inject({ method: 'PATCH', url, headers: adminHeaders, payload });
+      expect(response.statusCode).toBe(status);
+    }
     for (const [headers, status] of [
       [{}, 401],
       [signup.headers, 401],
@@ -459,6 +612,13 @@ describe('JC organization master data', () => {
       });
       expect(response.statusCode, response.body).toBe(status);
       if (headers === scopedHeaders) expect(response.json().error.code).toBe('FORBIDDEN');
+      const service = await app.inject({
+        method: 'PATCH',
+        url: serviceUrl,
+        headers,
+        payload: { enabled: true },
+      });
+      expect(service.statusCode, service.body).toBe(status);
     }
     const list = await app.inject({ url: `${adminBase}/review`, headers: scopedHeaders });
     expect(list.statusCode).toBe(403);

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import {
   adminDistricts,
+  adminLocal,
   adminLocals,
   adminOrgHistory,
   adminReview,
@@ -14,6 +15,7 @@ import {
   localPatch,
   moveAdminLocal,
   saveAdminOrg,
+  setAdminLocalService,
   setAdminOrgStatus,
 } from './admin.js';
 import { assertAdminCsrf, requireAdminSession } from '../gathering/admin/service.js';
@@ -65,6 +67,17 @@ export function registerJcOrgAdminRoutes(
   app.get(`${prefix}/locals`, async (request) => {
     await authorize(request);
     return { items: await adminLocals(localFilters.parse(request.query)) };
+  });
+  app.get(`${prefix}/locals/:id`, async (request) => {
+    await authorize(request);
+    return { local: await adminLocal(id.parse(request.params).id) };
+  });
+  app.patch(`${prefix}/locals/:id/service`, async (request) => {
+    const actor = await authorize(request, true);
+    const body = z.object({ enabled: z.boolean(), note }).parse(request.body);
+    return {
+      local: await setAdminLocalService(actor, id.parse(request.params).id, body.enabled, body.note),
+    };
   });
   app.post(`${prefix}/locals`, async (request, reply) => {
     const actor = await authorize(request, true);

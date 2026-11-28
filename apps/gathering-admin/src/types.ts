@@ -84,7 +84,12 @@ export type JcDistrict = JcOrg & {
   needsReviewCount: number;
 };
 
-export type JcLocal = JcOrg & { districtId: string; approvalNumber: string | null };
+export type JcLocal = JcOrg & {
+  districtId: string;
+  approvalNumber: string | null;
+  serviceEnabled: boolean;
+  serviceEnabledAt: string | null;
+};
 
 export type JcReview = (JcDistrict & { orgType: 'DISTRICT' }) | (JcLocal & { orgType: 'LOCAL' });
 

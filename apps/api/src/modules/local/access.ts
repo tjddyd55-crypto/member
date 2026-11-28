@@ -45,7 +45,7 @@ export async function requireLocalMember(request: FastifyRequest, localId: strin
       role: true,
       status: true,
       memberProfileId: true,
-      local: { select: { isActive: true } },
+      local: { select: { isActive: true, serviceEnabled: true } },
       user: { select: { status: true } },
     },
   });
@@ -58,6 +58,10 @@ export async function requireLocalMember(request: FastifyRequest, localId: strin
   }
   if (membership.status !== 'ACTIVE') {
     throw forbidden(membershipErrors[membership.status]);
+  }
+
+  if (!membership.local.serviceEnabled) {
+    throw forbidden('LOCAL_SERVICE_DISABLED');
   }
 
   return { userId, localId, membershipId: membership.id, role: membership.role, memberProfileId: membership.memberProfileId };

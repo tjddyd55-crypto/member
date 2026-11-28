@@ -23,6 +23,21 @@
 | 2026-11-29 | 원격 CI | PR에서 확인 | NOT_RUN | |
 | 2026-11-29 | 실기기 QA(로컬 기능) | — | NOT_RUN | UI 없음(API만) |
 
+## P1-02 로컬 서비스 활성화
+
+| 날짜 | 대상 | 방법 | 결과 | 증빙 |
+|---|---|---|---|---|
+| 2026-11-29 | 로컬 스키마 변경 | `npx prisma migrate dev --create-only --name local_service_enabled`, `npx prisma migrate deploy` | PASS | Postgres 55432. 생성 SQL에서 기존 외래 키 차이를 걷어내고 `Local`의 두 컬럼 추가만 적용 |
+| 2026-11-29 | 마이그레이션 이전 로컬 행 | 적용 전에 가상 로컬을 만든 뒤 동일 행 조회 | PASS | `isActive=true`, `serviceEnabled=false`, `serviceEnabledAt=NULL`. 가상 로컬과 지구만 정리 |
+| 2026-11-29 | Prisma Client 생성 | `npx prisma generate --schema prisma/schema.prisma` | PASS | 종료 코드 0 |
+| 2026-11-29 | 워크스페이스 빌드 | `npm run build` | PASS | 종료 코드 0 |
+| 2026-11-29 | API 타입 검사 | `npm run typecheck -w @member/api` | PASS | 종료 코드 0 |
+| 2026-11-29 | 관리자 웹 타입 검사 | `npm run typecheck -w @member/gathering-admin` | PASS | 종료 코드 0 |
+| 2026-11-29 | 전체 테스트 최초 실행 | `npm test` | FAIL | 모임 도메인 73개 및 API 402개 통과. 신규 감사로그 테스트의 필드명 단언 1건 실패 |
+| 2026-11-29 | 전체 테스트 재실행 | `npm test` | PASS | 모임 도메인 73개, API 403개 통과. JC 조직 11개, 로컬 접근 13개, 회원수첩 회귀 4개 포함 |
+| 2026-11-29 | 관리자 웹 브라우저 조작 | — | NOT_RUN | |
+| 2026-11-29 | 원격 CI | — | NOT_RUN | |
+
 ## 실기기 QA
 | 기기 | 빌드 | 결과 |
 |---|---|---|

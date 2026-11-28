@@ -17,7 +17,7 @@
 ## PHASE 1 — 공통 계정·로컬 권한 통합
 | ID | 작업 | 상태 | 의존 |
 |---|---|---|---|
-| P1-01 | 로컬 권한 guard: 기존 모임 세션(휴대폰+비밀번호 로그인) 기반 `requireLocalMember(localId)`(해당 로컬 LocalMembership ACTIVE만 통과, 매 요청 DB 검사), `requireLocalPermission(key)`; 다른 로컬/대기/거절/정지/탈퇴/모임 전용/비로그인 거부 API 테스트. 전화번호만으로 관리자 권한·기존 회원 자동 연결 금지(D-8) | TODO | D-7, D-8 |
+| P1-01 | 로컬 권한 guard: 기존 모임 세션(휴대폰+비밀번호 로그인) 기반 `requireLocalMember(localId)`(해당 로컬 LocalMembership ACTIVE만 통과, 매 요청 DB 검사), `requireLocalPermission(key)`; 다른 로컬/대기/거절/정지/탈퇴/모임 전용/비로그인 거부 API 테스트. 전화번호만으로 관리자 권한·기존 회원 자동 연결 금지(D-8) | REVIEW | D-7, D-8 |
 | P1-02 | `Local` **서비스 활성화 상태** 별도 필드(추가형 마이그레이션, 기본 비활성; `Local.isActive`와 별개) + 본사 최고관리자 웹 토글 + 감사로그 | TODO | P1-01, D-10 |
 | P1-03 | 내 로컬 상태 API `GET /api/local/me`: A 미활성 / B 미요청 / C 대기 / D 승인 (소속은 GatheringLocalAffiliation 기준) | TODO | P1-02 | `Local` **서비스 활성화 상태** 별도 필드(추가형 마이그레이션, 기본 비활성; `Local.isActive`와 별개) + 본사 최고관리자 웹 토글 + 감사로그 | TODO | P1-01, D-10 |
 | P1-04 | 가입 승인 요청 `POST` (버튼 누를 때만 생성, 중복 방지) + 취소 | TODO | P1-03 |

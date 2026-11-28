@@ -7,6 +7,7 @@ type OrgType = 'districts' | 'locals';
 type Dialog =
   | { mode: 'edit'; type: OrgType; org?: JcDistrict | JcLocal }
   | { mode: 'parent'; org: JcLocal }
+  | { mode: 'service'; org: JcLocal }
   | { mode: 'status' | 'history'; type: OrgType; org: JcOrg };
 
 function errorMessage(error: unknown) {
@@ -257,6 +258,9 @@ export function JcOrganizationsPage() {
                         <p className="hint">{org.name}</p>
                         <p className="hint">승인 번호 {org.approvalNumber ?? '—'}</p>
                         <OrgBadges org={org} showActive />
+                        <span className={org.serviceEnabled ? 'org-badge active' : 'org-badge'}>
+                          서비스 {org.serviceEnabled ? '활성' : '비활성'}
+                        </span>
                       </div>
                       <OrgActions type="locals" org={org} onOpen={setDialog} />
                     </li>
@@ -315,9 +319,19 @@ function OrgActions({
         수정
       </button>
       {'districtId' in org ? (
-        <button type="button" className="ghost" onClick={() => onOpen({ mode: 'parent', org })}>
-          소속 지구 변경
-        </button>
+        <>
+          <button type="button" className="ghost" onClick={() => onOpen({ mode: 'parent', org })}>
+            소속 지구 변경
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            disabled={!org.isActive && !org.serviceEnabled}
+            onClick={() => onOpen({ mode: 'service', org })}
+          >
+            서비스 {org.serviceEnabled ? '끄기' : '켜기'}
+          </button>
+        </>
       ) : null}
       <button type="button" className="ghost" onClick={() => onOpen({ mode: 'status', type, org })}>
         {org.isActive ? '비활성화' : '활성화'}
@@ -367,6 +381,14 @@ function OrgDialog({
           method: 'POST',
           body: JSON.stringify({ districtId: read('districtId'), note: read('note') }),
         });
+      } else if (dialog.mode === 'service') {
+        await api(`${base}/locals/${dialog.org.id}/service`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            enabled: !dialog.org.serviceEnabled,
+            note: read('note') || undefined,
+          }),
+        });
       } else if (dialog.mode === 'status') {
         await api(`${base}/${dialog.type}/${dialog.org.id}/status`, {
           method: 'POST',
@@ -400,16 +422,20 @@ function OrgDialog({
     }
   }
 
+  const serviceAction =
+    dialog.mode === 'service' ? `서비스 ${dialog.org.serviceEnabled ? '끄기' : '켜기'}` : '';
   const title =
-    dialog.mode === 'parent'
-      ? '소속 지구 변경'
-      : dialog.mode === 'history'
-        ? '조직 변경 이력'
-        : dialog.mode === 'status'
-          ? dialog.org.isActive
-            ? '조직 비활성화'
-            : '조직 활성화'
-          : `${dialog.type === 'locals' ? '로컬' : '지구'} ${dialog.org ? '수정' : '추가'}`;
+    dialog.mode === 'service'
+      ? serviceAction
+      : dialog.mode === 'parent'
+        ? '소속 지구 변경'
+        : dialog.mode === 'history'
+          ? '조직 변경 이력'
+          : dialog.mode === 'status'
+            ? dialog.org.isActive
+              ? '조직 비활성화'
+              : '조직 활성화'
+            : `${dialog.type === 'locals' ? '로컬' : '지구'} ${dialog.org ? '수정' : '추가'}`;
   let content: ReactNode;
   if (dialog.mode === 'edit') {
     const org = dialog.org;
@@ -474,7 +500,7 @@ function OrgDialog({
         <ChangeNote />
       </>
     );
-  } else if (dialog.mode === 'status') {
+  } else if (dialog.mode === 'status' || dialog.mode === 'service') {
     content = (
       <>
         <p>{dialog.org.displayName}</p>
@@ -511,7 +537,8 @@ function OrgDialog({
           ) : null}
           <div className="org-actions">
             <button type="submit" disabled={busy}>
-              {dialog.mode === 'status' ? (dialog.org.isActive ? '비활성화' : '활성화') : '저장'}
+              {serviceAction ||
+                (dialog.mode === 'status' ? (dialog.org.isActive ? '비활성화' : '활성화') : '저장')}
             </button>
             <button type="button" className="ghost" disabled={busy} onClick={onClose}>
               취소
@@ -553,6 +580,7 @@ const actions: Record<string, string> = {
   RENAME: '이름 변경',
   UPDATE: '정보 수정',
   STATUS: '활성 상태 변경',
+  SERVICE: '서비스 상태 변경',
   PARENT_CHANGE: '소속 지구 변경',
   VERIFY: '검토 상태 변경',
   SEED_CREATE: '공식 자료 등록',

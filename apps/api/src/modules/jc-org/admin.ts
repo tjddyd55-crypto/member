@@ -46,6 +46,7 @@ export const localFilters = z.object({
   districtId: z.string().cuid().optional(),
   q: z.string().trim().max(120).optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  service: z.enum(['ENABLED', 'DISABLED']).optional(),
   verification: verification.optional(),
 });
 
@@ -72,6 +73,7 @@ export async function adminLocals(filters: z.infer<typeof localFilters>) {
     where: {
       districtId: filters.districtId,
       isActive: filters.status ? filters.status === 'ACTIVE' : undefined,
+      serviceEnabled: filters.service ? filters.service === 'ENABLED' : undefined,
       verificationState: filters.verification,
     },
     include,
@@ -107,6 +109,12 @@ async function readOrg(tx: Tx, type: JcOrgType, id: string) {
       : await tx.local.findUnique({ where: { id }, include });
   if (!org) throw missingOrg();
   return org;
+}
+
+export async function adminLocal(id: string) {
+  const org = await prisma.local.findUnique({ where: { id }, include });
+  if (!org) throw missingOrg();
+  return { ...org, displayName: displayName(org) };
 }
 
 export async function adminOrgHistory(type: JcOrgType, id: string) {
@@ -273,6 +281,38 @@ export function setAdminOrgStatus(
       before,
       after,
       action: 'STATUS',
+      actorAdminId: actor.id,
+      actorLabel: actor.loginId,
+      note,
+    });
+    return after;
+  });
+}
+
+export function setAdminLocalService(
+  actor: { id: string; loginId: string },
+  id: string,
+  enabled: boolean,
+  note?: string,
+) {
+  return mutateOrg(async (tx) => {
+    const before = await tx.local.findUnique({ where: { id }, include });
+    if (!before) throw missingOrg();
+    if (before.serviceEnabled === enabled) return before;
+    if (enabled && !before.isActive) {
+      throw new AppError(409, 'JC_ORG_INACTIVE', '활성 로컬에서만 서비스를 켤 수 있습니다.');
+    }
+    const after = await tx.local.update({
+      where: { id },
+      data: { serviceEnabled: enabled, serviceEnabledAt: enabled ? new Date() : null },
+      include,
+    });
+    await recordOrgChange(tx, {
+      orgType: 'LOCAL',
+      id,
+      action: 'SERVICE',
+      before: { serviceEnabled: before.serviceEnabled },
+      after: { serviceEnabled: after.serviceEnabled },
       actorAdminId: actor.id,
       actorLabel: actor.loginId,
       note,

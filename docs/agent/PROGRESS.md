@@ -15,3 +15,4 @@
 | 날짜(KST) | 항목 | 증빙 |
 |---|---|---|
 | 2026-11-29 | P1-01 REVIEW. 모임 로그인 기반 로컬 접근·관리 권한 검사와 보호 라우트 추가 | `apps/api/src/modules/local/`, `local-access.test.ts`, `TEST_RESULTS.md` |
+| 2026-11-29 | P1-02 REVIEW. 로컬 서비스 활성화 상태, 최고관리자 웹 토글, 조직 이력·감사로그, 로컬 접근 가드 연동 | 마이그레이션 `20261129031913_local_service_enabled`, `TEST_RESULTS.md` |

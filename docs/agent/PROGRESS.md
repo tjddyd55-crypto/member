@@ -14,5 +14,6 @@
 ## PHASE 1
 | 날짜(KST) | 항목 | 증빙 |
 |---|---|---|
-| 2026-11-29 | P1-01 REVIEW. 모임 로그인 기반 로컬 접근·관리 권한 검사와 보호 라우트 추가 | `apps/api/src/modules/local/`, `local-access.test.ts`, `TEST_RESULTS.md` |
-| 2026-11-29 | P1-02 REVIEW. 로컬 서비스 활성화 상태, 최고관리자 웹 토글, 조직 이력·감사로그, 로컬 접근 가드 연동 | 마이그레이션 `20261129031913_local_service_enabled`, `TEST_RESULTS.md` |
+| 2026-11-29 | P1-01 DONE (PR #62, 6de04d2, CI PASS, Codex 자동리뷰 지적 0). 모임 로그인 기반 로컬 접근·관리 권한 검사와 보호 라우트 추가 | `apps/api/src/modules/local/`, `local-access.test.ts`, `TEST_RESULTS.md` |
+| 2026-11-29 | P1-02 DONE (PR #63, da48ee1, CI PASS, Codex 자동리뷰 지적 0). 로컬 서비스 활성화 상태, 최고관리자 웹 토글, 조직 이력·감사로그, 로컬 접근 가드 연동 | 마이그레이션 `20261129031913_local_service_enabled`, `TEST_RESULTS.md` |
+| 2026-11-29 | P1-03 및 P1-04 REVIEW. 내 로컬 상태 조회, 수동 가입 요청·취소·재요청, 중복 방지, 로컬 감사로그 | `apps/api/src/modules/local/`, `local-join.test.ts`, `TEST_RESULTS.md` |

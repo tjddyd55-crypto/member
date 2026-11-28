@@ -168,6 +168,28 @@ describe('계정 삭제와 콘텐츠 처리', () => {
     await prisma.localMembership.deleteMany({ where: { userId: member.user.id } });
   });
 
+  it('승인되지 않은 로컬 가입 요청만 있으면 삭제 시 전화번호를 정리한다', async () => {
+    const member = await register('요청만');
+    const local = await prisma.local.findFirstOrThrow();
+    await prisma.localMembership.createMany({
+      data: [{ userId: member.user.id, localId: local.id, status: 'PENDING', role: 'MEMBER' }],
+    });
+    const removed = await app.inject({
+      method: 'POST',
+      url: '/api/gathering/auth/account/delete',
+      headers: auth(member.tokens.accessToken),
+      payload: { password: 'Passw0rd!', confirm: true },
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json().memberBookKept).toBe(false);
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: member.user.id } });
+    expect(user.phone).toBeNull();
+    expect(user.status).toBe('DELETED');
+    const membership = await prisma.localMembership.findFirstOrThrow({ where: { userId: member.user.id } });
+    expect(membership.status).toBe('WITHDRAWN');
+    await prisma.localMembership.deleteMany({ where: { userId: member.user.id } });
+  });
+
   it('차단은 연락처와 사진을 가리고, 운영자는 신고를 처리한다', async () => {
     const owner = await register('신고회장');
     const member = await register('신고회원');

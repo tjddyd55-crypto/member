@@ -12,7 +12,7 @@ import { writeGatheringAudit } from '../audit.js';
 export async function deleteGatheringAccount(userId: string, password: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { memberships: { select: { id: true } } },
+    include: { memberships: { select: { id: true, status: true, approvedAt: true, memberProfileId: true } } },
   });
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     throw new AppError(401, 'UNAUTHORIZED', '비밀번호가 올바르지 않습니다.');
@@ -23,7 +23,10 @@ export async function deleteGatheringAccount(userId: string, password: string) {
   if (president) {
     throw new AppError(409, 'PRESIDENT_MUST_HANDOVER', '회장 역할은 인계한 뒤에 모임을 떠날 수 있습니다.');
   }
-  const memberBookKept = user.memberships.length > 0;
+  // 승인되지 않은 가입 요청(PENDING·REJECTED·승인 전 WITHDRAWN)은 회원수첩 자격이 아니므로 계정 정리를 막지 않는다.
+  const memberBookKept = user.memberships.some(
+    (m) => m.status === 'ACTIVE' || m.status === 'SUSPENDED' || m.approvedAt !== null || m.memberProfileId !== null,
+  );
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     await tx.gatheringProfile.deleteMany({ where: { userId } });
@@ -50,6 +53,10 @@ export async function deleteGatheringAccount(userId: string, password: string) {
     });
     await tx.gatheringMembership.updateMany({
       where: { userId, status: { in: ['ACTIVE', 'PENDING'] } },
+      data: { status: 'WITHDRAWN' },
+    });
+    await tx.localMembership.updateMany({
+      where: { userId, status: 'PENDING' },
       data: { status: 'WITHDRAWN' },
     });
     if (!memberBookKept) {

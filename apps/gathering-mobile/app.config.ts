@@ -6,6 +6,12 @@ const config: ExpoConfig = {
   name: APP_DISPLAY_NAME,
   slug: 'jci-korea-gathering',
   version: '1.0.0',
+  runtimeVersion: { policy: 'appVersion' },
+  updates: {
+    url: 'https://u.expo.dev/f5a017a3-82f8-4d73-bc8a-ecd249e994f3',
+    checkAutomatically: 'ON_LOAD',
+    fallbackToCacheTimeout: 0,
+  },
   icon: './assets/icon.png',
   splash: { image: './assets/splash-icon.png', resizeMode: 'contain', backgroundColor: '#130F2D' },
   orientation: 'portrait',

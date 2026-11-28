@@ -53,3 +53,4 @@
 | 2026-11-29 | 전체 테스트 | `npm test` | PASS | 로컬 Postgres 55432. 모임 도메인 73개, API 413개. 신규 로컬 가입 10개, 기존 로컬 접근 13개, 회원수첩 회귀 4개 포함 |
 | 2026-11-29 | 신규 로컬 테스트 재실행 | `npm run test -w @member/api -- src/tests/local-join.test.ts` | PASS | 10개 통과. 종료 후 가상 지구 잔여 행 0건 확인 |
 | 2026-11-29 | 원격 CI | — | NOT_RUN | |
+| 2026-11-29 | PR #64 Codex P2 반영(미승인 가입 요청이 계정 삭제를 막지 않음) | `npm test` + 신규 gathering-account 테스트 | PASS | API 414 + domain 73, typecheck/build PASS |

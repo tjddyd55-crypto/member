@@ -66,4 +66,4 @@
 | 2026-11-29 | 로컬 승인·거절 및 분류 | `npm test -w @member/api -- src/tests/local-approval.test.ts` | PASS | 가상 데이터 사용, 5개 통과. 전체 테스트 후 가상 지구 잔여 0건 |
 | 2026-11-29 | 전체 테스트 | `npm test` | PASS | 로컬 Postgres 55432. 모임 도메인 73개, API 419개 통과. local-approval 5개, local-access 13개, local-join 10개, member-book-regression 4개 포함 |
 | 2026-11-29 | 원격 CI 및 실기기 QA | — | NOT_RUN | |
-| 2026-11-29 | PR #66 Codex P2 반영(시드가 분류 이력 먼저 삭제) | `npm run db:seed` 재실행 | PASS | 로컬 DB 시드 정상 |
+| 2026-11-29 | PR #66 Codex P2 반영(시드가 분류 이력 먼저 삭제) | `npm run db:seed` (분류 이력 1행 삽입 후 재실행) | PASS | 이력 행 존재 상태에서 시드 성공, 이력 0행으로 정리 |
